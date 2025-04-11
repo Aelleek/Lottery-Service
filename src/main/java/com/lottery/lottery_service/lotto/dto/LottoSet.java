@@ -10,7 +10,7 @@ public class LottoSet {
     }
 
     public List<Integer> getNumbers() {
-        return numbers;
+        return this.numbers;
     }
 
     public void setNumbers(List<Integer> numbers) {
