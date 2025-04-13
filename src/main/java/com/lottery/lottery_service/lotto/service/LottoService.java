@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.lotto.service;
 
 import com.lottery.lottery_service.lotto.dto.LottoSet;
+import com.lottery.lottery_service.lotto.entity.LottoHistory;
 import com.lottery.lottery_service.lotto.entity.LottoNumber;
 import com.lottery.lottery_service.lotto.entity.Member;
 import com.lottery.lottery_service.lotto.repository.LottoRepository;
