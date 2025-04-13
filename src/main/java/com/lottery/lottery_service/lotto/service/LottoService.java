@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.lotto.service;
 
+import com.lottery.lottery_service.lotto.dto.LottoHistoryResponse;
 import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.lotto.entity.LottoHistory;
 import com.lottery.lottery_service.lotto.entity.Member;
@@ -103,4 +104,17 @@ public class LottoService {
 
         lottoHistoryRepository.saveAll(toSave);
     }
+
+    /**
+     * 회원이 추천받은 로또 번호 내역을 회차 내림차순으로 조회합니다.
+     *
+     * @param memberId 회원 ID
+     * @return 추천 내역 응답 리스트
+     */
+    public List<LottoHistoryResponse> getHistoryForMember(Long memberId) {
+        return lottoHistoryRepository.findAllByMemberIdOrderByRoundDesc(memberId).stream()
+                .map(LottoHistoryResponse::from)
+                .collect(Collectors.toList());
+    }
+
 }
