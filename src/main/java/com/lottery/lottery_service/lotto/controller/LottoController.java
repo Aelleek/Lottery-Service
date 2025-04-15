@@ -60,10 +60,10 @@ public class LottoController {
      * @param memberId 테스트용 회원 ID (인증 미구현)
      * @return 추천 내역 리스트
      */
-    @GetMapping("/history")
-    public ResponseEntity<List<LottoHistoryResponse>> getHistory(
+    @GetMapping("/recommendations")
+    public ResponseEntity<List<LottoHistoryResponse>> getLottoRecommendations(
             @RequestParam Long memberId) {
-        return ResponseEntity.ok(lottoService.getHistoryForMember(memberId));
+        return ResponseEntity.ok(lottoService.getRecommendationsForMember(memberId));
     }
 
 }

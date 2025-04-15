@@ -111,7 +111,7 @@ public class LottoService {
      * @param memberId 회원 ID
      * @return 추천 내역 응답 리스트
      */
-    public List<LottoHistoryResponse> getHistoryForMember(Long memberId) {
+    public List<LottoHistoryResponse> getRecommendationsForMember(Long memberId) {
         return lottoHistoryRepository.findAllByMemberIdOrderByRoundDesc(memberId).stream()
                 .map(LottoHistoryResponse::from)
                 .collect(Collectors.toList());
