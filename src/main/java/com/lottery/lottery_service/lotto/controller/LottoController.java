@@ -1,10 +1,8 @@
 package com.lottery.lottery_service.lotto.controller;
 
-import com.lottery.lottery_service.lotto.dto.LottoHistoryResponse;
-import com.lottery.lottery_service.lotto.dto.LottoResponseDto;
+import com.lottery.lottery_service.lotto.dto.LottoRecordResponse;
 import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.lotto.service.LottoService;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -61,7 +59,7 @@ public class LottoController {
      * @return 추천 내역 리스트
      */
     @GetMapping("/recommendations")
-    public ResponseEntity<List<LottoHistoryResponse>> getLottoRecommendations(
+    public ResponseEntity<List<LottoRecordResponse>> getLottoRecommendations(
             @RequestParam Long memberId) {
         return ResponseEntity.ok(lottoService.getRecommendationsForMember(memberId));
     }

@@ -1,6 +1,6 @@
 package com.lottery.lottery_service.lotto.service;
 
-import com.lottery.lottery_service.lotto.dto.LottoHistoryResponse;
+import com.lottery.lottery_service.lotto.dto.LottoRecordResponse;
 import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.lotto.entity.LottoRecord;
 import com.lottery.lottery_service.lotto.entity.Member;
@@ -111,9 +111,9 @@ public class LottoService {
      * @param memberId 회원 ID
      * @return 추천 내역 응답 리스트
      */
-    public List<LottoHistoryResponse> getRecommendationsForMember(Long memberId) {
+    public List<LottoRecordResponse> getRecommendationsForMember(Long memberId) {
         return lottoRecordRepository.findAllByMemberIdOrderByRoundDesc(memberId).stream()
-                .map(LottoHistoryResponse::from)
+                .map(LottoRecordResponse::from)
                 .collect(Collectors.toList());
     }
 

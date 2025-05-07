@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 
 @Getter
 @AllArgsConstructor
-public class LottoHistoryResponse {
+public class LottoRecordResponse {
 
     private int round;
     private String numbers;
@@ -20,8 +20,8 @@ public class LottoHistoryResponse {
     /**
      * LottoHistory 엔티티를 응답 DTO로 변환합니다.
      */
-    public static LottoHistoryResponse from(LottoRecord history) {
-        return new LottoHistoryResponse(
+    public static LottoRecordResponse from(LottoRecord history) {
+        return new LottoRecordResponse(
                 history.getRound(),
                 history.getNumbers(),
                 history.getRecommendedAt(),
