@@ -1,6 +1,6 @@
 package com.lottery.lottery_service.lotto.dto;
 
-import com.lottery.lottery_service.lotto.entity.LottoHistory;
+import com.lottery.lottery_service.lotto.entity.LottoRecord;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -20,7 +20,7 @@ public class LottoHistoryResponse {
     /**
      * LottoHistory 엔티티를 응답 DTO로 변환합니다.
      */
-    public static LottoHistoryResponse from(LottoHistory history) {
+    public static LottoHistoryResponse from(LottoRecord history) {
         return new LottoHistoryResponse(
                 history.getRound(),
                 history.getNumbers(),

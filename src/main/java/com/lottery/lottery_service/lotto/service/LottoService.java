@@ -2,7 +2,7 @@ package com.lottery.lottery_service.lotto.service;
 
 import com.lottery.lottery_service.lotto.dto.LottoHistoryResponse;
 import com.lottery.lottery_service.lotto.dto.LottoSet;
-import com.lottery.lottery_service.lotto.entity.LottoHistory;
+import com.lottery.lottery_service.lotto.entity.LottoRecord;
 import com.lottery.lottery_service.lotto.entity.Member;
 import com.lottery.lottery_service.lotto.repository.LottoHistoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -56,8 +56,8 @@ public class LottoService {
      * @param source 추천 방식 (예: "BASIC", "AD", "EVENT" 등)
      */
     public void saveLottoForGuest(List<LottoSet> sets, int round, String source) {
-        List<LottoHistory> toSave = sets.stream()
-                .map(set -> LottoHistory.builder()
+        List<LottoRecord> toSave = sets.stream()
+                .map(set -> LottoRecord.builder()
                         .memberId(null)                  // 비회원이므로 null
                         .isGuest(true)
                         .numbers(set.getNumbers().stream()
@@ -87,8 +87,8 @@ public class LottoService {
      */
 
     public void saveLottoForMember(Member member, List<LottoSet> sets, int round, String source) {
-        List<LottoHistory> toSave = sets.stream()
-                .map(set -> LottoHistory.builder()
+        List<LottoRecord> toSave = sets.stream()
+                .map(set -> LottoRecord.builder()
                         .memberId(member.getId())        // 회원 ID
                         .isGuest(false)
                         .numbers(set.getNumbers().stream()

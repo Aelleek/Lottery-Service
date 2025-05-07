@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class LottoHistory {
+public class LottoRecord {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
