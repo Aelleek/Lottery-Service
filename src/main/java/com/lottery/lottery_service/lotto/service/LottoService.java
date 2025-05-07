@@ -4,7 +4,7 @@ import com.lottery.lottery_service.lotto.dto.LottoHistoryResponse;
 import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.lotto.entity.LottoRecord;
 import com.lottery.lottery_service.lotto.entity.Member;
-import com.lottery.lottery_service.lotto.repository.LottoHistoryRepository;
+import com.lottery.lottery_service.lotto.repository.LottoRecordRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class LottoService {
 
-    private final LottoHistoryRepository lottoHistoryRepository;
+    private final LottoRecordRepository lottoRecordRepository;
 
     /**
      * 로또 번호 n세트를 생성합니다.
@@ -71,7 +71,7 @@ public class LottoService {
                         .build())
                 .collect(Collectors.toList());
 
-        lottoHistoryRepository.saveAll(toSave);
+        lottoRecordRepository.saveAll(toSave);
     }
 
     /**
@@ -102,7 +102,7 @@ public class LottoService {
                         .build())
                 .collect(Collectors.toList());
 
-        lottoHistoryRepository.saveAll(toSave);
+        lottoRecordRepository.saveAll(toSave);
     }
 
     /**
@@ -112,7 +112,7 @@ public class LottoService {
      * @return 추천 내역 응답 리스트
      */
     public List<LottoHistoryResponse> getRecommendationsForMember(Long memberId) {
-        return lottoHistoryRepository.findAllByMemberIdOrderByRoundDesc(memberId).stream()
+        return lottoRecordRepository.findAllByMemberIdOrderByRoundDesc(memberId).stream()
                 .map(LottoHistoryResponse::from)
                 .collect(Collectors.toList());
     }

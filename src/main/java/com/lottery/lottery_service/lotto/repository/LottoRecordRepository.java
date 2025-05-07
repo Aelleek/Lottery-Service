@@ -10,7 +10,7 @@ import java.util.List;
  * 추천받은 로또 번호 내역을 조회하고 저장하는 JPA Repository.
  */
 @Repository
-public interface LottoHistoryRepository extends JpaRepository<LottoRecord, Long> {
+public interface LottoRecordRepository extends JpaRepository<LottoRecord, Long> {
 
     /**
      * 회원이 추천 받은 로또 번호 목록을 회차 기준 내림차순으로 조회합니다.
