@@ -1,6 +1,5 @@
-
-
-INSERT INTO lotto_history (member_id, numbers, round, recommended_at, is_manual, is_purchased, source, is_guest)
+INSERT INTO lotto_record (member_id, numbers, round, recommended_at, is_manual, is_purchased, is_guest, source)
 VALUES
-    (1, '3 11 22 33 38 44', 1112, CURRENT_TIMESTAMP, false, false, 'BASIC', false),
-    (2, '4 12 27 31 40 45', 1112, CURRENT_TIMESTAMP, false, false, 'AD', true);
+    (1, '5 12 18 22 34 40', 1123, CURRENT_TIMESTAMP, false, false, false, 'MANUAL'),
+    (2, '3 7 15 19 25 44', 1123, CURRENT_TIMESTAMP, false, true, false, 'AUTO'),
+    (null, '1 4 9 11 36 42', 1123, CURRENT_TIMESTAMP, false, false, true, 'GUEST');
