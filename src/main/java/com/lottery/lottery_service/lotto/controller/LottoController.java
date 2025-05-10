@@ -74,12 +74,14 @@ public class LottoController {
     /**
      * 회원의 추천받은 로또 번호 내역을 조회합니다.
      *
-     * @param memberId 테스트용 회원 ID (인증 미구현)
+     * <p>memberId를 경로 변수로 받아 해당 회원의 추천 내역을 회차 기준 내림차순으로 반환합니다.</p>
+     *
+     * @param memberId 회원 ID
      * @return 추천 내역 리스트
      */
-    @GetMapping("/recommendations")
+    @GetMapping("/members/{memberId}/recommendations")
     public ResponseEntity<List<LottoRecordResponse>> getLottoRecommendations(
-            @RequestParam Long memberId) {
+            @PathVariable Long memberId) {
         return ResponseEntity.ok(lottoService.getRecommendationsForMember(memberId));
     }
 
