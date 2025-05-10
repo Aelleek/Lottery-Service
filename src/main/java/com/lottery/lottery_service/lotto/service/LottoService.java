@@ -3,7 +3,7 @@ package com.lottery.lottery_service.lotto.service;
 import com.lottery.lottery_service.lotto.dto.LottoRecordResponse;
 import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.lotto.entity.LottoRecord;
-import com.lottery.lottery_service.lotto.entity.Member;
+import com.lottery.lottery_service.member.entity.Member;
 import com.lottery.lottery_service.lotto.repository.LottoRecordRepository;
 import com.lottery.lottery_service.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;

@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.lotto.entity;
 
 import com.lottery.lottery_service.lotto.dto.LottoSet;
+import com.lottery.lottery_service.member.entity.Member;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

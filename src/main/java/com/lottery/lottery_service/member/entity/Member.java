@@ -1,4 +1,4 @@
-package com.lottery.lottery_service.lotto.entity;
+package com.lottery.lottery_service.member.entity;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
