@@ -5,6 +5,7 @@ import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.lotto.entity.LottoRecord;
 import com.lottery.lottery_service.lotto.entity.Member;
 import com.lottery.lottery_service.lotto.repository.LottoRecordRepository;
+import com.lottery.lottery_service.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 public class LottoService {
 
     private final LottoRecordRepository lottoRecordRepository;
+    private final MemberRepository memberRepository;
 
     /**
      * 로또 번호 n세트를 생성합니다.
@@ -80,7 +82,7 @@ public class LottoService {
      * <p>Member 객체의 ID를 저장하고, 추천 방식(source)을 기록함으로써
      * 이후 당첨 분석, 추천 통계 등 다양한 데이터 분석에 활용할 수 있도록 한다.</p>
      *
-     * @param member 추천을 받은 회원 객체 (ID 필수)
+     * @param memberId 추천을 받은 회원 객체 (ID 필수)
      * @param sets 추천받은 로또 번호 세트 목록
      * @param round 저장 대상 로또 회차
      * @param source 추천 방식 (예: "BASIC", "AD", "EVENT")
