@@ -30,26 +30,45 @@ public class LottoController {
      * @param source 추천 방식 (기본값: BASIC). 예: "BASIC", "AD", "EVENT"
      * @return 추천된 로또 번호 세트(List<LottoSet>)
      */
-    @GetMapping("/generate")
-    public ResponseEntity<List<LottoSet>> recommendLotto(
+    @PostMapping("/members/{memberId}/recommendations")
+    public ResponseEntity<List<LottoSet>> recommendLottoForMember(
+            @PathVariable Long memberId,
             @RequestParam(defaultValue = "BASIC") String source) {
-        // 현재는 인증 기능 미구현 상태
-        boolean isMember = false;
-        int currentRound = 1112; // 하드코딩된 회차
+        return ResponseEntity.ok(recommendAndSave(true, memberId, source));
+    }
 
-        // 1. 로또 번호 생성
+    /**
+     * 비회원에게 로또 번호를 추천하고 저장합니다.
+     *
+     * @param source 추천 방식 (기본값: BASIC)
+     * @return 추천된 로또 번호 세트 리스트
+     */
+    @PostMapping("/guests/recommendations")
+    public ResponseEntity<List<LottoSet>> recommendLottoForGuest(
+            @RequestParam(defaultValue = "BASIC") String source) {
+        return ResponseEntity.ok(recommendAndSave(false, null, source));
+    }
+
+    /**
+     * 추천된 로또 번호를 생성하고 저장하는 내부 공통 메소드입니다.
+     *
+     * @param isMember 회원 여부
+     * @param memberId 회원 ID (비회원일 경우 null)
+     * @param source 추천 방식
+     * @return 생성된 로또 번호 세트 리스트
+     */
+    private List<LottoSet> recommendAndSave(boolean isMember, Long memberId, String source) {
+
+        int currentRound = 1112; // TODO: 추후 현재 회차 자동 처리 로직으로 대체
         List<LottoSet> sets = lottoService.generateLottoNumbersSet(5);
 
-        // 2. 저장
         if (isMember) {
-            // Member 객체는 아직 없으므로 null 처리
-            lottoService.saveLottoForMember(null, sets, currentRound, source);
+            lottoService.saveLottoForMember(memberId, sets, currentRound, source);
         } else {
             lottoService.saveLottoForGuest(sets, currentRound, source);
         }
 
-        // 3. 생성된 번호 반환
-        return ResponseEntity.ok(sets);
+        return sets;
     }
 
     /**

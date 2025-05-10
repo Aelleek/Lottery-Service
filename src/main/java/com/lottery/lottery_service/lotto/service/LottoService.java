@@ -58,7 +58,7 @@ public class LottoService {
     public void saveLottoForGuest(List<LottoSet> sets, int round, String source) {
         List<LottoRecord> toSave = sets.stream()
                 .map(set -> LottoRecord.builder()
-                        .memberId(null)                  // 비회원이므로 null
+                        .member(null)                  // 비회원이므로 null
                         .isGuest(true)
                         .numbers(set.getNumbers().stream()
                                 .map(String::valueOf)
@@ -86,11 +86,16 @@ public class LottoService {
      * @param source 추천 방식 (예: "BASIC", "AD", "EVENT")
      */
 
-    public void saveLottoForMember(Member member, List<LottoSet> sets, int round, String source) {
+    public void saveLottoForMember(Long memberId, List<LottoSet> sets, int round, String source) {
+        // 1. 회원 조회 및 검증
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 회원입니다."));
+
+        // 2. 추천 번호 세트 → LottoRecord로 변환
         List<LottoRecord> toSave = sets.stream()
                 .map(set -> LottoRecord.builder()
-                        .memberId(member.getId())        // 회원 ID
-                        .isGuest(false)
+                        .member(member)                    // @ManyToOne 관계 설정
+                        .isGuest(false)                    // 회원이므로 false
                         .numbers(set.getNumbers().stream()
                                 .map(String::valueOf)
                                 .collect(Collectors.joining(" ")))
@@ -98,10 +103,11 @@ public class LottoService {
                         .recommendedAt(LocalDateTime.now())
                         .isManual(false)
                         .isPurchased(false)
-                        .source(source)                  // 예: BASIC, AD
+                        .source(source)
                         .build())
                 .collect(Collectors.toList());
 
+        // 3. 일괄 저장
         lottoRecordRepository.saveAll(toSave);
     }
 

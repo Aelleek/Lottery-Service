@@ -30,9 +30,11 @@ public class LottoRecord {
     private Long id;
 
     /**
-     * 회원 ID (비회원일 경우 null)
+     * 추천한 회원 정보 (비회원일 경우 null)
      */
-    private Long memberId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "member_id")
+    private Member member;
 
     /**
      * 비회원 추천 여부
@@ -93,4 +95,3 @@ public class LottoRecord {
                 .collect(Collectors.joining(" "));
     }
 }
-
