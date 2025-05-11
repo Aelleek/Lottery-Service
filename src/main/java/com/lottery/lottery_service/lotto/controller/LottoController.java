@@ -1,22 +1,25 @@
 package com.lottery.lottery_service.lotto.controller;
 
+import com.lottery.lottery_service.lotto.dto.request.PurchaseLottoRequest;
 import com.lottery.lottery_service.lotto.dto.response.LottoRecordResponse;
 import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.lotto.service.LottoService;
+import com.lottery.lottery_service.member.entity.Member;
+import com.lottery.lottery_service.member.repository.MemberRepository;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
+@RequiredArgsConstructor
 @RequestMapping("/api/lotto")
 public class LottoController {
 
     private final LottoService lottoService;
-
-    public LottoController(LottoService lottoService){
-        this.lottoService = lottoService;
-    }
+    private final MemberRepository memberRepository;
 
     /**
      * 로또 번호 추천 API
@@ -85,5 +88,25 @@ public class LottoController {
         return ResponseEntity.ok(lottoService.getRecommendationsForMember(memberId));
     }
 
+
+    /**
+     * 회원의 구매 번호를 저장하는 API
+     *
+     * @param memberId 회원 ID
+     * @param request  구매 번호 요청 DTO
+     * @return 저장 완료 응답
+     */
+    @PostMapping("/{memberId}/purchases")
+    public ResponseEntity<String> addPurchasedLotto(
+            @PathVariable Long memberId,
+            @Valid @RequestBody PurchaseLottoRequest request) {
+
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 회원이 존재하지 않습니다."));
+
+        lottoService.addPurchasedRecords(member, request);
+
+        return ResponseEntity.ok("구매 번호가 성공적으로 저장되었습니다.");
+    }
 }
 
