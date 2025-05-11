@@ -1,6 +1,6 @@
 package com.lottery.lottery_service.lotto.service;
 
-import com.lottery.lottery_service.lotto.dto.LottoRecordResponse;
+import com.lottery.lottery_service.lotto.dto.response.LottoRecordResponse;
 import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.lotto.entity.LottoRecord;
 import com.lottery.lottery_service.member.entity.Member;

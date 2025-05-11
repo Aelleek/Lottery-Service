@@ -1,6 +1,6 @@
 package com.lottery.lottery_service.lotto.controller;
 
-import com.lottery.lottery_service.lotto.dto.LottoRecordResponse;
+import com.lottery.lottery_service.lotto.dto.response.LottoRecordResponse;
 import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.lotto.service.LottoService;
 import org.springframework.http.ResponseEntity;
