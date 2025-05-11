@@ -2,11 +2,15 @@ package com.lottery.lottery_service.lotto.dto;
 
 import com.lottery.lottery_service.lotto.entity.LottoRecord;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
 @Getter
+@Builder
+@NoArgsConstructor
 @AllArgsConstructor
 public class LottoRecordResponse {
 

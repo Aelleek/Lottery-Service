@@ -1,20 +1,19 @@
 package com.lottery.lottery_service.lotto.dto;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 import java.util.List;
 
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 public class LottoResponseDto {
 
     private List<LottoSet> lottoNumbers;
 
-    public LottoResponseDto(List<LottoSet> lottoNumbers) {
-        this.lottoNumbers = lottoNumbers;
-    }
 
-    public List<LottoSet> getLottoNumbers() {
-        return lottoNumbers;
-    }
-
-    public void setLottoNumbers(List<LottoSet> lottoNumbers) {
-        this.lottoNumbers = lottoNumbers;
-    }
 }

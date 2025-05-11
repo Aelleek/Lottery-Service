@@ -1,20 +1,17 @@
 package com.lottery.lottery_service.lotto.dto;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 import java.util.List;
 
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 public class LottoSet {
     private List<Integer> numbers;
-
-    public LottoSet(List<Integer> numbers) {
-        this.numbers = numbers;
-    }
-
-    public List<Integer> getNumbers() {
-        return this.numbers;
-    }
-
-    public void setNumbers(List<Integer> numbers) {
-        this.numbers = numbers;
-    }
 
 }
