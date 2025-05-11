@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.lotto.service;
 
+import com.lottery.lottery_service.lotto.dto.request.PurchaseLottoRequest;
 import com.lottery.lottery_service.lotto.dto.response.LottoRecordResponse;
 import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.lotto.entity.LottoRecord;
@@ -61,14 +62,14 @@ public class LottoService {
         List<LottoRecord> toSave = sets.stream()
                 .map(set -> LottoRecord.builder()
                         .member(null)                  // 비회원이므로 null
-                        .isGuest(true)
+                        .guest(true)
                         .numbers(set.getNumbers().stream()
                                 .map(String::valueOf)
                                 .collect(Collectors.joining(" ")))
                         .round(round)
                         .recommendedAt(LocalDateTime.now())
-                        .isManual(false)
-                        .isPurchased(false)
+                        .manual(false)
+                        .purchased(false)
                         .source(source)                  // 예: BASIC, AD
                         .build())
                 .collect(Collectors.toList());
@@ -93,18 +94,18 @@ public class LottoService {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 회원입니다."));
 
-        // 2. 추천 번호 세트 → LottoRecord로 변환
+        // 2. 추천 번호 세트
         List<LottoRecord> toSave = sets.stream()
                 .map(set -> LottoRecord.builder()
                         .member(member)                    // @ManyToOne 관계 설정
-                        .isGuest(false)                    // 회원이므로 false
+                        .guest(false)                    // 회원이므로 false
                         .numbers(set.getNumbers().stream()
                                 .map(String::valueOf)
                                 .collect(Collectors.joining(" ")))
                         .round(round)
                         .recommendedAt(LocalDateTime.now())
-                        .isManual(false)
-                        .isPurchased(false)
+                        .manual(false)
+                        .purchased(false)
                         .source(source)
                         .build())
                 .collect(Collectors.toList());
@@ -123,6 +124,42 @@ public class LottoService {
         return lottoRecordRepository.findAllByMemberIdOrderByRoundDesc(memberId).stream()
                 .map(LottoRecordResponse::from)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 구매한 로또 번호 목록을 저장합니다.
+     *
+     * @param member 회원
+     * @param request  구매 요청 DTO
+     */
+    public void addPurchasedRecords(Member member, PurchaseLottoRequest request) {
+        int round = Integer.parseInt(request.getRound());
+        List<String> numbersList = request.getNumbersList();
+
+        for (String numbers : numbersList) {
+            Optional<LottoRecord> optional = lottoRecordRepository
+                    .findByMemberAndRoundAndNumbers(member, round, numbers);
+
+            if (optional.isPresent()) {
+                LottoRecord existing = optional.get();
+                if (!existing.isPurchased()) {
+                    existing.setPurchased(true);
+                    lottoRecordRepository.save(existing);
+                }
+            } else {
+                LottoRecord newRecord = LottoRecord.builder()
+                        .member(member)
+                        .round(round)
+                        .numbers(numbers)
+                        .recommendedAt(LocalDateTime.now())
+                        .manual(true)
+                        .purchased(true)
+                        .source("manual")
+                        .build();
+
+                lottoRecordRepository.save(newRecord);
+            }
+        }
     }
 
 }

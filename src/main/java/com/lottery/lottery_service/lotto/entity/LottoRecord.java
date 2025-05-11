@@ -3,10 +3,7 @@ package com.lottery.lottery_service.lotto.entity;
 import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.member.entity.Member;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -21,6 +18,7 @@ import java.util.stream.Collectors;
  */
 @Entity
 @Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -40,7 +38,7 @@ public class LottoRecord {
     /**
      * 비회원 추천 여부
      */
-    private boolean isGuest;
+    private boolean guest;
 
     /**
      * 추천된 로또 번호를 공백 문자열로 저장 (예: "1 5 12 24 30 43")
@@ -60,12 +58,12 @@ public class LottoRecord {
     /**
      * 수동 입력 여부 (true: 직접 입력, false: 자동 추천)
      */
-    private boolean isManual;
+    private boolean manual;
 
     /**
      * 구매 여부 (true: 사용자가 해당 번호를 구매함)
      */
-    private boolean isPurchased;
+    private boolean purchased;
 
     /**
      * 추천 방식 (예: BASIC, AD, EVENT 등)

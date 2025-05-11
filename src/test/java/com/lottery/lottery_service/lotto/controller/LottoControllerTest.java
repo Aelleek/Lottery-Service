@@ -49,8 +49,8 @@ public class LottoControllerTest {
                 .round(1112)
                 .numbers("3 8 14 22 33 41")
                 .recommendedAt(LocalDateTime.now())
-                .isManual(false)
-                .isPurchased(false)
+                .manual(false)
+                .purchased(false)
                 .source("BASIC")
                 .build();
 

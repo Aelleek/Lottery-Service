@@ -17,8 +17,8 @@ public class LottoRecordResponse {
     private int round;
     private String numbers;
     private LocalDateTime recommendedAt;
-    private boolean isManual;
-    private boolean isPurchased;
+    private boolean manual;
+    private boolean purchased;
     private String source;
 
     /**

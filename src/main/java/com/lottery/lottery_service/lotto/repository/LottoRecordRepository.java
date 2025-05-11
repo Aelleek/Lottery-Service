@@ -1,10 +1,12 @@
 package com.lottery.lottery_service.lotto.repository;
 
 import com.lottery.lottery_service.lotto.entity.LottoRecord;
+import com.lottery.lottery_service.member.entity.Member;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 추천받은 로또 번호 내역을 조회하고 저장하는 JPA Repository.
@@ -28,4 +30,15 @@ public interface LottoRecordRepository extends JpaRepository<LottoRecord, Long> 
      * @return 추천받은 횟수
      */
     long countByMemberIdAndRound(Long memberId, int round);
+
+    /**
+     * 회원, 회차, 번호 문자열이 모두 일치하는 로또 기록을 찾습니다.
+     *
+     * @param member Member 객체
+     * @param round  회차 문자열
+     * @param numbers 로또 번호 문자열 (예: "3, 8, 14, 22, 33, 41")
+     * @return 일치하는 로또 기록이 있다면 Optional로 반환
+     */
+    Optional<LottoRecord> findByMemberAndRoundAndNumbers(Member member, Integer round, String numbers);
+
 }
