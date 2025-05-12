@@ -1,5 +1,5 @@
-INSERT INTO member (id) VALUES (1);
-INSERT INTO member (id) VALUES (2);
+INSERT INTO member DEFAULT VALUES;
+INSERT INTO member DEFAULT VALUES;
 
 INSERT INTO lotto_record (member_id, numbers, round, recommended_at, manual, purchased, guest, source)
 VALUES
