@@ -35,14 +35,10 @@ dependencies {
 	testImplementation 'org.springframework.security:spring-security-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
+	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	runtimeOnly 'com.h2database:h2'
 	/* 내장 DB로 임시 사용하기 위해 의존성 추가 */
-	/* 추후에 로그인 관련 인증할때 추가
-		//implementation 'org.springframework.boot:spring-boot-starter-security'
-		//implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
-
-	 */
 }
 
 tasks.named('test') {
