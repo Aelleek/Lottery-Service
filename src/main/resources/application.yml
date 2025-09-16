@@ -24,26 +24,25 @@ spring:
             client-id: 854897544350-rms8o1uo7m9moe59e9frofljef1i6m2h.apps.googleusercontent.com
             client-secret: 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
             redirect-uri: "http://localhost:8080/login/oauth2/code/google"
-            client-authentication-method: post
+            client-authentication-method: client_secret_basic
             authorization-grant-type: authorization_code
             scope:
               - email
               - profile
           kakao:
-            client-id: 1258177
+            client-id: 38b80be01bd3beb1ee86c5ace89487ba
             client-secret: lUkqoKS4fMMHNQyChsdOZB9pnkFvZqCw
             redirect-uri: "http://localhost:8080/login/oauth2/code/kakao"
-            client-authentication-method: post
+            client-authentication-method: client_secret_post
             authorization-grant-type: authorization_code
             scope:
               - profile_nickname
-              - talk_message
             client-name: Kakao
           naver:
             client-id: HGLwkR9r1pTAH6Ied4C1
             client-secret: KDHH0kJFKZ
             redirect-uri: "http://localhost:8080/login/oauth2/code/naver"
-            client-authentication-method: post
+            client-authentication-method: client_secret_post
             authorization-grant-type: authorization_code
             scope:
               - name
