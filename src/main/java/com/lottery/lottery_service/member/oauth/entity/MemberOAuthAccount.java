@@ -41,12 +41,12 @@ public class MemberOAuthAccount {
     @JoinColumn(name = "member_id", nullable = false)
     private Member member;
 
-    /** 제공자 식별자 (KAKAO / NAVER / GOOGLE) - STEP 4에서 enum으로 교체 예정 */
-    @Column(name = "provider", nullable = false, length = 20)
+    @Setter(AccessLevel.NONE)
+    @Column(name = "provider", nullable = false, updatable = false)
     private String provider;
 
-    /** 제공자 측 사용자 고유 ID (Kakao:id / Google:sub / Naver:response.id) */
-    @Column(name = "provider_user_id", nullable = false, length = 191)
+    @Setter(AccessLevel.NONE)
+    @Column(name = "provider_user_id", nullable = false, updatable = false, length = 191)
     private String providerUserId;
 
     /** 제공자 측 이메일(있을 때만) */
@@ -89,5 +89,26 @@ public class MemberOAuthAccount {
     @PreUpdate
     void onUpdate() {
         this.updatedAt = Instant.now();
+    }
+
+    /**
+     * 링크 엔티티를 생성하는 정적 팩토리.
+     * - 정체성 필드(provider, providerUserId)는 생성 시에만 세팅되고 이후 변경 불가.
+     * - member 역참조까지 세팅한다.
+     */
+    public static MemberOAuthAccount newLink(Member owner,
+                                             String provider,
+                                             String providerUserId,
+                                             String emailOnProvider,
+                                             String displayName,
+                                             String profileImageUrl) {
+        MemberOAuthAccount m = new MemberOAuthAccount(); // @NoArgsConstructor(PROTECTED)
+        m.member = owner;
+        m.provider = provider;
+        m.providerUserId = providerUserId;
+        m.emailOnProvider = emailOnProvider;
+        m.displayName = displayName;
+        m.profileImageUrl = profileImageUrl;
+        return m;
     }
 }

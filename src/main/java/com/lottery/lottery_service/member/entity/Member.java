@@ -45,6 +45,35 @@ public class Member {
     @OneToMany(mappedBy = "member", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<MemberOAuthAccount> oauthAccounts = new ArrayList<>();
 
+    /**
+     * Member를 생성할 때 필수값을 한 번에 설정하는 정적 팩토리.
+     * email은 null 가능(카카오 동의 거부 대비), emailVerified는 기본 false.
+     */
+    public static Member newMember(String email, String nickname, String profileImageUrl) {
+        Member m = new Member();  // @NoArgsConstructor(PROTECTED) 이므로 클래스 내부에서만 new 허용
+        m.email = email;
+        m.emailVerified = false;
+        m.nickname = nickname;
+        m.profileImageUrl = profileImageUrl;
+        return m;
+    }
+
+    /**
+     * (provider, providerUserId)로 소셜 링크를 생성하고,
+     * 양방향 연관관계를 한 번에 맞춰준다.
+     */
+    public MemberOAuthAccount addOAuthLink(String provider,
+                                           String providerUserId,
+                                           String emailOnProvider,
+                                           String displayName,
+                                           String profileImageUrl) {
+        MemberOAuthAccount link = MemberOAuthAccount.newLink(
+                this, provider, providerUserId, emailOnProvider, displayName, profileImageUrl
+        );
+        this.oauthAccounts.add(link); // 양쪽 일관성 유지
+        return link;
+    }
+
 }
 
 
