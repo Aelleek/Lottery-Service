@@ -1,10 +1,12 @@
 package com.lottery.lottery_service.member.entity;
 
+import com.lottery.lottery_service.member.oauth.entity.MemberOAuthAccount;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 서비스 고유 사용자 엔티티.
@@ -40,8 +42,8 @@ public class Member {
 
     private Instant lastLoginAt;
 
-//    @OneToMany(mappedBy = "member", cascade = CascadeType.ALL, orphanRemoval = true)
-//    private List<MemberOAuthAccount> oauthAccounts = new ArrayList<>();
+    @OneToMany(mappedBy = "member", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<MemberOAuthAccount> oauthAccounts = new ArrayList<>();
 
 }
 
