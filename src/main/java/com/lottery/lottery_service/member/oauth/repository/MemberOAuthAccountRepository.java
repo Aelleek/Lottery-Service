@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.member.oauth.repository;
 
+import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.member.oauth.entity.MemberOAuthAccount;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -10,5 +11,5 @@ import java.util.Optional;
  * provider는 STEP 4에서 enum으로 교체 예정.
  */
 public interface MemberOAuthAccountRepository extends JpaRepository<MemberOAuthAccount, Long> {
-    Optional<MemberOAuthAccount> findByProviderAndProviderUserId(String provider, String providerUserId);
+    Optional<MemberOAuthAccount> findByProviderAndProviderUserId(OAuthProvider provider, String providerUserId);
 }

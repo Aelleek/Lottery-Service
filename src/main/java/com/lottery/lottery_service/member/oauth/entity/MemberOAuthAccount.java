@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.member.oauth.entity;
 
+import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.member.entity.Member;
 import jakarta.persistence.*;
 import lombok.*;
@@ -42,8 +43,9 @@ public class MemberOAuthAccount {
     private Member member;
 
     @Setter(AccessLevel.NONE)
+    @Enumerated(EnumType.STRING)
     @Column(name = "provider", nullable = false, updatable = false)
-    private String provider;
+    private OAuthProvider provider;
 
     @Setter(AccessLevel.NONE)
     @Column(name = "provider_user_id", nullable = false, updatable = false, length = 191)
@@ -97,7 +99,7 @@ public class MemberOAuthAccount {
      * - member 역참조까지 세팅한다.
      */
     public static MemberOAuthAccount newLink(Member owner,
-                                             String provider,
+                                             OAuthProvider provider,
                                              String providerUserId,
                                              String emailOnProvider,
                                              String displayName,

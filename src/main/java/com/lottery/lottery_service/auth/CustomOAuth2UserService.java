@@ -58,15 +58,13 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
             throw new OAuth2AuthenticationException("Missing provider user id from " + registrationId);
         }
 
-        // provider 문자열 (현재 STEP에서는 String 컬럼 사용)
-        String providerString = OAuthProvider.fromRegistrationId(registrationId)
-                .map(Enum::name)               // KAKAO / NAVER / GOOGLE
-                .orElse(registrationId.toUpperCase());
+        OAuthProvider provider = OAuthProvider.fromRegistrationId(registrationId)
+                .orElseThrow(() -> new OAuth2AuthenticationException("Unsupported provider: " + registrationId));
 
         // 기존 링크 조회 → 없으면 생성/연결
-        Member member = oauthRepository.findByProviderAndProviderUserId(providerString, info.providerUserId())
+        Member member = oauthRepository.findByProviderAndProviderUserId(provider, info.providerUserId())
                 .map(MemberOAuthAccount::getMember)
-                .orElseGet(() -> createOrLinkMember(providerString, info));
+                .orElseGet(() -> createOrLinkMember(provider, info));
 
         // 최근 로그인 시각 갱신
         member.setLastLoginAt(Instant.now());
@@ -90,7 +88,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
      *  - 없으면 Member.newMember(...)로 새 회원 생성 후 저장
      *  - Member.addOAuthLink(...)로 링크 생성/양방향 일관성 보장
      */
-    private Member createOrLinkMember(String provider, OAuthUserInfo info) {
+    private Member createOrLinkMember(OAuthProvider provider, OAuthUserInfo info) {
         // 1) 검증된 이메일로 기존 Member 찾기 (자동 연결은 검증된 이메일만 허용)
         Member target = null;
         if (info.email() != null) {

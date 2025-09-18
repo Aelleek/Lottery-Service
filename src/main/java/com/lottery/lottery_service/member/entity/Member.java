@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.member.entity;
 
+import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.member.oauth.entity.MemberOAuthAccount;
 import jakarta.persistence.*;
 import lombok.*;
@@ -62,7 +63,7 @@ public class Member {
      * (provider, providerUserId)로 소셜 링크를 생성하고,
      * 양방향 연관관계를 한 번에 맞춰준다.
      */
-    public MemberOAuthAccount addOAuthLink(String provider,
+    public MemberOAuthAccount addOAuthLink(OAuthProvider provider,
                                            String providerUserId,
                                            String emailOnProvider,
                                            String displayName,
