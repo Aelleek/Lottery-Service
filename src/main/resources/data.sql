@@ -1,5 +1,5 @@
-INSERT INTO member(email_verified, id, last_login_at, nickname, status)
-VALUES (FALSE, 1, '2025-09-16 13:49:46.744806+00','이경원','ACTIVE');
+INSERT INTO member(email_verified, last_login_at, nickname, status)
+VALUES (FALSE, '2025-09-16 13:49:46.744806+00','이경원','ACTIVE');
 
 INSERT INTO member_oauth_account (connected_at, id, member_id, updated_at, provider_user_id, display_name,  provider )
 VALUES ('2025-09-16 13:49:46.738677+00',1,1,'2025-09-16 13:49:46.738677+00','4433749540','이경원','KAKAO');
