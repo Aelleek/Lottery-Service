@@ -60,9 +60,13 @@ public class SecurityConfig {
 
                 // 요청별 권한 설정
                 .authorizeHttpRequests(authorize -> authorize
-                        // 비로그인 상태에서도 접근 가능한 URL
-                        .requestMatchers("/", "/login**", "/css/**", "/js/**", "/images/**", "/h2-console/**").permitAll()
-                        // 위 경로 외의 모든 요청은 인증 필요
+                        .requestMatchers(
+                                "/", "/index.html",             // 루트/정적 인덱스
+                                "/error", "/favicon.ico",       // 오류/파비콘 (없으면 /login으로 튐)
+                                "/css/**", "/js/**", "/images/**", "/webjars/**",
+                                "/h2-console/**",               // 개발용
+                                "/api/me"                       // 비로그인 상태에서도 호출
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
 
@@ -71,7 +75,7 @@ public class SecurityConfig {
                         // ★ 여기 추가: 로그인 성공 후 사용자 정보 로딩을 커스텀 서비스로 처리
                         .userInfoEndpoint(u -> u.userService(customOAuth2UserService))
                         // 사용자 지정 로그인 페이지 (있다면)
-                        .loginPage("/login")
+//                        .loginPage("/login")
                         // 로그인 성공 시 리다이렉트할 기본 경로
                         // 로그인 전에 보던 페이지로 돌아가고 싶다면 true → false
                         .defaultSuccessUrl("/", false)

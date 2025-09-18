@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <title>Lottery Service</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        /* 상단 바 */
+        .topbar {
+          position: sticky;
+          top: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center; /* 가운데 제목 */
+          height: 56px;
+          border-bottom: 1px solid #eee;
+          background: #fff;
+          font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        }
+        .title { font-weight: 700; }
+
+        /* 우상단 버튼 영역 */
+        .actions {
+          position: absolute;
+          right: 16px;
+          top: 8px;
+          height: 40px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        button {
+          border: 1px solid #ddd;
+          background: #fafafa;
+          padding: 8px 14px;
+          border-radius: 8px;
+          cursor: pointer;
+        }
+        button:hover { background: #f0f0f0; }
+
+        /* 본문 예시 */
+        .container {
+          max-width: 960px;
+          margin: 24px auto;
+          padding: 0 16px;
+          color: #333;
+        }
+        .muted { color: #888; font-size: 14px; }
+    </style>
+</head>
+<body>
+<header class="topbar">
+    <div class="title">Lottery Service</div>
+    <div class="actions">
+        <button id="authButton">Login</button>
+    </div>
+</header>
+
+<main class="container">
+    <h2>메인 페이지</h2>
+    <p class="muted">로그인 전/후에 상단 우측 버튼만 바뀌고, 로그인/로그아웃 시 메인으로 돌아옵니다.</p>
+</main>
+
+<script>
+    // 👉 필요 시 /login 대신 특정 소셜 로그인 엔드포인트로 바로 보내고 싶다면 아래를 교체
+    // 예: 카카오만 쓸거면 const loginUrl = '/oauth2/authorization/kakao';
+    const loginUrl = '/login';
+    const meUrl = '/api/me';
+
+    const authBtn = document.getElementById('authButton');
+
+    // 쿠키에서 XSRF-TOKEN 꺼내기 (CookieCsrfTokenRepository 사용 시)
+    function getCsrfTokenFromCookie() {
+      const m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+      return m ? decodeURIComponent(m[1]) : null;
+    }
+
+    async function refreshAuthState() {
+      try {
+        const res = await fetch(meUrl, { credentials: 'same-origin' });
+        const data = await res.json();
+        const isAuthed = !!data.authenticated;
+        authBtn.textContent = isAuthed ? 'Logout' : 'Login';
+        authBtn.dataset.state = isAuthed ? 'logout' : 'login';
+      } catch (e) {
+        // 실패 시 로그인 필요하다고 보고 버튼은 로그인으로
+        authBtn.textContent = 'Login';
+        authBtn.dataset.state = 'login';
+      }
+    }
+
+    authBtn.addEventListener('click', async () => {
+      const state = authBtn.dataset.state;
+      if (state === 'login') {
+        // 로그인 화면으로 이동(성공 시 Security 설정에 따라 "/"로 복귀)
+        window.location.href = loginUrl;
+      } else {
+        // 로그아웃: POST /logout + CSRF 헤더
+        const token = getCsrfTokenFromCookie();
+        await fetch('/logout', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'X-XSRF-TOKEN': token || '' }
+        });
+        // 메인으로 복귀
+        window.location.href = '/';
+      }
+    });
+
+    // 첫 진입 시 상태 동기화
+    refreshAuthState();
+</script>
+</body>
+</html>
