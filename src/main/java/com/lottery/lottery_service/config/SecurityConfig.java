@@ -41,33 +41,22 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-
-        // ✅ 개발 중 임시 완화 모드: CSRF OFF, 전부 permitAll
-        if (env.acceptsProfiles(org.springframework.core.env.Profiles.of("local-no-csrf"))) {
-            http
-                    .csrf(AbstractHttpConfigurer::disable)
-                    .headers(h -> h.frameOptions(f -> f.sameOrigin()))
-                    .authorizeHttpRequests(a -> a.anyRequest().permitAll());
-            // (원하면 oauth2Login도 안 켬)
-            return http.build();
-        }
-
         http
                 // CSRF 보호 기능 비활성화 (개발 단계에서는 편의상 꺼두고, 운영 시에는 꼭 활성화 권장)
-//                .csrf(AbstractHttpConfigurer::disable)
+                .csrf(AbstractHttpConfigurer::disable)
 
                 // (개발) H2 콘솔은 frame-ancestors 허용
                 .headers(h -> h.frameOptions(f -> f.sameOrigin()))
 
-                // CSRF: 쿠키 토큰 발급 + 일부 경로는 예외
-                .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                        .ignoringRequestMatchers(
-                                new AntPathRequestMatcher("/h2-console/**"),
-                                new AntPathRequestMatcher("/oauth2/**"),
-                                new AntPathRequestMatcher("/login/oauth2/**")
-                        )
-                )
+//                // CSRF: 쿠키 토큰 발급 + 일부 경로는 예외
+//                .csrf(csrf -> csrf
+//                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+//                        .ignoringRequestMatchers(
+//                                new AntPathRequestMatcher("/h2-console/**"),
+//                                new AntPathRequestMatcher("/oauth2/**"),
+//                                new AntPathRequestMatcher("/login/oauth2/**")
+//                        )
+//                )
 
                 // 요청별 권한 설정
                 .authorizeHttpRequests(authorize -> authorize
@@ -96,25 +85,25 @@ public class SecurityConfig {
                 );
 
         // http 빌드 직후(체인 끝나기 전)에 추가
-        http.addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class);
+//        http.addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class);
 
         return http.build();
     }
 
-    // 클래스 하단 어딘가에 추가
-    private static final class CsrfCookieFilter extends OncePerRequestFilter {
-        @Override
-        protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
-                throws ServletException, IOException {
 
-            CsrfToken token = (CsrfToken) req.getAttribute(CsrfToken.class.getName());
-            if (token == null) {
-                token = (CsrfToken) req.getAttribute("_csrf"); // 호환
-            }
-            if (token != null) {
-                token.getToken(); // ★ 이 호출이 있어야 XSRF-TOKEN이 생성/Set-Cookie 됨
-            }
-            chain.doFilter(req, res);
-        }
-    }
+//    private static final class CsrfCookieFilter extends OncePerRequestFilter {
+//        @Override
+//        protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+//                throws ServletException, IOException {
+//
+//            CsrfToken token = (CsrfToken) req.getAttribute(CsrfToken.class.getName());
+//            if (token == null) {
+//                token = (CsrfToken) req.getAttribute("_csrf"); // 호환
+//            }
+//            if (token != null) {
+//                token.getToken(); // ★ 이 호출이 있어야 XSRF-TOKEN이 생성/Set-Cookie 됨
+//            }
+//            chain.doFilter(req, res);
+//        }
+//    }
 }
