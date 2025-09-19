@@ -7,6 +7,7 @@ import com.lottery.lottery_service.lotto.entity.LottoRecord;
 import com.lottery.lottery_service.member.entity.Member;
 import com.lottery.lottery_service.lotto.repository.LottoRecordRepository;
 import com.lottery.lottery_service.member.repository.MemberRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -19,6 +20,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class LottoService {
 
     private final LottoRecordRepository lottoRecordRepository;
@@ -160,6 +162,42 @@ public class LottoService {
                 lottoRecordRepository.save(newRecord);
             }
         }
+    }
+
+    /**
+     * 인증된 회원에게 로또 번호 5세트를 추천하고 저장합니다.
+     *
+     * <p>컨트롤러를 얇게 유지하기 위해, "세트 생성 → 회차결정 → 저장"을 한 번에 처리합니다.
+     * 저장 자체는 {@link #saveLottoForMember(Long, List, int, String)}를 호출합니다.
+     *
+     * @param memberId 인증된 회원 식별자
+     * @param source   추천 요청 출처(BASIC/AD/EVENT)
+     * @return 추천된 로또 번호 세트 목록
+     * @throws IllegalArgumentException 회원을 찾을 수 없는 경우
+     */
+    // === CHANGED START: 신규 오케스트레이터(회원) 추가 ===
+    public List<LottoSet> recommendAndSaveForMember(Long memberId, String source) {
+        List<LottoSet> sets = generateLottoNumbersSet(5);
+        int currentRound = 1112; // TODO: 동적 계산/외부 API로 교체
+        saveLottoForMember(memberId, sets, currentRound, source);
+        return sets;
+    }
+
+    /**
+     * 비회원(게스트)에게 로또 번호 5세트를 추천하고 저장합니다.
+     *
+     * <p>컨트롤러에서 세트 생성/회차결정 로직을 제거하기 위해 서비스에서 한 번에 처리합니다.
+     * 저장 자체는 {@link #saveLottoForGuest(List, int, String)}를 호출합니다.
+     *
+     * @param source 추천 요청 출처(BASIC/AD/EVENT)
+     * @return 추천된 로또 번호 세트 목록
+     */
+    // === CHANGED START: 신규 오케스트레이터(게스트) 추가 ===
+    public List<LottoSet> recommendAndSaveForGuest(String source) {
+        List<LottoSet> sets = generateLottoNumbersSet(5);
+        int currentRound = 1112; // TODO: 동적 계산/외부 API로 교체
+        saveLottoForGuest(sets, currentRound, source);
+        return sets;
     }
 
 }

@@ -9,6 +9,8 @@ import com.lottery.lottery_service.member.repository.MemberRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,20 +26,30 @@ public class LottoController {
     /**
      * 로또 번호 추천 API
      *
-     * <p>요청한 사용자(회원 또는 비회원)에게 로또 번호 5세트를 추천하고,
-     * 추천 받은 번호는 회원 여부에 따라 DB에 저장된다.</p>
+     * <p>요청한 사용자(회원에게 로또 번호 5세트를 추천하고,
+     * 추천 받은 번호는 DB에 저장된다.</p>
      *
      * <p>source 파라미터를 통해 추천 방식(BASIC, AD 등)을 구분하여
      * 저장 시 이를 기록함으로써 추천 제한 및 분석에 활용할 수 있다.</p>
      *
-     * @param source 추천 방식 (기본값: BASIC). 예: "BASIC", "AD", "EVENT"
-     * @return 추천된 로또 번호 세트(List<LottoSet>)
+     * @param principal OAuth2User (로그인된 사용자)
+     * @param source    추천 요청 출처(BASIC/AD/EVENT)
+     * @return 추천 결과 목록
+     * @throws IllegalArgumentException 로그인 상태가 아니거나 memberId 속성이 없는 경우
+     *
      */
-    @PostMapping("/members/{memberId}/recommendations")
-    public ResponseEntity<List<LottoSet>> recommendLottoForMember(
-            @PathVariable Long memberId,
-            @RequestParam(defaultValue = "BASIC") String source) {
-        return ResponseEntity.ok(recommendAndSave(true, memberId, source));
+    @PostMapping("/recommendations")
+    public ResponseEntity<List<LottoSet>> recommendForAuthenticatedUser(@AuthenticationPrincipal OAuth2User principal,
+            @RequestParam(name = "source", defaultValue = "BASIC") String source) {
+
+        if (principal == null || principal.getAttribute("memberId") == null) {
+            throw new IllegalArgumentException("로그인 상태가 아니거나 memberId를 확인할 수 없습니다.");
+        }
+        Long memberId = Long.valueOf(String.valueOf(principal.getAttribute("memberId")));
+
+        // 컨트롤러는 오케스트레이션 로직을 갖지 않고 서비스에 위임
+        List<LottoSet> sets = lottoService.recommendAndSaveForMember(memberId, source);
+        return ResponseEntity.ok(sets);
     }
 
     /**
@@ -47,31 +59,12 @@ public class LottoController {
      * @return 추천된 로또 번호 세트 리스트
      */
     @PostMapping("/guests/recommendations")
-    public ResponseEntity<List<LottoSet>> recommendLottoForGuest(
-            @RequestParam(defaultValue = "BASIC") String source) {
-        return ResponseEntity.ok(recommendAndSave(false, null, source));
-    }
+    public ResponseEntity<List<LottoSet>> recommendForGuest(
+            @RequestParam(name = "source", defaultValue = "BASIC") String source) {
 
-    /**
-     * 추천된 로또 번호를 생성하고 저장하는 내부 공통 메소드입니다.
-     *
-     * @param isMember 회원 여부
-     * @param memberId 회원 ID (비회원일 경우 null)
-     * @param source 추천 방식
-     * @return 생성된 로또 번호 세트 리스트
-     */
-    private List<LottoSet> recommendAndSave(boolean isMember, Long memberId, String source) {
-
-        int currentRound = 1112; // TODO: 추후 현재 회차 자동 처리 로직으로 대체
-        List<LottoSet> sets = lottoService.generateLottoNumbersSet(5);
-
-        if (isMember) {
-            lottoService.saveLottoForMember(memberId, sets, currentRound, source);
-        } else {
-            lottoService.saveLottoForGuest(sets, currentRound, source);
-        }
-
-        return sets;
+        // 컨트롤러는 세트 생성/회차 계산을 하지 않음 — 서비스 헬퍼로 위임
+        List<LottoSet> sets = lottoService.recommendAndSaveForGuest(source);
+        return ResponseEntity.ok(sets);
     }
 
     /**
