@@ -16,6 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+
 
 /**
  * OAuth2 로그인 성공 시 사용자 정보를 로드하고,
@@ -40,7 +43,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
      */
     @Override
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
-        // 원본 사용자 속성 로드
+        // 1) 공급자 별 사용자 정보 로드
         OAuth2User delegateUser = super.loadUser(userRequest);
 
         // provider 식별자 (application.yml의 registrationId)
@@ -75,10 +78,19 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                 .getUserInfoEndpoint()
                 .getUserNameAttributeName();
 
+        Map<String, Object> attributes = new HashMap<>(delegateUser.getAttributes());
+        // 프론트(/api/me, @AuthenticationPrincipal)에서 쓰기 위한 내부 식별/표시 정보 추가
+        attributes.put("memberId", member.getId());
+        attributes.put("name",     member.getName());
+        attributes.put("nickname", member.getNickname());
+        attributes.put("email",    member.getEmail());
+        // 필요 시 provider 원본 속성 유지됨 (위에서 copy 했기 때문)
+        // === CHANGED END ===
+
         return new DefaultOAuth2User(
                 List.of(new SimpleGrantedAuthority("ROLE_USER")),
-                delegateUser.getAttributes(),
-                nameAttributeKey
+                attributes,          // ← 병합된 attributes
+                nameAttributeKey     // ← 기존 provider의 name 키 유지(예: "id")
         );
     }
 
