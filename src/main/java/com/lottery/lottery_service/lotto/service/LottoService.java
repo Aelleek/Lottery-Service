@@ -139,8 +139,10 @@ public class LottoService {
         List<String> numbersList = request.getNumbersList();
 
         for (String numbers : numbersList) {
+            String normalized = normalizeNumbers(numbers);
+
             Optional<LottoRecord> optional = lottoRecordRepository
-                    .findByMemberAndRoundAndNumbers(member, round, numbers);
+                    .findByMemberAndRoundAndNumbers(member, round, normalized);
 
             if (optional.isPresent()) {
                 LottoRecord existing = optional.get();
@@ -152,7 +154,7 @@ public class LottoService {
                 LottoRecord newRecord = LottoRecord.builder()
                         .member(member)
                         .round(round)
-                        .numbers(numbers)
+                        .numbers(normalized)
                         .recommendedAt(LocalDateTime.now())
                         .manual(true)
                         .purchased(true)
@@ -200,4 +202,50 @@ public class LottoService {
         return sets;
     }
 
+    /**
+     * 사용자 입력 번호 문자열을 내부 저장 포맷("1 2 3 4 5 6")으로 정규화한다.
+     *
+     * <p>쉼표/공백 혼합 입력을 허용하며, 아래를 검증한다:
+     * <ul>
+     *   <li>정확히 6개 숫자</li>
+     *   <li>범위 1~45</li>
+     *   <li>중복 없음</li>
+     * </ul>
+     *
+     * @param raw 예: "1, 2, 3, 4, 5, 6" 또는 "1 2 3 4 5 6"
+     * @return "1 2 3 4 5 6" 형식(정렬·공백 구분)의 canonical 문자열
+     * @throws IllegalArgumentException 파싱/검증 실패 시
+     */
+    private static String normalizeNumbers(String raw) {
+        if (raw == null) {
+            throw new IllegalArgumentException("numbers cannot be null");
+        }
+        // 쉼표/공백 구분 토큰화
+        String[] tokens = raw.trim().split("[,\\s]+");
+        if (tokens.length != 6) {
+            throw new IllegalArgumentException("로또 번호는 6개여야 합니다. 입력: " + raw);
+        }
+
+        // 정수 파싱 + 검증
+        java.util.Set<Integer> set = new java.util.HashSet<>();
+        for (String t : tokens) {
+            final int n;
+            try {
+                n = Integer.parseInt(t);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("숫자 형식이 올바르지 않습니다: " + raw, e);
+            }
+            if (n < 1 || n > 45) {
+                throw new IllegalArgumentException("로또 번호는 1~45 사이여야 합니다. 입력: " + raw);
+            }
+            if (!set.add(n)) {
+                throw new IllegalArgumentException("로또 번호에 중복이 있습니다. 입력: " + raw);
+            }
+        }
+
+        // 정렬 후 " "로 조인 → canonical 포맷
+        java.util.List<Integer> sorted = new java.util.ArrayList<>(set);
+        java.util.Collections.sort(sorted);
+        return sorted.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(" "));
+    }
 }
