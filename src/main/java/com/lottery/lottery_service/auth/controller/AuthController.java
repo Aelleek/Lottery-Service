@@ -1,7 +1,11 @@
 package com.lottery.lottery_service.auth.controller;
 
+import lombok.Builder;
+import lombok.Getter;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.*;
@@ -106,4 +110,51 @@ public class AuthController {
         }
         return null;
     }
+
+    /**
+     * 인증 상태와 간단한 프로필을 반환합니다.
+     *
+     * <p>프론트는 이 엔드포인트로 로그인 여부를 확인하고,
+     * 로그인된 경우 principal의 attributes에 심어진 {@code memberId}, {@code nickname}, {@code email} 등을 표시할 수 있습니다.
+     *
+     * <p>주의: {@link CustomOAuth2UserService}가 {@link org.springframework.security.core.user.DefaultOAuth2User}
+     * 에 {@code memberId} 등을 attributes로 담아주어야 합니다.
+     */
+    @GetMapping("/me")
+    public ResponseEntity<MeResponse> me(@AuthenticationPrincipal OAuth2User user) {
+        if (user == null) {
+            return ResponseEntity.ok(MeResponse.builder().authenticated(false).build());
+        }
+        Map<String, Object> attrs = user.getAttributes();
+        Long memberId = parseLong(attrs.get("memberId"));
+        return ResponseEntity.ok(MeResponse.builder()
+                .authenticated(true)
+                .memberId(memberId)
+                .name(asString(attrs.get("name")))
+                .nickname(asString(attrs.get("nickname")))
+                .email(asString(attrs.get("email")))
+                .attributes(attrs)
+                .build());
+    }
+
+    /** 현재 로그인 상태 응답 DTO. */
+    @Getter
+    @Builder
+    static class MeResponse {
+        private final boolean authenticated;
+        private final Long memberId;
+        private final String name;
+        private final String nickname;
+        private final String email;
+        private final Map<String, Object> attributes;
+    }
+
+    private static Long parseLong(Object v) {
+        if (v instanceof Number n) return n.longValue();
+        if (v instanceof String s) try { return Long.parseLong(s); } catch (Exception ignored) {}
+        return null;
+    }
+    private static String asString(Object v) { return v == null ? null : String.valueOf(v); }
+
 }
+
