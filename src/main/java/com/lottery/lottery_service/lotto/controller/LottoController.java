@@ -39,13 +39,16 @@ public class LottoController {
      *
      */
     @PostMapping("/recommendations")
-    public ResponseEntity<List<LottoSet>> recommendForAuthenticatedUser(@AuthenticationPrincipal OAuth2User principal,
+    public ResponseEntity<List<LottoSet>> recommendForMember(@AuthenticationPrincipal OAuth2User principal,
             @RequestParam(name = "source", defaultValue = "BASIC") String source) {
 
         if (principal == null || principal.getAttribute("memberId") == null) {
             throw new IllegalArgumentException("로그인 상태가 아니거나 memberId를 확인할 수 없습니다.");
         }
-        Long memberId = Long.valueOf(String.valueOf(principal.getAttribute("memberId")));
+        Long memberId = principal.getAttribute("memberId");
+        if (memberId == null) {
+            throw new IllegalArgumentException("memberId 속성을 확인할 수 없습니다.");
+        }
 
         // 컨트롤러는 오케스트레이션 로직을 갖지 않고 서비스에 위임
         List<LottoSet> sets = lottoService.recommendAndSaveForMember(memberId, source);
