@@ -5,7 +5,7 @@
     <title>Lottery Service</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-        /* 상단 바 */
+        /* ======= 스타일 ======= */
         .topbar {
           position: sticky;
           top: 0;
@@ -19,7 +19,6 @@
         }
         .title { font-weight: 700; }
 
-        /* 우상단 버튼 영역 */
         .actions {
           position: absolute;
           right: 16px;
@@ -38,7 +37,6 @@
         }
         button:hover { background: #f0f0f0; }
 
-        /* 본문 예시 */
         .container {
           max-width: 960px;
           margin: 24px auto;
@@ -46,6 +44,23 @@
           color: #333;
         }
         .muted { color: #888; font-size: 14px; }
+
+        .card {
+          border: 1px solid #eee;
+          border-radius: 12px;
+          padding: 16px;
+          margin-top: 16px;
+        }
+        pre.result {
+          background: #fcfcfc;
+          border: 1px solid #eee;
+          padding: 12px;
+          border-radius: 8px;
+          overflow-x: auto;
+          white-space: pre-wrap;
+        }
+        .row { margin-top: 10px; display: flex; gap: 8px; align-items: center; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
@@ -59,55 +74,176 @@
 <main class="container">
     <h2>메인 페이지</h2>
     <p class="muted">로그인 전/후에 상단 우측 버튼만 바뀌고, 로그인/로그아웃 시 메인으로 돌아옵니다.</p>
+
+    <!-- 로그인 사용자 정보 표시 영역 -->
+    <section id="profileSection" class="card hidden">
+        <h3>내 정보</h3>
+        <div class="row">
+            <div id="profileSummary" class="muted">-</div>
+        </div>
+    </section>
+
+    <!-- 추천 영역 -->
+    <section class="card">
+        <h3>로또 번호 추천</h3>
+
+        <div class="row" style="margin-top:10px;">
+            <button id="btnMemberRec" disabled>회원 로또 번호 추천 받기</button>
+            <span class="muted" id="memberHint">(로그인 필요)</span>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+            <button id="btnGuestRec">비회원 로또 번호 추천 받기</button>
+        </div>
+
+        <pre id="resultBox" class="result hidden"></pre>
+    </section>
 </main>
 
 <script>
-    // 👉 필요 시 /login 대신 특정 소셜 로그인 엔드포인트로 바로 보내고 싶다면 아래를 교체
-    // 예: 카카오만 쓸거면 const loginUrl = '/oauth2/authorization/kakao';
-    const loginUrl = '/login';
-    const meUrl = '/api/me';
+    /**
+     * [index.html]
+     * - 백엔드 변경 가정:
+     *   1) 서버가 @AuthenticationPrincipal 로 memberId를 식별 (프론트에서 memberId 전송 X)
+     *   2) 회원 추천:  POST /api/lotto/recommendations
+     *   3) 비회원 추천: POST /api/lotto/guests/recommendations
+     *   4) 인증 상태:  GET  /api/me  → { authenticated, memberId, name, nickname, ... }
+     *
+     * - CSRF:
+     *   CookieCsrfTokenRepository 사용 시 XSRF-TOKEN 쿠키를 헤더(X-XSRF-TOKEN)로 반영.
+     *   (서버에서 CSRF 비활성화 되어있어도 무해함)
+     */
 
-    const authBtn = document.getElementById('authButton');
+    const loginUrl = '/login';              // Spring Security 기본 로그인 엔드포인트
+    const meUrl    = '/api/me';             // 인증 상태/프로필 조회
+    const authedRecommendUrl = '/api/lotto/recommendations';
+    const guestRecommendUrl  = '/api/lotto/guests/recommendations';
 
-    // 쿠키에서 XSRF-TOKEN 꺼내기 (CookieCsrfTokenRepository 사용 시)
+    const authBtn        = document.getElementById('authButton');
+    const btnMemberRec   = document.getElementById('btnMemberRec');
+    const btnGuestRec    = document.getElementById('btnGuestRec');
+    const memberHint     = document.getElementById('memberHint');
+    const resultBox      = document.getElementById('resultBox');
+    const profileSection = document.getElementById('profileSection');
+    const profileSummary = document.getElementById('profileSummary');
+
+    // ---- CSRF ----
     function getCsrfTokenFromCookie() {
       const m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
       return m ? decodeURIComponent(m[1]) : null;
     }
 
+    // 공통 JSON POST
+    async function postJson(url, payload) {
+      const token = getCsrfTokenFromCookie();
+      const res = await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-XSRF-TOKEN': token || ''
+        },
+        body: payload ? JSON.stringify(payload) : null
+      });
+      let body;
+      const text = await res.text();
+      try { body = JSON.parse(text); } catch { body = text; }
+      if (!res.ok) throw { status: res.status, body };
+      return body;
+    }
+
+    // 결과 표시
+    function showResult(obj) {
+      resultBox.classList.remove('hidden');
+      try {
+        resultBox.textContent = JSON.stringify(obj, null, 2);
+      } catch {
+        resultBox.textContent = String(obj);
+      }
+    }
+
+    // 인증 상태 갱신
     async function refreshAuthState() {
       try {
         const res = await fetch(meUrl, { credentials: 'same-origin' });
         const data = await res.json();
         const isAuthed = !!data.authenticated;
+
+        // 버튼/힌트 업데이트
         authBtn.textContent = isAuthed ? 'Logout' : 'Login';
         authBtn.dataset.state = isAuthed ? 'logout' : 'login';
+        btnMemberRec.disabled = !isAuthed;
+        memberHint.textContent = isAuthed ? '(로그인됨)' : '(로그인 필요)';
+
+        // 프로필 영역
+        if (isAuthed) {
+          profileSection.classList.remove('hidden');
+          const summary = [
+            data.memberId ? `#${data.memberId}` : null,
+            data.nickname || data.name || null,
+            data.email || null
+          ].filter(Boolean).join(' · ');
+          profileSummary.textContent = summary || '로그인됨';
+        } else {
+          profileSection.classList.add('hidden');
+          profileSummary.textContent = '-';
+        }
       } catch (e) {
         // 실패 시 로그인 필요하다고 보고 버튼은 로그인으로
         authBtn.textContent = 'Login';
         authBtn.dataset.state = 'login';
+        btnMemberRec.disabled = true;
+        memberHint.textContent = '(로그인 필요)';
+        profileSection.classList.add('hidden');
+        profileSummary.textContent = '-';
       }
     }
 
+    // 로그인/로그아웃
     authBtn.addEventListener('click', async () => {
       const state = authBtn.dataset.state;
       if (state === 'login') {
-        // 로그인 화면으로 이동(성공 시 Security 설정에 따라 "/"로 복귀)
         window.location.href = loginUrl;
       } else {
-        // 로그아웃: POST /logout + CSRF 헤더
         const token = getCsrfTokenFromCookie();
         await fetch('/logout', {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'X-XSRF-TOKEN': token || '' }
         });
-        // 메인으로 복귀
         window.location.href = '/';
       }
     });
 
-    // 첫 진입 시 상태 동기화
+    // 회원 추천 (memberId 전송 안 함)
+    btnMemberRec.addEventListener('click', async () => {
+      btnMemberRec.disabled = true;
+      try {
+        const data = await postJson(authedRecommendUrl);
+        showResult(data);
+      } catch (e) {
+        showResult({ error: '회원 추천 요청 실패', detail: e });
+      } finally {
+        btnMemberRec.disabled = false;
+      }
+    });
+
+    // 비회원 추천
+    btnGuestRec.addEventListener('click', async () => {
+      btnGuestRec.disabled = true;
+      try {
+        const data = await postJson(guestRecommendUrl);
+        showResult(data);
+      } catch (e) {
+        showResult({ error: '비회원 추천 요청 실패', detail: e });
+      } finally {
+        btnGuestRec.disabled = false;
+      }
+    });
+
+    // 초기 상태 동기화 + 뒤로가기 복귀 시 갱신
+    window.addEventListener('pageshow', refreshAuthState);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAuthState(); });
     refreshAuthState();
 </script>
 </body>
