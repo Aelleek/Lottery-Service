@@ -37,53 +37,6 @@ import java.util.Map;
 public class AuthController {
 
     /**
-     * 현재 인증 상태와 프로필 요약을 반환한다.
-     *
-     * @param authentication Spring Security가 주입하는 인증 객체
-     * @return <code>authenticated=false</code>이면 최소 정보만, true면 사용자 요약 포함
-     */
-    @GetMapping("/me")
-    public Map<String, Object> me(Authentication authentication) {
-        // 1) 인증 여부 판단 (Anonymous 토큰은 비로그인으로 간주)
-        boolean authed = authentication != null
-                && authentication.isAuthenticated()
-                && !(authentication instanceof AnonymousAuthenticationToken);
-
-        if (!authed) {
-            return Map.of("authenticated", false);
-        }
-
-        // 2) OAuth2 프로바이더 식별 (kakao/google/naver 등)
-        String provider = (authentication instanceof OAuth2AuthenticationToken t)
-                ? t.getAuthorizedClientRegistrationId() : null;
-
-        // 2) OAuth2 프로바이더 식별 (kakao/google/naver 등)
-        String username = authentication.getName();
-        String name = null;
-        String email = null;
-
-        Object principal = authentication.getPrincipal();
-        if (principal instanceof OAuth2User u) {
-            name = pick(u,
-                    "name", "nickname",
-                    "kakao_account.profile.nickname",
-                    "properties.nickname",
-                    "response.name"   // naver
-            );
-            email = pick(u, "email", "kakao_account.email", "response.email");
-        }
-
-        // 4) 응답 조립 (Map.of는 null 허용 X → LinkedHashMap 사용)
-        var resp = new java.util.LinkedHashMap<String, Object>();
-        resp.put("authenticated", true);
-        resp.put("username", username);
-        resp.put("name", (name != null ? name : username));
-        if (email != null) resp.put("email", email);        // null이면 생략
-        if (provider != null) resp.put("provider", provider);// null이면 생략
-        return resp;
-    }
-
-    /**
      * OAuth2User의 중첩 속성에서 첫 번째로 발견되는 값을 문자열로 반환한다.
      * <p>예) "kakao_account.profile.nickname" 처럼 점(.)으로 중첩 경로를 표기</p>
      *
@@ -158,3 +111,51 @@ public class AuthController {
 
 }
 
+
+
+//    /**
+//     * 현재 인증 상태와 프로필 요약을 반환한다.
+//     *
+//     * @param authentication Spring Security가 주입하는 인증 객체
+//     * @return <code>authenticated=false</code>이면 최소 정보만, true면 사용자 요약 포함
+//     */
+//    @GetMapping("/me")
+//    public Map<String, Object> me(Authentication authentication) {
+//        // 1) 인증 여부 판단 (Anonymous 토큰은 비로그인으로 간주)
+//        boolean authed = authentication != null
+//                && authentication.isAuthenticated()
+//                && !(authentication instanceof AnonymousAuthenticationToken);
+//
+//        if (!authed) {
+//            return Map.of("authenticated", false);
+//        }
+//
+//        // 2) OAuth2 프로바이더 식별 (kakao/google/naver 등)
+//        String provider = (authentication instanceof OAuth2AuthenticationToken t)
+//                ? t.getAuthorizedClientRegistrationId() : null;
+//
+//        // 2) OAuth2 프로바이더 식별 (kakao/google/naver 등)
+//        String username = authentication.getName();
+//        String name = null;
+//        String email = null;
+//
+//        Object principal = authentication.getPrincipal();
+//        if (principal instanceof OAuth2User u) {
+//            name = pick(u,
+//                    "name", "nickname",
+//                    "kakao_account.profile.nickname",
+//                    "properties.nickname",
+//                    "response.name"   // naver
+//            );
+//            email = pick(u, "email", "kakao_account.email", "response.email");
+//        }
+//
+//        // 4) 응답 조립 (Map.of는 null 허용 X → LinkedHashMap 사용)
+//        var resp = new java.util.LinkedHashMap<String, Object>();
+//        resp.put("authenticated", true);
+//        resp.put("username", username);
+//        resp.put("name", (name != null ? name : username));
+//        if (email != null) resp.put("email", email);        // null이면 생략
+//        if (provider != null) resp.put("provider", provider);// null이면 생략
+//        return resp;
+//    }
