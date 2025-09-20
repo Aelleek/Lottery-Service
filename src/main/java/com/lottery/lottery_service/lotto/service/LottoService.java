@@ -9,15 +9,24 @@ import com.lottery.lottery_service.lotto.repository.LottoRecordRepository;
 import com.lottery.lottery_service.member.repository.MemberRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import com.lottery.lottery_service.lotto.validation.pipeline.LottoValidationPipeline;
+import com.lottery.lottery_service.lotto.validation.pipeline.LottoValidationResult;
+
 /**
  * LottoService: 로또 번호 추천 및 저장 서비스 로직 담당
+ *
+ * 추천 생성 → 내부 검증(ValidationPipeline) → 통과 세트만 반환.
+ * - 검증 결과/사유는 "내부 전용"으로만 사용하고, 사용자 응답에는 노출하지 않는다.
+ *
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -25,6 +34,8 @@ public class LottoService {
 
     private final LottoRecordRepository lottoRecordRepository;
     private final MemberRepository memberRepository;
+    private final LottoValidationPipeline validationPipeline;
+
 
     /**
      * 로또 번호 n세트를 생성합니다.
@@ -177,9 +188,28 @@ public class LottoService {
      * @return 추천된 로또 번호 세트 목록
      * @throws IllegalArgumentException 회원을 찾을 수 없는 경우
      */
-    // === CHANGED START: 신규 오케스트레이터(회원) 추가 ===
     public List<LottoSet> recommendAndSaveForMember(Long memberId, String source) {
-        List<LottoSet> sets = generateLottoNumbersSet(5);
+        // 기존처럼 한 번에 5세트를 생성하되,
+        // 검증을 통과한 세트만 수집되도록 루프/재시도로 채움.
+        final int desired = 5;
+        final int maxAttempts = desired * 20; // 무한루프 방지용 여유치
+
+        List<LottoSet> sets = new ArrayList<>(desired);
+        int attempts = 0;
+
+        while (sets.size() < desired && attempts++ < maxAttempts) {
+            LottoSet candidate = generateLottoNumbersSet(1).get(0);
+
+            // [ADDED] 내부 검증 파이프라인 호출 (불허면 폐기하고 다시 생성)
+            LottoValidationResult vr = validationPipeline.validate(candidate);
+            if (vr.isPass()) {
+                sets.add(candidate);
+            } else {
+                // 내부 추적용 로그만 (외부 응답에 노출하지 않음)
+                log.debug("validation failed (member): rule={}, reason={}", vr.getFailedRuleId(), vr.getFailedReasonCode());
+            }
+        }
+
         int currentRound = 1112; // TODO: 동적 계산/외부 API로 교체
         saveLottoForMember(memberId, sets, currentRound, source);
         return sets;
