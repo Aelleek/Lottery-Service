@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
  * - 정규화 포맷은 LottoWinnerData.winnerData와 "정확히 동일"해야 매칭된다.
  */
 @Component
-@Order(100)
+@Order(1)
 public class NotEqualToPastFirstPrizeRule implements LottoValidationRule {
 
     private static final String REASON = "EQUALS_PAST_FIRST_PRIZE";

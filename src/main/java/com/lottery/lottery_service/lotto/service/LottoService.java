@@ -206,7 +206,7 @@ public class LottoService {
                 sets.add(candidate);
             } else {
                 // 내부 추적용 로그만 (외부 응답에 노출하지 않음)
-                log.debug("validation failed (member): rule={}, reason={}", vr.getFailedRuleId(), vr.getFailedReasonCode());
+                log.info("validation failed (member): rule={}, reason={}", vr.getFailedRuleId(), vr.getFailedReasonCode());
             }
         }
 
