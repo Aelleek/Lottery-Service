@@ -51,8 +51,8 @@ public class DhlotteryDrawResponse {
     @JsonProperty("drwtNo6") private Integer drwtNo6;
 
     /** 보너스 번호 */
-    @JsonProperty("bonusNo")
-    private Integer bonusNo;
+    @JsonProperty("bnusNo")
+    private Integer bnusNo;
 
     /** 1등 당첨자 수 */
     @JsonProperty("firstPrzwnerCo")

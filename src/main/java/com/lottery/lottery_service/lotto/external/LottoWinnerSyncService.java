@@ -57,7 +57,9 @@ public class LottoWinnerSyncService {
         int savedCount = 0;
         while (true) {
             Optional<DhlotteryDrawResponse> dtoOpt = client.fetchRound(nextRound);
+            log.info("WinnerSync: fetching round {}", nextRound);
             if (dtoOpt.isEmpty()) {
+                log.info("WinnerSync: stop at round {} (not available yet or fetch failed)", nextRound);
                 // 더 이상 발표되지 않았거나 호출 실패 → 이번 라운드에서 중단
                 break;
             }

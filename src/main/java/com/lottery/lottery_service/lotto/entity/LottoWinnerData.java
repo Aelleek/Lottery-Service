@@ -45,7 +45,7 @@ public class LottoWinnerData {
 
     /** 보너스 번호 (1~45) */
     @Column(nullable = false)
-    private Integer bonusNo;
+    private Integer bnusNo;
 
     /** 해당 회차의 총 판매 금액 */
     @Column(nullable = false)

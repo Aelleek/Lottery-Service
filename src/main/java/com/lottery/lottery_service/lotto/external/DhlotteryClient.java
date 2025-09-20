@@ -81,7 +81,7 @@ public class DhlotteryClient {
         if (dto.getDrwNo() == null ||
                 dto.getDrwtNo1() == null || dto.getDrwtNo2() == null || dto.getDrwtNo3() == null ||
                 dto.getDrwtNo4() == null || dto.getDrwtNo5() == null || dto.getDrwtNo6() == null ||
-                dto.getBonusNo() == null ||
+                dto.getBnusNo() == null ||
                 dto.getTotSellamnt() == null || dto.getFirstWinamnt() == null ||
                 dto.getFirstAccumamnt() == null || dto.getFirstPrzwnerCo() == null) {
             throw new IllegalArgumentException("필수 필드가 비어 있습니다: " + dto);
@@ -96,7 +96,7 @@ public class DhlotteryClient {
         return LottoWinnerData.builder()
                 .round(dto.getDrwNo())
                 .winnerData(canonical)
-                .bonusNo(dto.getBonusNo())
+                .bnusNo(dto.getBnusNo())
                 .totSellamnt(dto.getTotSellamnt())
                 .firstWinamnt(dto.getFirstWinamnt())
                 .firstPrzwnerCo(dto.getFirstPrzwnerCo())
