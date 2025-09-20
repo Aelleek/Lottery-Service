@@ -28,8 +28,6 @@ import java.util.stream.Collectors;
  *   <li>필요 시 엔티티 변환: {@link #toEntity(DhlotteryDrawResponse)}</li>
  * </ul>
  *
- * <p><b>임시:</b> 앱 시작 시 회차 1000을 한 번 조회해 로그로 찍습니다.
- * 추후 {@code LottoWinnerSyncService} + StartupRunner로 이관하세요.
  */
 @Service
 @RequiredArgsConstructor
