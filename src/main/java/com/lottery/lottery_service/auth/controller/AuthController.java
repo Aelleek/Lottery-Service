@@ -1,29 +1,26 @@
 package com.lottery.lottery_service.auth.controller;
 
+import java.util.Map;
 import lombok.Builder;
 import lombok.Getter;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AnonymousAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
 
 /**
  * 인증/인가 관련 공개 API 컨트롤러.
  *
- * <p>프론트의 <code>index.html</code>에서 초기 상태를 판별하기 위해
- * <b>GET /api/me</b>를 호출하여 로그인 여부와 간단한 프로필을 내려준다.</p>
+ * <p>프론트의 <code>index.html</code>에서 초기 상태를 판별하기 위해 <b>GET /api/me</b>를 호출하여 로그인 여부와 간단한 프로필을 내려준다.
  *
  * <h3>권한</h3>
+ *
  * <ul>
- *   <li><b>GET /api/me</b> : <i>permitAll</i> (비로그인도 호출 가능)</li>
+ *   <li><b>GET /api/me</b> : <i>permitAll</i> (비로그인도 호출 가능)
  * </ul>
  *
  * <h3>반환 예시</h3>
+ *
  * <pre>
  *  { "authenticated": true,
  *    "username": "1234567890",
@@ -36,82 +33,97 @@ import java.util.Map;
 @RequestMapping("/api")
 public class AuthController {
 
-    /**
-     * OAuth2User의 중첩 속성에서 첫 번째로 발견되는 값을 문자열로 반환한다.
-     * <p>예) "kakao_account.profile.nickname" 처럼 점(.)으로 중첩 경로를 표기</p>
-     *
-     * @param u    OAuth2User
-     * @param keys 우선순위 순으로 시도할 키 목록
-     * @return 발견값 또는 null
-     */
-    // 중첩 속성 안전 접근 (a.b.c 지원)
-    @SuppressWarnings("unchecked")
-    private static String pick(OAuth2User u, String... keys) {
-        Map<String, Object> root = u.getAttributes();
-        for (String key : keys) {
-            Map<String, Object> cur = root;
-            Object val = null;
-            String[] parts = key.split("\\.");
-            for (int i = 0; i < parts.length; i++) {
-                Object next = cur.get(parts[i]);
-                if (next == null) { val = null; break; }
-                if (i == parts.length - 1) { val = next; }
-                else if (next instanceof Map) { cur = (Map<String, Object>) next; }
-                else { val = null; break; }
-            }
-            if (val != null) return String.valueOf(val);
+  /**
+   * OAuth2User의 중첩 속성에서 첫 번째로 발견되는 값을 문자열로 반환한다.
+   *
+   * <p>예) "kakao_account.profile.nickname" 처럼 점(.)으로 중첩 경로를 표기
+   *
+   * @param u OAuth2User
+   * @param keys 우선순위 순으로 시도할 키 목록
+   * @return 발견값 또는 null
+   */
+  // 중첩 속성 안전 접근 (a.b.c 지원)
+  @SuppressWarnings("unchecked")
+  private static String pick(OAuth2User u, String... keys) {
+    Map<String, Object> root = u.getAttributes();
+    for (String key : keys) {
+      Map<String, Object> cur = root;
+      Object val = null;
+      String[] parts = key.split("\\.");
+      for (int i = 0; i < parts.length; i++) {
+        Object next = cur.get(parts[i]);
+        if (next == null) {
+          val = null;
+          break;
         }
-        return null;
-    }
-
-    /**
-     * 인증 상태와 간단한 프로필을 반환합니다.
-     *
-     * <p>프론트는 이 엔드포인트로 로그인 여부를 확인하고,
-     * 로그인된 경우 principal의 attributes에 심어진 {@code memberId}, {@code nickname}, {@code email} 등을 표시할 수 있습니다.
-     *
-     * <p>주의: {@link CustomOAuth2UserService}가 {@link org.springframework.security.core.user.DefaultOAuth2User}
-     * 에 {@code memberId} 등을 attributes로 담아주어야 합니다.
-     */
-    @GetMapping("/me")
-    public ResponseEntity<MeResponse> me(@AuthenticationPrincipal OAuth2User user) {
-        if (user == null) {
-            return ResponseEntity.ok(MeResponse.builder().authenticated(false).build());
+        if (i == parts.length - 1) {
+          val = next;
+        } else if (next instanceof Map) {
+          cur = (Map<String, Object>) next;
+        } else {
+          val = null;
+          break;
         }
-        Map<String, Object> attrs = user.getAttributes();
-        Long memberId = parseLong(attrs.get("memberId"));
-        return ResponseEntity.ok(MeResponse.builder()
-                .authenticated(true)
-                .memberId(memberId)
-                .name(asString(attrs.get("name")))
-                .nickname(asString(attrs.get("nickname")))
-                .email(asString(attrs.get("email")))
-                .attributes(attrs)
-                .build());
+      }
+      if (val != null) return String.valueOf(val);
     }
+    return null;
+  }
 
-    /** 현재 로그인 상태 응답 DTO. */
-    @Getter
-    @Builder
-    static class MeResponse {
-        private final boolean authenticated;
-        private final Long memberId;
-        private final String name;
-        private final String nickname;
-        private final String email;
-        private final Map<String, Object> attributes;
+  /**
+   * 인증 상태와 간단한 프로필을 반환합니다.
+   *
+   * <p>프론트는 이 엔드포인트로 로그인 여부를 확인하고, 로그인된 경우 principal의 attributes에 심어진 {@code memberId}, {@code
+   * nickname}, {@code email} 등을 표시할 수 있습니다.
+   *
+   * <p>주의: {@link CustomOAuth2UserService}가 {@link
+   * org.springframework.security.core.user.DefaultOAuth2User} 에 {@code memberId} 등을 attributes로
+   * 담아주어야 합니다.
+   */
+  @GetMapping("/me")
+  public ResponseEntity<MeResponse> me(@AuthenticationPrincipal OAuth2User user) {
+    if (user == null) {
+      return ResponseEntity.ok(MeResponse.builder().authenticated(false).build());
     }
+    Map<String, Object> attrs = user.getAttributes();
+    Long memberId = parseLong(attrs.get("memberId"));
+    return ResponseEntity.ok(
+        MeResponse.builder()
+            .authenticated(true)
+            .memberId(memberId)
+            .name(asString(attrs.get("name")))
+            .nickname(asString(attrs.get("nickname")))
+            .email(asString(attrs.get("email")))
+            .attributes(attrs)
+            .build());
+  }
 
-    private static Long parseLong(Object v) {
-        if (v instanceof Number n) return n.longValue();
-        if (v instanceof String s) try { return Long.parseLong(s); } catch (Exception ignored) {}
-        return null;
-    }
-    private static String asString(Object v) { return v == null ? null : String.valueOf(v); }
+  /** 현재 로그인 상태 응답 DTO. */
+  @Getter
+  @Builder
+  static class MeResponse {
+    private final boolean authenticated;
+    private final Long memberId;
+    private final String name;
+    private final String nickname;
+    private final String email;
+    private final Map<String, Object> attributes;
+  }
 
+  private static Long parseLong(Object v) {
+    if (v instanceof Number n) return n.longValue();
+    if (v instanceof String s)
+      try {
+        return Long.parseLong(s);
+      } catch (Exception ignored) {
+      }
+    return null;
+  }
+
+  private static String asString(Object v) {
+    return v == null ? null : String.valueOf(v);
+  }
 }
-
-
 
 //    /**
 //     * 현재 인증 상태와 프로필 요약을 반환한다.
