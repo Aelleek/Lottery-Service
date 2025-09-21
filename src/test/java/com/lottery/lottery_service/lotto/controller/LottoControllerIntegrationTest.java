@@ -1,30 +1,30 @@
-//package com.lottery.lottery_service.lotto.controller;
+// package com.lottery.lottery_service.lotto.controller;
 //
-//import com.fasterxml.jackson.databind.ObjectMapper;
-//import com.lottery.lottery_service.lotto.dto.request.PurchaseLottoRequest;
-//import com.lottery.lottery_service.lotto.entity.LottoRecord;
-//import com.lottery.lottery_service.lotto.repository.LottoRecordRepository;
-//import com.lottery.lottery_service.member.entity.Member;
-//import com.lottery.lottery_service.member.repository.MemberRepository;
-//import org.junit.jupiter.api.DisplayName;
-//import org.junit.jupiter.api.Test;
-//import org.springframework.beans.factory.annotation.Autowired;
-//import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-//import org.springframework.boot.test.context.SpringBootTest;
-//import org.springframework.http.MediaType;
-//import org.springframework.test.web.servlet.MockMvc;
-//import org.springframework.transaction.annotation.Transactional;
+// import com.fasterxml.jackson.databind.ObjectMapper;
+// import com.lottery.lottery_service.lotto.dto.request.PurchaseLottoRequest;
+// import com.lottery.lottery_service.lotto.entity.LottoRecord;
+// import com.lottery.lottery_service.lotto.repository.LottoRecordRepository;
+// import com.lottery.lottery_service.member.entity.Member;
+// import com.lottery.lottery_service.member.repository.MemberRepository;
+// import org.junit.jupiter.api.DisplayName;
+// import org.junit.jupiter.api.Test;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+// import org.springframework.boot.test.context.SpringBootTest;
+// import org.springframework.http.MediaType;
+// import org.springframework.test.web.servlet.MockMvc;
+// import org.springframework.transaction.annotation.Transactional;
 //
-//import java.util.List;
+// import java.util.List;
 //
-//import static org.assertj.core.api.Assertions.assertThat;
-//import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-//import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+// import static org.assertj.core.api.Assertions.assertThat;
+// import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+// import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 //
-//@SpringBootTest
-//@AutoConfigureMockMvc
-//@Transactional
-//class LottoControllerIntegrationTest {
+// @SpringBootTest
+// @AutoConfigureMockMvc
+// @Transactional
+// class LottoControllerIntegrationTest {
 //
 //    @Autowired private MockMvc mockMvc;
 //    @Autowired private ObjectMapper objectMapper;
@@ -47,7 +47,8 @@
 //                .andExpect(jsonPath("$.length()").value(5));
 //
 //        int afterSize = lottoRecordRepository.findAll().size();
-//        List<LottoRecord> newRecords = lottoRecordRepository.findAll().subList(beforeSize, afterSize);
+//        List<LottoRecord> newRecords = lottoRecordRepository.findAll().subList(beforeSize,
+// afterSize);
 //
 //        assertThat(afterSize - beforeSize).isEqualTo(5);
 //        assertThat(newRecords).allMatch(r ->
@@ -70,7 +71,8 @@
 //                .andExpect(jsonPath("$.length()").value(5));
 //
 //        int afterSize = lottoRecordRepository.findAll().size();
-//        List<LottoRecord> newRecords = lottoRecordRepository.findAll().subList(beforeSize, afterSize);
+//        List<LottoRecord> newRecords = lottoRecordRepository.findAll().subList(beforeSize,
+// afterSize);
 //
 //        assertThat(afterSize - beforeSize).isEqualTo(5);
 //        assertThat(newRecords).allMatch(r ->
@@ -123,4 +125,4 @@
 //                .andExpect(jsonPath("$[0].round").exists())
 //                .andExpect(jsonPath("$[0].numbers").exists());
 //    }
-//}
+// }
