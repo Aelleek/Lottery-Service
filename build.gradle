@@ -3,6 +3,8 @@ plugins {
   id 'org.springframework.boot' version '3.4.4'
   id 'io.spring.dependency-management' version '1.1.7'
   id 'com.diffplug.spotless' version '6.25.0'
+  id 'checkstyle'
+  id 'pmd'
 }
 
 group = 'com.lottery'
@@ -40,6 +42,35 @@ spotless {
   }
 }
 
+checkstyle {
+  toolVersion = '10.17.0'
+  configFile = file('config/checkstyle/checkstyle.xml')
+  configProperties = [
+          'checkstyle.suppressions.file': file('config/checkstyle/suppressions.xml').absolutePath,
+          'charset': 'UTF-8'
+  ]
+  ignoreFailures = true
+}
+tasks.withType(Checkstyle).configureEach {
+  reports {
+    xml.required = true
+    html.required = true
+  }
+}
+
+pmd {
+  toolVersion = '6.55.0'
+  ruleSets = [] // 기본 ruleset 끄고
+  ruleSetFiles = files('config/pmd/pmd-ruleset.xml') // 최소 커스텀만
+  ignoreFailures = true
+}
+tasks.withType(Pmd).configureEach {
+  reports {
+    xml.required = true
+    html.required = true
+  }
+}
+
 dependencies {
   implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
   implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -51,9 +82,9 @@ dependencies {
   testImplementation 'org.springframework.boot:spring-boot-starter-test'
   testImplementation 'org.springframework.security:spring-security-test'
   testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+  pmd "net.sourceforge.pmd:pmd-java:6.55.0"
 
   implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
-  implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
   runtimeOnly 'com.h2database:h2'
   /* 내장 DB로 임시 사용하기 위해 의존성 추가 */
 }

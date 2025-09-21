@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+        "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+        "https://checkstyle.sourceforge.io/dtds/suppressions_1_2.dtd">
+<suppressions>
+    <!-- 초기에는 비워두고, 베이스라인 확정 후 필요 항목을 추가 -->
+</suppressions>
