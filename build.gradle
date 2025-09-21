@@ -62,8 +62,9 @@ tasks.named('test') {
   useJUnitPlatform()
 }
 
-/**
- * 아직 check 파이프라인에 강제 연결하지 않음.
- * (리포맷 PR 이후에 `check` 의존성으로 묶을 예정)
- */
-// tasks.named('check') { dependsOn 'spotlessCheck' }  // 다음 단계에서 활성화
+// Spotless를 'check' 파이프라인에 강제 연결한다.
+// - 효과: ./gradlew check (CI 포함) 실행 시 포맷 검증(spotlessCheck)도 반드시 수행됨
+// - 이 상태에서 포맷 불일치가 있으면 빌드 실패 → ./gradlew spotlessApply 로 자동 고침 후 재시도
+// - 리포맷 전용 PR을 이미 머지한 뒤에 켜는 게 권장(대규모 diff 방지)
+// - 다중 모듈이라면 각 서브프로젝트에도 Spotless가 적용되어 있어야 함(plugins/spotless 설정 확인)
+ tasks.named('check') { dependsOn 'spotlessCheck' }
