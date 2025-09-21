@@ -2,6 +2,7 @@ plugins {
 	id 'java'
 	id 'org.springframework.boot' version '3.4.4'
 	id 'io.spring.dependency-management' version '1.1.7'
+	id 'com.diffplug.spotless' version '6.25.0'
 }
 
 group = 'com.lottery'
@@ -21,6 +22,22 @@ configurations {
 
 repositories {
 	mavenCentral()
+}
+
+spotless {
+	java {
+		importOrder 'java', 'javax', 'org', 'com'
+		removeUnusedImports()
+		googleJavaFormat('1.17.0')
+		target 'src/**/*.java'
+		targetExclude('build/**', '**/generated/**')
+	}
+	format 'misc', {
+		target '*.gradle', '*.md', '.gitignore'
+		trimTrailingWhitespace()
+		endWithNewline()
+		indentWithSpaces(2)
+	}
 }
 
 dependencies {
@@ -44,3 +61,9 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+/**
+ * 아직 check 파이프라인에 강제 연결하지 않음.
+ * (리포맷 PR 이후에 `check` 의존성으로 묶을 예정)
+ */
+// tasks.named('check') { dependsOn 'spotlessCheck' }  // 다음 단계에서 활성화
