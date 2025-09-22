@@ -1,21 +1,71 @@
 name: CI
+
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  sanity:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Gradle wrapper present?
-        run: test -f gradlew && echo "gradlew exists" || (echo "no gradlew" && exit 1)
-      - name: Ping
-        run: echo "CI skeleton ready"
-      - name: Verify (Spotless/Checkstyle/PMD)
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # diff 계산 위해 전체 히스토리
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      # PR 기준 변경된 Java 파일 계산
+      - name: Compute changed Java files (PR)
+        if: ${{ github.event_name == 'pull_request' }}
+        id: diff_pr
+        shell: bash
         run: |
-          ./gradlew spotlessCheck checkstyleMain pmdMain -x test
+          git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
+          CHANGED=$(git diff --name-only --diff-filter=ACMRT origin/${{ github.base_ref }}...HEAD | grep '\.java$' || true)
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+
+      # main push 기준 변경된 Java 파일 계산
+      - name: Compute changed Java files (push)
+        if: ${{ github.event_name == 'push' }}
+        id: diff_push
+        shell: bash
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          CHANGED=$(git diff --name-only --diff-filter=ACMRT origin/main...HEAD | grep '\.java$' || true)
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+
+      - name: Spotless (always)
+        shell: bash
+        run: ./gradlew --no-daemon spotlessCheck
+
+      - name: Static analysis (changed-files gate)
+        shell: bash
+        run: |
+          CHANGED="${{ steps.diff_pr.outputs.changed || steps.diff_push.outputs.changed }}"
+          if [ -n "$CHANGED" ]; then
+            echo "Changed Java files:"
+            echo "$CHANGED"
+            ./gradlew --no-daemon checkstyleMain pmdMain -DchangedFiles="$(echo "$CHANGED" | tr ' ' ',')"
+          else
+            echo "No changed Java files; running full (non-failing) reports"
+            ./gradlew --no-daemon checkstyleMain pmdMain
+          fi
 
       - name: Upload reports
         if: always()
@@ -23,5 +73,6 @@ jobs:
         with:
           name: reports
           path: |
-            build/reports/**
-            **/build/reports/**
+            **/build/reports/checkstyle/**
+            **/build/reports/pmd/**
+            **/build/reports/spotless/**
