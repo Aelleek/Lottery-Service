@@ -1,6 +1,9 @@
 package com.lottery.lottery_service.sandbox;
 
-import java.util.*; // ← unused + wildcard import (위반 유도)
+import java.util.*;
 
-public class LintProbe {  public static void main(String[] args){System.out.println("hi");}}
-
+public class LintProbe {
+  public static void main(String[] args) {
+    System.out.println("hi");
+  }
+}
