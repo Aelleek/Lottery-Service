@@ -13,3 +13,15 @@ jobs:
         run: test -f gradlew && echo "gradlew exists" || (echo "no gradlew" && exit 1)
       - name: Ping
         run: echo "CI skeleton ready"
+      - name: Verify (Spotless/Checkstyle/PMD)
+        run: |
+          ./gradlew spotlessCheck checkstyleMain pmdMain -x test
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            build/reports/**
+            **/build/reports/**

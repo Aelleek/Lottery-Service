@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+        "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+        "https://checkstyle.sourceforge.io/dtds/configuration_1_3.dtd">
+<module name="Checker">
+    <!-- suppressions.xml 적용 -->
+    <module name="SuppressionFilter">
+        <property name="file" value="${checkstyle.suppressions.file}"/>
+    </module>
+
+    <!-- 파일 전역 규칙 -->
+    <module name="FileTabCharacter"/>
+    <module name="NewlineAtEndOfFile"/>
+
+    <!-- 라인 길이: import/package 라인은 예외 -->
+    <module name="LineLength">
+        <property name="max" value="140"/>
+        <property name="ignorePattern" value="^package|^import"/>
+    </module>
+
+    <!-- 소스 트리 규칙 -->
+    <module name="TreeWalker">
+        <!-- import 관련 -->
+        <module name="UnusedImports"/>
+        <module name="ImportOrder">
+            <!-- Spotless와 일치 -->
+            <property name="groups" value="java,javax,org,com"/>
+            <property name="separated" value="true"/>
+        </module>
+
+        <!-- 공백/브레이스 기본 -->
+        <module name="WhitespaceAround"/>
+        <module name="NoWhitespaceAfter"/>
+        <module name="NoWhitespaceBefore"/>
+        <module name="NeedBraces"/>
+
+        <!-- 빈 catch는 허용 변수명만 예외 -->
+        <module name="EmptyCatchBlock">
+            <property name="exceptionVariableName" value="ignored|ignore"/>
+        </module>
+    </module>
+</module>

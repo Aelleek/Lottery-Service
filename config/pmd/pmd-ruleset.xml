@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="Project Minimal Rules"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0
+                             https://pmd.sourceforge.net/ruleset_2_0_0.xsd">
+    <description>Minimal PMD rules for baseline (PMD 6.x).</description>
+
+    <!-- unused / best practices -->
+    <rule ref="category/java/bestpractices.xml/UnusedLocalVariable"/>
+    <rule ref="category/java/bestpractices.xml/UnusedPrivateField"/>
+
+    <!-- empty blocks (PMD 6.x에서 유효) -->
+    <rule ref="category/java/errorprone.xml/EmptyIfStmt"/>
+    <rule ref="category/java/errorprone.xml/EmptyTryBlock"/>
+    <rule ref="category/java/errorprone.xml/EmptyCatchBlock"/>
+
+    <!-- imports (원하면 빼도 됨: Spotless/Checkstyle로 커버 가능) -->
+    <rule ref="category/java/codestyle.xml/DuplicateImports"/>
+</ruleset>
