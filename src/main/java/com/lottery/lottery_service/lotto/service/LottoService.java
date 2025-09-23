@@ -145,10 +145,13 @@ public class LottoService {
   /**
    * 구매한 로또 번호 목록을 저장합니다.
    *
-   * @param member 회원
+   * @param memberId 회원의 id
    * @param request 구매 요청 DTO
    */
-  public void addPurchasedRecords(Member member, PurchaseLottoRequest request) {
+  public void addPurchasedRecords(Long memberId, PurchaseLottoRequest request) {
+    // 영속성 컨텍스트 프록시로 연관만 세팅 (DB hit 없이 참조)
+    Member member = memberRepository.getReferenceById(memberId);
+
     int round = Integer.parseInt(request.getRound());
     List<String> numbersList = request.getNumbersList();
 
@@ -167,7 +170,7 @@ public class LottoService {
       } else {
         LottoRecord newRecord =
             LottoRecord.builder()
-                .member(member)
+                .member(member) // 연관관계 유지
                 .round(round)
                 .numbers(normalized)
                 .recommendedAt(LocalDateTime.now())
