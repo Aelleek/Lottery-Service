@@ -70,17 +70,16 @@ jobs:
         if: |
           (github.event_name == 'pull_request' && steps.diff_pr.outputs.changed != '') ||
           (github.event_name == 'push' && steps.diff_push.outputs.changed != '')
-        shell: bash
         run: |
           echo "Changed Java files:"
           echo "${{ steps.diff_pr.outputs.changed || steps.diff_push.outputs.changed }}"
           ./gradlew --no-daemon checkstyleMain pmdMain -x test
 
-      # ✅ 빌드 (PR/Push 공통, 테스트 스킵)
+      # 빌드 (PR/Push 공통, 테스트 스킵)
       - name: Build
         run: ./gradlew --no-daemon build -x test
 
-      - name: Upload reportsgit checkout -b chore/ci-skip-tests
+      - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
