@@ -40,3 +40,6 @@ out/
 # 로그 및 환경파일
 *.log
 .env
+
+# config 파일
+/config/oauth-client.yml
