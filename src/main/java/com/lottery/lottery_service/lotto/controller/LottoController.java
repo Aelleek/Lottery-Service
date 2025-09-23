@@ -4,7 +4,6 @@ import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.lotto.dto.request.PurchaseLottoRequest;
 import com.lottery.lottery_service.lotto.dto.response.LottoRecordResponse;
 import com.lottery.lottery_service.lotto.service.LottoService;
-import com.lottery.lottery_service.member.entity.Member;
 import com.lottery.lottery_service.member.repository.MemberRepository;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -72,33 +71,42 @@ public class LottoController {
    *
    * <p>memberId를 경로 변수로 받아 해당 회원의 추천 내역을 회차 기준 내림차순으로 반환합니다.
    *
-   * @param memberId 회원 ID
+   * @param principal OAuth2User (로그인된 사용자)
    * @return 추천 내역 리스트
    */
-  @GetMapping("/members/{memberId}/recommendations")
-  public ResponseEntity<List<LottoRecordResponse>> getLottoRecommendations(
-      @PathVariable Long memberId) {
-    return ResponseEntity.ok(lottoService.getRecommendationsForMember(memberId));
+  @GetMapping("/members/me/recommendations")
+  public ResponseEntity<List<LottoRecordResponse>> getMyRecommendations(
+      @AuthenticationPrincipal OAuth2User principal) {
+    if (principal == null || principal.getAttribute("memberId") == null) {
+      throw new IllegalArgumentException("로그인 상태가 아니거나 memberId를 확인할 수 없습니다.");
+    }
+    Long memberId = principal.getAttribute("memberId");
+    if (memberId == null) {
+      throw new IllegalArgumentException("memberId 속성을 확인할 수 없습니다.");
+    }
+    List<LottoRecordResponse> result = lottoService.getRecommendationsForMember(memberId);
+    return ResponseEntity.ok(result);
   }
 
   /**
    * 회원의 구매 번호를 저장하는 API
    *
-   * @param memberId 회원 ID
+   * @param principal OAuth2User (로그인된 사용자)
    * @param request 구매 번호 요청 DTO
    * @return 저장 완료 응답
    */
-  @PostMapping("/{memberId}/purchases")
-  public ResponseEntity<String> addPurchasedLotto(
-      @PathVariable Long memberId, @Valid @RequestBody PurchaseLottoRequest request) {
-
-    Member member =
-        memberRepository
-            .findById(memberId)
-            .orElseThrow(() -> new IllegalArgumentException("해당 회원이 존재하지 않습니다."));
-
-    lottoService.addPurchasedRecords(member, request);
-
-    return ResponseEntity.ok("구매 번호가 성공적으로 저장되었습니다.");
+  @PostMapping("/purchases")
+  public ResponseEntity<?> purchase(
+      @AuthenticationPrincipal OAuth2User principal,
+      @Valid @RequestBody PurchaseLottoRequest request) {
+    if (principal == null || principal.getAttribute("memberId") == null) {
+      throw new IllegalArgumentException("로그인 상태가 아니거나 memberId를 확인할 수 없습니다.");
+    }
+    Long memberId = principal.getAttribute("memberId");
+    if (memberId == null) {
+      throw new IllegalArgumentException("memberId 속성을 확인할 수 없습니다.");
+    }
+    lottoService.addPurchasedRecords(memberId, request);
+    return ResponseEntity.ok().build();
   }
 }
