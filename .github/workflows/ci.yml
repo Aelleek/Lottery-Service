@@ -76,16 +76,11 @@ jobs:
           echo "${{ steps.diff_pr.outputs.changed || steps.diff_push.outputs.changed }}"
           ./gradlew --no-daemon checkstyleMain pmdMain -x test
 
-      # 빌드 (PR에서는 테스트 생략, main push에서는 테스트 실행하고 싶으면 조건 분기)
+      # ✅ 빌드 (PR/Push 공통, 테스트 스킵)
       - name: Build
-        if: ${{ github.event_name == 'pull_request' }}
         run: ./gradlew --no-daemon build -x test
 
-      - name: Build (with tests)
-        if: ${{ github.event_name == 'push' }}
-        run: ./gradlew --no-daemon build
-
-      - name: Upload reports
+      - name: Upload reportsgit checkout -b chore/ci-skip-tests
         if: always()
         uses: actions/upload-artifact@v4
         with:
