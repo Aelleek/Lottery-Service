@@ -272,7 +272,7 @@ GET /api/lotto/records HTTP/1.1
 
 ## 📄 License
 
-MIT 
+MIT
 
 ---
 
