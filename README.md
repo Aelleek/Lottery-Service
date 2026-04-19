@@ -9,9 +9,9 @@
 
 # Lottery Service
 
-> Spring Boot 기반 로또 번호 추천/구매 기록 서비스  
-> OAuth2 소셜 로그인(카카오/구글/네이버)을 지원하며,  
-> **로컬 개발 실행은 Docker Compose MySQL + `local` profile**,  
+> Spring Boot 기반 로또 번호 추천/구매 기록 서비스
+> OAuth2 소셜 로그인(카카오/구글/네이버)을 지원하며,
+> **로컬 개발 실행은 Docker Compose MySQL + `local` profile**,
 > **테스트는 H2 기반 `test` 환경**을 사용합니다.
 
 ---
@@ -203,7 +203,7 @@ spring:
 ./gradlew test                # 테스트 실행
 ```
 
-> 참고: 현재 테스트는 전부 green 상태가 아닐 수 있습니다.  
+> 참고: 현재 테스트는 전부 green 상태가 아닐 수 있습니다.
 > 로컬 실행과 API 스모크 테스트는 확인되었지만, 테스트 컨텍스트/OAuth2 관련 복구 작업이 별도로 필요합니다.
 
 ---
