@@ -43,3 +43,4 @@ out/
 
 # config 파일
 /config/oauth-client.yml
+/config/local-db.yml

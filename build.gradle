@@ -115,7 +115,7 @@ dependencies {
   developmentOnly 'org.springframework.boot:spring-boot-devtools'
 
   runtimeOnly 'com.mysql:mysql-connector-j'
-  runtimeOnly 'com.h2database:h2' // 임시 내장 DB
+  testRuntimeOnly 'com.h2database:h2' // 임시 내장 DB
 
   testImplementation 'org.springframework.boot:spring-boot-starter-test'
   testImplementation 'org.springframework.security:spring-security-test'
