@@ -59,7 +59,8 @@ public class SecurityConfig {
                         "/images/**",
                         "/webjars/**",
                         "/h2-console/**", // 개발용
-                        "/api/me" // 비로그인 상태에서도 호출
+                        "/api/me", // 비로그인 상태에서도 호출
+                        "/api/lotto/guests/recommendations" // 비회원용 추천 서비스
                         )
                     .permitAll()
                     .anyRequest()
