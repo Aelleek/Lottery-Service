@@ -30,7 +30,7 @@ spring:
             client-name: Test Provider
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-            scope:
+            scope:  
               - profile
         provider:
           test:
