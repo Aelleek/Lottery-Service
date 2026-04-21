@@ -14,32 +14,34 @@ import org.springframework.core.annotation.Order;
  * LottoValidationPipeline의 "오케스트레이션 책임"만 검증하는 테스트 클래스.
  *
  * <p>이 테스트 클래스의 역할:
+ *
  * <ul>
- *   <li>룰이 @Order 순서대로 실행되는지 검증한다.</li>
- *   <li>disabled 룰이 실행되지 않고 건너뛰어지는지 검증한다.</li>
- *   <li>첫 FAIL에서 short-circuit 되는지 검증한다.</li>
- *   <li>모든 활성 룰이 통과했을 때 PASS 결과가 조립되는지 검증한다.</li>
+ *   <li>룰이 @Order 순서대로 실행되는지 검증한다.
+ *   <li>disabled 룰이 실행되지 않고 건너뛰어지는지 검증한다.
+ *   <li>첫 FAIL에서 short-circuit 되는지 검증한다.
+ *   <li>모든 활성 룰이 통과했을 때 PASS 결과가 조립되는지 검증한다.
  * </ul>
  *
  * <p>중요:
+ *
  * <ul>
- *   <li>여기서는 실제 도메인 룰 구현(홀짝, 고저, 과거 1등 비교 등)을 검증하지 않는다.</li>
- *   <li>그건 각 Rule 단위 테스트의 책임이다.</li>
- *   <li>이 클래스는 파이프라인 자체의 제어 흐름과 결과 조립만 본다.</li>
+ *   <li>여기서는 실제 도메인 룰 구현(홀짝, 고저, 과거 1등 비교 등)을 검증하지 않는다.
+ *   <li>그건 각 Rule 단위 테스트의 책임이다.
+ *   <li>이 클래스는 파이프라인 자체의 제어 흐름과 결과 조립만 본다.
  * </ul>
  */
 class LottoValidationPipelineTest {
 
-  private static final LottoSet SAMPLE_SET =
-      new LottoSet(List.of(1, 2, 3, 4, 5, 6));
+  private static final LottoSet SAMPLE_SET = new LottoSet(List.of(1, 2, 3, 4, 5, 6));
 
   /**
    * @Order가 작은 룰부터 실행되어야 한다.
    *
    * <p>이 테스트가 보장하는 것:
+   *
    * <ul>
-   *   <li>생성자에 넣는 순서와 무관하게 @Order 기준으로 정렬된다.</li>
-   *   <li>executedRuleIds에도 실제 실행 순서가 반영된다.</li>
+   *   <li>생성자에 넣는 순서와 무관하게 @Order 기준으로 정렬된다.
+   *   <li>executedRuleIds에도 실제 실행 순서가 반영된다.
    * </ul>
    */
   @Test
@@ -53,8 +55,7 @@ class LottoValidationPipelineTest {
     LottoValidationRule rule2 = new SecondPassRule(callTrace);
 
     // 일부러 뒤섞인 순서로 넣는다.
-    LottoValidationPipeline pipeline =
-        new LottoValidationPipeline(List.of(rule3, rule1, rule2));
+    LottoValidationPipeline pipeline = new LottoValidationPipeline(List.of(rule3, rule1, rule2));
 
     // when
     LottoValidationResult result = pipeline.validate(SAMPLE_SET);
@@ -69,9 +70,10 @@ class LottoValidationPipelineTest {
    * enabled()가 false인 룰은 실행 대상에서 제외되어야 한다.
    *
    * <p>이 테스트가 보장하는 것:
+   *
    * <ul>
-   *   <li>disabled 룰은 validate(...)가 호출되지 않는다.</li>
-   *   <li>executedRuleIds에도 포함되지 않는다.</li>
+   *   <li>disabled 룰은 validate(...)가 호출되지 않는다.
+   *   <li>executedRuleIds에도 포함되지 않는다.
    * </ul>
    */
   @Test
@@ -102,10 +104,11 @@ class LottoValidationPipelineTest {
    * 첫 번째 FAIL이 발생하면 이후 룰은 실행되지 않아야 한다.
    *
    * <p>이 테스트가 보장하는 것:
+   *
    * <ul>
-   *   <li>실패한 룰 ID와 사유 코드가 결과에 들어간다.</li>
-   *   <li>그 이후 룰은 validate(...)가 호출되지 않는다.</li>
-   *   <li>executedRuleIds는 실패 지점까지만 기록된다.</li>
+   *   <li>실패한 룰 ID와 사유 코드가 결과에 들어간다.
+   *   <li>그 이후 룰은 validate(...)가 호출되지 않는다.
+   *   <li>executedRuleIds는 실패 지점까지만 기록된다.
    * </ul>
    */
   @Test
@@ -118,8 +121,7 @@ class LottoValidationPipelineTest {
     LottoValidationRule rule2 = new SecondFailRule(callTrace);
     LottoValidationRule rule3 = new ThirdPassRule(callTrace);
 
-    LottoValidationPipeline pipeline =
-        new LottoValidationPipeline(List.of(rule3, rule2, rule1));
+    LottoValidationPipeline pipeline = new LottoValidationPipeline(List.of(rule3, rule2, rule1));
 
     // when
     LottoValidationResult result = pipeline.validate(SAMPLE_SET);
@@ -137,9 +139,10 @@ class LottoValidationPipelineTest {
    * 모든 활성 룰이 통과하면 pass 결과를 반환해야 한다.
    *
    * <p>이 테스트가 보장하는 것:
+   *
    * <ul>
-   *   <li>failedRuleId, failedReasonCode는 null이다.</li>
-   *   <li>executedRuleIds에는 실행된 활성 룰들의 순서가 담긴다.</li>
+   *   <li>failedRuleId, failedReasonCode는 null이다.
+   *   <li>executedRuleIds에는 실행된 활성 룰들의 순서가 담긴다.
    * </ul>
    */
   @Test
@@ -152,8 +155,7 @@ class LottoValidationPipelineTest {
     LottoValidationRule rule2 = new SecondPassRule(callTrace);
     LottoValidationRule rule3 = new ThirdPassRule(callTrace);
 
-    LottoValidationPipeline pipeline =
-        new LottoValidationPipeline(List.of(rule2, rule3, rule1));
+    LottoValidationPipeline pipeline = new LottoValidationPipeline(List.of(rule2, rule3, rule1));
 
     // when
     LottoValidationResult result = pipeline.validate(SAMPLE_SET);

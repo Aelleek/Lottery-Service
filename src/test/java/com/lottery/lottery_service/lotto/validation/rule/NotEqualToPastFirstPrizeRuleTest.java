@@ -19,36 +19,37 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * NotEqualToPastFirstPrizeRule의 단위 테스트.
  *
  * <p>이 테스트 클래스의 역할:
+ *
  * <ul>
- *   <li>입력 번호 6개를 정렬 + 공백 조인 포맷으로 정규화하는지 검증한다.</li>
- *   <li>정규화 문자열이 캐시에 존재하면 FAIL(false) 하는지 검증한다.</li>
- *   <li>캐시에 없으면 PASS(true) 하는지 검증한다.</li>
- *   <li>입력 자체가 잘못되었을 때 예외를 던지는지 검증한다.</li>
+ *   <li>입력 번호 6개를 정렬 + 공백 조인 포맷으로 정규화하는지 검증한다.
+ *   <li>정규화 문자열이 캐시에 존재하면 FAIL(false) 하는지 검증한다.
+ *   <li>캐시에 없으면 PASS(true) 하는지 검증한다.
+ *   <li>입력 자체가 잘못되었을 때 예외를 던지는지 검증한다.
  * </ul>
  *
  * <p>중요:
+ *
  * <ul>
- *   <li>이 테스트는 실제 DB를 보지 않는다.</li>
- *   <li>이 테스트는 실제 캐시 로딩을 보지 않는다.</li>
- *   <li>캐시의 contains(normalized) 호출 계약만 검증한다.</li>
+ *   <li>이 테스트는 실제 DB를 보지 않는다.
+ *   <li>이 테스트는 실제 캐시 로딩을 보지 않는다.
+ *   <li>캐시의 contains(normalized) 호출 계약만 검증한다.
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
 class NotEqualToPastFirstPrizeRuleTest {
 
-  @Mock
-  private LottoWinnerDataCache cache;
+  @Mock private LottoWinnerDataCache cache;
 
-  @InjectMocks
-  private NotEqualToPastFirstPrizeRule rule;
+  @InjectMocks private NotEqualToPastFirstPrizeRule rule;
 
   /**
    * 과거 1등 번호와 동일하지 않으면 통과해야 한다.
    *
    * <p>이 테스트가 보장하는 것:
+   *
    * <ul>
-   *   <li>입력 번호가 정렬되어 "1 2 3 4 5 6" 형태로 정규화된다.</li>
-   *   <li>cache.contains(normalized)가 false면 validate(...)는 true를 반환한다.</li>
+   *   <li>입력 번호가 정렬되어 "1 2 3 4 5 6" 형태로 정규화된다.
+   *   <li>cache.contains(normalized)가 false면 validate(...)는 true를 반환한다.
    * </ul>
    */
   @Test
@@ -71,9 +72,10 @@ class NotEqualToPastFirstPrizeRuleTest {
    * 과거 1등 번호와 완전히 동일하면 실패해야 한다.
    *
    * <p>이 테스트가 보장하는 것:
+   *
    * <ul>
-   *   <li>입력 순서가 달라도 내부에서 정렬 후 비교한다.</li>
-   *   <li>cache.contains(normalized)가 true면 validate(...)는 false를 반환한다.</li>
+   *   <li>입력 순서가 달라도 내부에서 정렬 후 비교한다.
+   *   <li>cache.contains(normalized)가 true면 validate(...)는 false를 반환한다.
    * </ul>
    */
   @Test
@@ -96,9 +98,10 @@ class NotEqualToPastFirstPrizeRuleTest {
    * LottoSet의 숫자 개수가 6개가 아니면 예외를 던져야 한다.
    *
    * <p>이 테스트가 보장하는 것:
+   *
    * <ul>
-   *   <li>비정상 입력은 캐시 조회 전에 차단된다.</li>
-   *   <li>룰이 입력 방어 책임도 가지고 있음을 고정한다.</li>
+   *   <li>비정상 입력은 캐시 조회 전에 차단된다.
+   *   <li>룰이 입력 방어 책임도 가지고 있음을 고정한다.
    * </ul>
    */
   @Test
@@ -117,9 +120,10 @@ class NotEqualToPastFirstPrizeRuleTest {
    * numbers 자체가 null이면 예외를 던져야 한다.
    *
    * <p>이 테스트가 보장하는 것:
+   *
    * <ul>
-   *   <li>null 입력도 방어적으로 차단한다.</li>
-   *   <li>캐시 조회 전에 예외가 발생한다.</li>
+   *   <li>null 입력도 방어적으로 차단한다.
+   *   <li>캐시 조회 전에 예외가 발생한다.
    * </ul>
    */
   @Test
@@ -138,9 +142,10 @@ class NotEqualToPastFirstPrizeRuleTest {
    * 이 룰의 메타 정보도 같이 고정해 둔다.
    *
    * <p>이 테스트가 보장하는 것:
+   *
    * <ul>
-   *   <li>룰 ID가 파이프라인/로그/메트릭에서 기대하는 값과 일치한다.</li>
-   *   <li>실패 사유 코드가 현재 구현과 일치한다.</li>
+   *   <li>룰 ID가 파이프라인/로그/메트릭에서 기대하는 값과 일치한다.
+   *   <li>실패 사유 코드가 현재 구현과 일치한다.
    * </ul>
    */
   @Test

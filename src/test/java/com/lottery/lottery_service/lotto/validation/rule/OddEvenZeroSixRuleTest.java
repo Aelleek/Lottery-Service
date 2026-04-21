@@ -11,10 +11,11 @@ import org.junit.jupiter.api.Test;
  * OddEvenZeroSixRule의 단위 테스트.
  *
  * <p>이 룰의 책임:
+ *
  * <ul>
- *   <li>짝/홀 분포가 0:6 또는 6:0 같은 극단 패턴인지 검사한다.</li>
- *   <li>극단 패턴이면 false, 일반적인 혼합 분포면 true를 반환한다.</li>
- *   <li>잘못된 입력(null, 개수 불일치, 원소 null)도 false로 처리한다.</li>
+ *   <li>짝/홀 분포가 0:6 또는 6:0 같은 극단 패턴인지 검사한다.
+ *   <li>극단 패턴이면 false, 일반적인 혼합 분포면 true를 반환한다.
+ *   <li>잘못된 입력(null, 개수 불일치, 원소 null)도 false로 처리한다.
  * </ul>
  */
 class OddEvenZeroSixRuleTest {

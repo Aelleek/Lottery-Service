@@ -11,10 +11,11 @@ import org.junit.jupiter.api.Test;
  * LowHighZeroSixRule의 단위 테스트.
  *
  * <p>이 룰의 책임:
+ *
  * <ul>
- *   <li>1~22를 low, 23~45를 high로 나눈다.</li>
- *   <li>low:high 분포가 0:6 또는 6:0 같은 극단 패턴이면 false를 반환한다.</li>
- *   <li>잘못된 입력(null, 개수 불일치, 원소 null)도 false로 처리한다.</li>
+ *   <li>1~22를 low, 23~45를 high로 나눈다.
+ *   <li>low:high 분포가 0:6 또는 6:0 같은 극단 패턴이면 false를 반환한다.
+ *   <li>잘못된 입력(null, 개수 불일치, 원소 null)도 false로 처리한다.
  * </ul>
  */
 class LowHighZeroSixRuleTest {
@@ -51,9 +52,7 @@ class LowHighZeroSixRuleTest {
     assertThat(rule.validate(allHigh)).isFalse();
   }
 
-  /**
-   * 룰 메타데이터를 고정한다.
-   */
+  /** 룰 메타데이터를 고정한다. */
   @Test
   @DisplayName("룰 ID와 실패 사유 코드를 반환한다")
   void metadata_returnsExpectedIdentifiers() {

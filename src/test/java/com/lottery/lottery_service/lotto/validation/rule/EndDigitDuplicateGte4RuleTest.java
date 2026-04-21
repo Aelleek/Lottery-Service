@@ -11,11 +11,12 @@ import org.junit.jupiter.api.Test;
  * EndDigitDuplicateGte4Rule의 단위 테스트.
  *
  * <p>이 룰의 책임:
+ *
  * <ul>
- *   <li>번호 6개의 끝자리(1의 자리)를 센다.</li>
- *   <li>같은 끝자리가 4개 이상이면 false를 반환한다.</li>
- *   <li>그 미만이면 true를 반환한다.</li>
- *   <li>입력이 비정상이면 false를 반환한다.</li>
+ *   <li>번호 6개의 끝자리(1의 자리)를 센다.
+ *   <li>같은 끝자리가 4개 이상이면 false를 반환한다.
+ *   <li>그 미만이면 true를 반환한다.
+ *   <li>입력이 비정상이면 false를 반환한다.
  * </ul>
  */
 class EndDigitDuplicateGte4RuleTest {
@@ -54,9 +55,7 @@ class EndDigitDuplicateGte4RuleTest {
     assertThat(result).isFalse();
   }
 
-  /**
-   * 룰 식별자와 실패 사유 코드를 고정한다.
-   */
+  /** 룰 식별자와 실패 사유 코드를 고정한다. */
   @Test
   @DisplayName("룰 ID와 실패 사유 코드를 반환한다")
   void metadata_returnsExpectedIdentifiers() {
