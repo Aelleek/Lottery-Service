@@ -79,7 +79,7 @@ class LottoWinnerDataCacheTest {
     cache.add("9 10 11 12 13 14");
 
     given(repo.findAll()).willReturn(List.of(round1111, round1112));
-
+    
     // when
     cache.reloadAll();
 

@@ -33,18 +33,21 @@ public class ArithmeticComplexityMax6Rule implements LottoValidationRule {
     List<Integer> nums = set.getNumbers();
     if (nums == null || nums.size() != 6) return false;
 
-    nums.sort(Integer::compareTo);
+    List<Integer> sorted = new ArrayList<>(nums);
+    sorted.sort(Integer::compareTo);
+
     Set<Integer> diffs = new HashSet<>();
     for (int i = 0; i < 6; i++) {
-      Integer ai = nums.get(i);
+      Integer ai = sorted.get(i);
       if (ai == null) return false;
       for (int j = i + 1; j < 6; j++) {
-        Integer aj = nums.get(j);
+        Integer aj = sorted.get(j);
         if (aj == null) return false;
         diffs.add(aj - ai);
       }
     }
+
     int ac = diffs.size();
-    return ac > 6; // AC≤6이면 FAIL
+    return ac > 6; // AC <= 6 이면 FAIL
   }
 }
