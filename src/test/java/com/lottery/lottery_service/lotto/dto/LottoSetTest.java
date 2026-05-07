@@ -7,9 +7,7 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/**
- * LottoSet 불변식 테스트.
- */
+/** LottoSet 불변식 테스트. */
 class LottoSetTest {
 
   @Test
