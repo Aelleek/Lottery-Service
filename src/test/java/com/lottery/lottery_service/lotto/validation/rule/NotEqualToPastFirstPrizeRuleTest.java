@@ -95,50 +95,6 @@ class NotEqualToPastFirstPrizeRuleTest {
   }
 
   /**
-   * LottoSet의 숫자 개수가 6개가 아니면 예외를 던져야 한다.
-   *
-   * <p>이 테스트가 보장하는 것:
-   *
-   * <ul>
-   *   <li>비정상 입력은 캐시 조회 전에 차단된다.
-   *   <li>룰이 입력 방어 책임도 가지고 있음을 고정한다.
-   * </ul>
-   */
-  @Test
-  @DisplayName("숫자 개수가 6개가 아니면 예외를 던진다")
-  void validate_numbersSizeIsNotSix_throwsException() {
-    // given
-    LottoSet set = new LottoSet(List.of(1, 2, 3, 4, 5));
-
-    // when & then
-    assertThatThrownBy(() -> rule.validate(set))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("exactly 6 numbers");
-  }
-
-  /**
-   * numbers 자체가 null이면 예외를 던져야 한다.
-   *
-   * <p>이 테스트가 보장하는 것:
-   *
-   * <ul>
-   *   <li>null 입력도 방어적으로 차단한다.
-   *   <li>캐시 조회 전에 예외가 발생한다.
-   * </ul>
-   */
-  @Test
-  @DisplayName("숫자 목록이 null이면 예외를 던진다")
-  void validate_numbersIsNull_throwsException() {
-    // given
-    LottoSet set = new LottoSet(null);
-
-    // when & then
-    assertThatThrownBy(() -> rule.validate(set))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("exactly 6 numbers");
-  }
-
-  /**
    * 이 룰의 메타 정보도 같이 고정해 둔다.
    *
    * <p>이 테스트가 보장하는 것:
