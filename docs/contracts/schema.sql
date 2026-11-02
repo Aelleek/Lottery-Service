@@ -13,7 +13,7 @@ CREATE TABLE member (
   auth_version BIGINT NOT NULL DEFAULT 0,
   created_at DATETIME(6) NOT NULL,
   withdrawn_at DATETIME(6) NULL,
-  CONSTRAINT ck_member_0 CHECK (state IN ('ACTIVE','SUSPENDED','WITHDRAWING','WITHDRAWN'))
+  CONSTRAINT ck_member_0 CHECK (state IN ('ACTIVE','WITHDRAWING','WITHDRAWN'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 이메일 대신 제공자 식별자로 계정을 구분한다.
@@ -71,6 +71,9 @@ CREATE TABLE subject_claim (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 판매 일정과 결과 수집을 독립 관리한다.
+-- publication_version은 published_result_id가 바뀔 때마다 1씩 늘어난다. 승인·직접 등록 요청은 화면이 본 값을 함께 보내고, 다르면 거부한다.
+-- draw_result.revision은 결과 행의 회차 안 순번이라 이 값과 다르다.
+-- notification_plan_closed_at의 설정 조건은 ../05-flows.md 8.7.
 CREATE TABLE lotto_round (
   round_no INT NOT NULL PRIMARY KEY,
   sales_open_at DATETIME(6) NOT NULL,
@@ -216,8 +219,10 @@ CREATE TABLE history_import_item (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 공식 번호의 의미가 바뀌면 기존 행을 덮지 않고 새 버전을 만든다.
+-- source=MANUAL은 결과 API가 결과를 주지 않아 ADMIN이 직접 등록한 결과다(D-034). 나중에 API 결과가 같으면 api_confirmed_at을 채운다.
 CREATE TABLE draw_result (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  public_id BINARY(16) NOT NULL UNIQUE,
   round_no INT NOT NULL,
   revision BIGINT NOT NULL,
   numbers_key CHAR(17) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -225,13 +230,19 @@ CREATE TABLE draw_result (
   semantic_hash BINARY(32) NOT NULL,
   source_hash BINARY(32) NOT NULL,
   state VARCHAR(20) NOT NULL,
+  source VARCHAR(16) NOT NULL DEFAULT 'API',
+  registered_by_member_id BIGINT NULL,
+  api_confirmed_at DATETIME(6) NULL,
   fetched_at DATETIME(6) NOT NULL,
   published_at DATETIME(6) NULL,
   UNIQUE KEY uq_result_revision (round_no, revision),
   UNIQUE KEY uq_result_round (id, round_no),
   CONSTRAINT fk_draw_result_0 FOREIGN KEY (round_no) REFERENCES lotto_round (round_no),
   CONSTRAINT ck_draw_result_0 CHECK (state IN ('VERIFIED','QUARANTINED','SUPERSEDED')),
-  CONSTRAINT ck_draw_result_1 CHECK (bonus_number BETWEEN 1 AND 45)
+  CONSTRAINT ck_draw_result_1 CHECK (bonus_number BETWEEN 1 AND 45),
+  CONSTRAINT fk_draw_result_1 FOREIGN KEY (registered_by_member_id) REFERENCES member (id),
+  CONSTRAINT ck_draw_result_2 CHECK (source IN ('API','MANUAL')),
+  CONSTRAINT ck_draw_result_3 CHECK ((source='API' AND registered_by_member_id IS NULL) OR (source='MANUAL' AND registered_by_member_id IS NOT NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 ALTER TABLE lotto_round ADD CONSTRAINT fk_round_published FOREIGN KEY (published_result_id, round_no) REFERENCES draw_result (id, round_no);

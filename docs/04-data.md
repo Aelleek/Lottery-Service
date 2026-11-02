@@ -32,46 +32,46 @@
 
 | 묶음 | 테이블 | 하는 일 | 꼭 지키는 규칙 |
 |---|---|---|---|
-| 회원과 주체 | `member` | 회원. 개인정보 컬럼이 없다 | 상태: ACTIVE, SUSPENDED, WITHDRAWING, WITHDRAWN |
+| 회원과 주체 | `member` | 회원. 개인정보 컬럼이 없다 | 상태: ACTIVE, WITHDRAWING(탈퇴 처리 중), WITHDRAWN(묘비) |
 | | `oauth_account` | 소셜 계정 연결 | (제공자, 제공자 사용자 ID) 유일. 이메일은 신원 키가 아니다 |
-| | `actor_subject` | 회원과 비회원을 같은 "주체"로 다룬다. 기록 변경의 잠금 기준 | 회원 주체는 ACTIVE, WITHDRAWING, WITHDRAWN만, 비회원 주체는 ACTIVE, CLAIMED만 가진다 |
+| | `actor_subject` | 회원과 비회원을 같은 "주체"로 다룬다. 기록 변경의 잠금 기준. `generation_lease_until`은 주체당 동시에 하나만 추천을 생성하게 하는 lease, `generation_fence`는 늦게 끝난 생성의 저장을 거부하는 번호, `next_generation_at`은 다음 추천이 가능한 시각 | 회원 주체는 ACTIVE, WITHDRAWING, WITHDRAWN만, 비회원 주체는 ACTIVE, CLAIMED(귀속됨)만 가진다 |
 | | `guest_credential` | 비회원 자격 | 쿠키 원문은 저장하지 않고 해시만 둔다 |
 | | `subject_claim` | 비회원 자료를 회원에게 귀속 | 비회원 주체 하나는 한 번만 귀속. `imported_at`이 비었으면 귀속만 되고 아직 가져오지 않은 상태 |
-| 회차 | `lotto_round` | 판매 개시·마감·추첨 시각, 일정 버전, 게시된 결과, 마감 봉인 상태, 알림 계획 완료 시각 | 게시된 결과의 정본은 `published_result_id` |
-| 명령 | `command_operation` | 같은 요청을 다시 받으면 처음 결과를 돌려주기 위한 기록 | (주체, 명령, 토큰 ID, 클라이언트 키) 유일 |
+| 회차 | `lotto_round` | 판매 개시·마감·추첨 시각, 일정 버전, 게시된 결과, 게시 버전, 마감 봉인 상태, 알림 계획 완료 시각 | 게시된 결과의 정본은 `published_result_id`. 게시 버전(`publication_version`)은 게시 결과가 바뀔 때마다 1 오르고 승인·직접 등록의 충돌 검사에 쓴다. 봉인 상태: OPEN, SEALED. 알림 계획 완료 조건은 [05 8.7](05-flows.md#87-알림-계획-완료) |
+| 명령 | `command_operation` | 같은 요청을 다시 받으면 처음 결과를 돌려주기 위한 기록 | (주체, 명령, 토큰 ID, 클라이언트 키) 유일. 상태: PROCESSING, SUCCEEDED, RETRYABLE, FAILED, EXPIRED |
 | 추천 | `recommendation_request` | 성공한 추천 요청 하나. 생성 방식과 필터 버전을 함께 기록 | 기본 추천은 필터 버전 필수, 조건 추천은 필터 버전 없음 |
 | | `recommendation_item` | 그 요청의 5세트 | 요청당 정확히 5개, 서로 다른 조합 |
 | | `recommendation_seen` | 같은 회차에 이미 추천한 조합 | (주체, 회차, 조합) 유일. 화면 기록과 독립 |
 | 기록 | `lotto_record` | 사용자에게 보이는 번호 기록 | (주체, 회차, 조합) 유일. 추천 이력은 `recommended_at`, 구매는 `purchased`로 따로 표시 |
 | | `record_transition` | 기록의 모든 변경 이력. 최초 생성 포함 | (기록, 버전) 유일. 변경 **후** 상태만 저장하고, 변경 전 상태는 직전 버전 행에서 읽는다 |
 | | `history_import_item` | 비회원 기록 가져오기의 항목별 결과 | (귀속, 원본 기록) 유일. 재실행이 사용자가 지운 기록을 되살리지 않게 한다 |
-| 결과와 판정 | `draw_result` | 회차 공식 결과의 게시본 | (회차, 게시본 번호) 유일. 의미가 같은 결과는 새 게시본을 만들지 않는다 |
+| 결과와 판정 | `draw_result` | 회차 공식 결과의 게시본. 결과 API로 받았거나 ADMIN이 직접 등록한 것(`source`) | (회차, 게시본 번호) 유일. 의미가 같은 결과는 새 게시본을 만들지 않는다. 외부 ID가 있다. 상태: VERIFIED(검증을 통과함. 게시 여부는 회차의 `published_result_id`), QUARANTINED(게시본과 달라 승인 대기), SUPERSEDED(새 게시본으로 대체됨) |
 | | `draw_prize` | 등수별 1게임 금액과 당첨자 수 | 모르는 값은 NULL |
 | | `winning_evaluation` | 기록별 판정 | (기록, 게시본, 기록 버전) 유일. 행이 없으면 판정 대기, `rank_no`가 NULL이면 낙첨 |
-| | `evaluation_run` | 게시본별 판정 작업의 진행 위치 | 새 게시본이 나오면 이전 작업은 SUPERSEDED |
+| | `evaluation_run` | 게시본별 판정 작업의 진행 위치 | 상태: READY, RUNNING, SUCCEEDED, SUPERSEDED(새 게시본이 나와 중단), FAILED |
 | 연락처와 동의 | `member_contact` | 암호화한 수신 번호 | 번호를 바꿀 때마다 버전 증가 |
-| | `verification_challenge` | 인증 코드 요청 | 코드는 HMAC으로만 저장. 시도 5회 |
+| | `verification_challenge` | 인증 코드 요청 | 코드는 HMAC으로만 저장. 시도 상한은 [02 6.4](02-policies.md#64-수신-번호와-동의). 상태: ACTIVE, CONSUMED(사용함), EXPIRED, REVOKED(재발급으로 무효), LOCKED(시도 초과) |
 | | `verification_rate_bucket` | 계정별·번호별 하루 발송 횟수 | 번호 원문 대신 HMAC |
 | | `consent_event` | 동의와 철회 이력 | 재동의를 이전 동의와 구분 |
 | | `notification_preference` | 현재 수신 설정 | 현재 인증된 번호 버전과 동의에 묶인다 |
-| 알림 계획 | `notification_cycle` | 회원·회차별 알림 묶음 | (회원, 회차, 채널) 유일. 대상 0건도 완료 행을 남긴다 |
+| 알림 계획 | `notification_cycle` | 회원·회차별 알림 묶음 | (회원, 회차, 채널) 유일. 대상 0건도 완료 행을 남긴다. 상태: WAITING_EVALUATION(마감 대상의 판정 대기), PLANNED(보낼 알림이 있음), NO_TARGET(대상 없음으로 완료), CLOSED(회차 알림 계획 완료) |
 | | `notification_cutoff_item` | 판매 마감 시점의 대상 기록 | 마감 때 그 회원에게 속한 기록만 |
-| | `notification_intent` | 기본 알림 1건과 정정 알림 | 기본은 회차당 하나(순번 0), 정정은 이전 안내를 가리킨다 |
+| | `notification_intent` | 기본 알림 1건과 정정 알림 | 기본은 회차당 하나(순번 0), 정정은 이전 안내를 가리킨다. 정정으로 처음 대상이 된 회원은 기본 intent가 정정 뒤에 생길 수 있다([05 8.5](05-flows.md#85-정정-알림)) |
 | | `notification_item` | 알림에 담긴 기록별 등수와 금액 | — |
 | | `notification_communicated_fact` | 기록별로 마지막으로 접수된 안내 사실 | 본문이 정리된 뒤에도 정정 비교에 쓴다. 번호·전화번호는 복제하지 않는다 |
 | 발송 | `delivery_message` | 실제로 보낼 메시지 하나. 결과 알림 또는 인증 코드 | 목적에 맞는 참조가 정확히 하나. 상태는 [05 8](05-flows.md#8-알림-발송) |
 | | `delivery_attempt` | 제공자 호출 시도 | (메시지, 시도 번호) 유일 |
-| | `provider_callback` | 제공자 콜백 | (제공자, 이벤트 ID) 유일. 서명 검증을 통과한 것만 |
+| | `provider_callback` | 제공자 콜백 | (제공자, 이벤트 ID) 유일. 서명 검증을 통과한 것만. 상태: UNMATCHED(메시지를 아직 못 찾음), PENDING(메시지를 찾았고 반영 전), PROCESSED. 이 PENDING은 메시지의 PENDING과 다르다 |
 | | `message_budget` | 월 예산 | 0.1원 단위 정수. 예약과 확인 중 비용도 상한에 포함 |
-| | `budget_reservation` | 메시지별 비용 예약 | 메시지당 하나. 분류는 기본·정정·인증 |
+| | `budget_reservation` | 메시지별 비용 예약 | 메시지당 하나. 분류는 기본·정정·인증. 상태: RESERVED, ACCEPTED(확정 사용), RELEASED(확정 미접수로 반환), UNKNOWN(확인 중 비용) |
 | 비동기 작업 | `outbox_event` | 업무 저장과 함께 기록한 후속 사건 | 사건 ID 유일. 번호·전화번호를 payload에 넣지 않는다 |
-| | `job` | worker가 처리할 일. 발송 슬롯과 운영자 알림도 job이다 | (종류, 중복 키) 유일. 마지막 오류 코드를 남긴다 |
+| | `job` | worker가 처리할 일. 발송 슬롯과 운영자 알림도 job이다 | (종류, 중복 키) 유일. 마지막 오류 코드를 남긴다. 상태: READY, RUNNING(lease 보유), SUCCEEDED, RETRY_WAIT(다음 시도 시각까지 대기), DEAD(시도 상한 초과, 운영자 확인 필요), CANCELED. job의 RETRY_WAIT는 메시지의 RETRY_WAIT와 다른 상태다. lease 회수는 [03 4](03-architecture.md#4-비동기-처리) |
 | | `consumer_receipt` | 소비자별로 처리한 사건 | (소비자, 사건 ID) 유일 |
 | 통계 | `usage_event` | 활동 원천 이벤트 | 번호·연락처 없음 |
 | | `usage_aggregate` | 일·월·회차 집계 | 개인 차원 없음. 기간 만료 없음 |
 | | `period_membership` | 기간별 고유 이용자 계산용 | (기간, 주체) 유일 |
-| | `aggregate_seal` | 범위별 집계 완료 증거 | 날짜가 지났다는 이유만으로 완료로 보지 않는다 |
-| 탈퇴 | `account_deletion` | 접근 차단, 삭제 기록 저장, 실제 삭제 완료를 구분해 추적 | — |
+| | `aggregate_seal` | 범위별 집계 완료 증거 | 날짜가 지났다는 이유만으로 완료로 보지 않는다. 상태: BUILDING, VERIFIED(원천과 대조를 마침), FAILED |
+| 탈퇴 | `account_deletion` | 접근 차단, 삭제 기록 저장, 실제 삭제 완료를 구분해 추적 | 상태: BLOCKED, JOURNAL_PENDING, DELETING, COMPLETE, FAILED. 순서는 6.2 |
 | 관리자 | `admin_grant` | 관리자 권한 | 역할: OPERATOR, ADMIN |
 | | `admin_audit_event` | 관리자 변경 감사 기록 | 대상, 사유, 전후 값, 결과. 비밀값과 개인정보 원문 제외 |
 
@@ -99,7 +99,7 @@
 - 정리 worker는 하루 한 번 돈다([07 1](07-operations.md#1-작업-일정)). 주체 → 회차 → 기록 순서로 잠근 뒤, 현재 구매 상태, 최신 게시본 판정, 보호 조건을 다시 확인하고 지운다.
 - 보호 조건: 판정이 안 끝났거나, 정정 후보가 격리돼 있거나(`lotto_round.cleanup_held`), 해당 범위의 집계가 끝나지 않았으면 지우지 않는다.
 - 정리 단위는 **주체·회차**다. 한 주체의 한 회차에서 보관 기간이 지난 낙첨 기록을 지울 때, 그 회차의 추천 이력과 추천 요청·항목도 함께 지운다. 당첨이나 구매 기록은 남고, 기록 자체가 번호를 가지므로 추천 항목이 없어도 된다. 예를 들어 5세트 중 1세트가 4등이면 그 1개 기록만 남고 나머지 4개와 요청·항목·이력은 지워진다.
-- 사용자가 지운 직접 등록 기록은 `deleted_at`으로 먼저 숨긴다. 실제 삭제는 그 회차의 알림 계획이 끝나고(`notification_plan_closed_at`), 그 기록을 가리키는 가져오기·멱등 기록이 모두 만료된 뒤에 한다.
+- 사용자가 지운 직접 등록 기록은 `deleted_at`으로 먼저 숨긴다. 실제 삭제는 그 회차의 알림 계획이 끝나고(`notification_plan_closed_at`, [05 8.7](05-flows.md#87-알림-계획-완료)), 그 기록을 가리키는 가져오기·멱등 기록이 모두 만료된 뒤에 한다.
 - 오래 정리되지 못한 데이터는 운영 문제로 보고 운영자에게 알린다. 몰래 영구 보관하지 않는다.
 
 ## 6. 삭제 순서
