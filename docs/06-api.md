@@ -39,7 +39,7 @@
 | `GET /guest/lotto/records` | 비회원의 보존 중인 본인 추천 | 회원 API와 같은 회차·페이지 규칙. 귀속된 뒤에는 비회원 자격으로 회원 자료를 볼 수 없다 |
 | `GET /operations/{id}` | 이전 명령의 처리 결과 | 404 타인, 410 원본 만료 |
 | `GET /me/lotto/records` | 내 기록. 회차·구매 여부·등수 필터, 10개씩 cursor | 아래 2.1 |
-| `POST /me/lotto/purchases` | 구매 등록. 한 회차, 최대 100세트 | 전부 검증 후 한 번에 저장. 입력별 오류 위치를 준다 |
+| `POST /me/lotto/purchases` | 구매 등록. 한 회차, 최대 100세트 | 전부 검증 후 한 번에 저장. 입력별 오류 위치를 준다. 판매 마감 뒤 등록이면 결과에 그 사실을 담아 화면이 알림 제외를 안내한다 |
 | `POST /me/lotto/records/{id}/cancel-purchase` | 구매 등록 취소 또는 직접 등록 기록 삭제 | 409 `VERSION_CONFLICT`면 다시 조회. 추천·직접 등록에 맞는 확인 문구를 쓴다 |
 | `GET /lotto/rounds/{round}/result` | 회차 결과, 게시본, 등수별 금액, 확인 시각 | 미발표, 수집 지연, 잘못된 원천을 구분한다 |
 | `POST /lotto/check` | 저장 없는 즉시 확인. 최대 5세트 | 입력 번호를 로그나 통계에 남기지 않는다 |
@@ -78,7 +78,7 @@ Spring Security OAuth2 기본 경로를 쓴다. `/api/v1` 밖이다.
 | `GET /admin/rounds/{round}/notification-status` | 회차 알림 현황. 슬롯별 결과와 원인, 상태별 메시지 수 | OPERATOR 이상 |
 | `POST /admin/rounds/{round}/notification-dispatches` | 수동 다시 보내기. 기본 알림과 정정 알림 모두. 기한은 [02 6.2](02-policies.md#62-발송-시각과-재시도), [02 6.3](02-policies.md#63-정정-알림). 사유 필수, `Idempotency-Key` 필요 | OPERATOR 이상 |
 | `POST /admin/draw-results/{resultId}/publication` | 격리된 공식 결과를 새 게시본으로 승인. 현재 게시 버전(`lotto_round.publication_version`)과 사유 필수 | ADMIN |
-| `POST /admin/rounds/{round}/draw-results` | 결과 API가 주지 않는 회차의 결과 직접 등록(D-034). 조건은 [02 5](02-policies.md#5-결과와-판정). 사유, 최근 5분 재인증 필수 | ADMIN |
+| `POST /admin/rounds/{round}/draw-results` | 결과 API가 주지 않는 회차의 결과 직접 등록(D-034). 조건은 [02 5](02-policies.md#5-결과와-판정). 사유, 최근 5분 재인증, 현재 게시 버전 필수. 이미 게시됐으면 409 `RESULT_ALREADY_PUBLISHED`, 그 밖에 게시 버전이 다르면 409 `VERSION_CONFLICT` | ADMIN |
 | `GET /admin/stats/daily` | 기간별 기본 지표 | OPERATOR 이상 |
 | `GET /admin/stats/rounds/{round}` | 회차별 기본 지표 | OPERATOR 이상 |
 

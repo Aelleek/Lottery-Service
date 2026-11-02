@@ -694,7 +694,7 @@ paths:
       operationId: registerManualResult
       summary: 결과 직접 등록
       description: 결과 API가 회차 결과를 주지 않을 때 ADMIN이 공식 발표를 보고 결과를 등록한다(D-034). 그 회차에 게시된 결과가 있으면 409 RESULT_ALREADY_PUBLISHED,
-        추첨 전이면 409 DRAW_NOT_FINISHED. 등록하면 게시·판정·알림이 API 결과와 같이 진행된다. 등록 조건과 뒤처리는 ../02-policies.md 5.
+        추첨 전이면 409 DRAW_NOT_FINISHED, 그 밖에 게시 버전이 다르면 409 VERSION_CONFLICT. 등록하면 게시·판정·알림이 API 결과와 같이 진행된다. 등록 조건과 뒤처리는 ../02-policies.md 5.
       security:
       - AdminSession: []
       parameters:
@@ -824,7 +824,7 @@ components:
         type: string
         description: ''
         maxLength: 4096
-      description: 현재 회원/세션/행동에 묶인 최근 재인증 증거. 유효 시간은 ../02-policies.md 7.2, 발급 방식은 ../08-delivery.md 6에서 정한다.
+      description: 현재 회원/세션/행동에 묶인 최근 재인증 증거. 유효 시간은 ../02-policies.md 5, 7.2, 발급 방식은 ../08-delivery.md 6에서 정한다.
     recordId:
       name: recordId
       in: path
@@ -1390,9 +1390,13 @@ components:
             $ref: '#/components/schemas/PurchaseItemResult'
           minItems: 1
           maxItems: 100
+        lateRegistration:
+          type: boolean
+          description: 판매 마감 뒤 등록이라 이 회차 알림톡 대상이 아니면 true. 화면은 이를 안내한다.
       required:
       - round
       - items
+      - lateRegistration
       description: 입력 항목별 결과를 돌려주며 한 회차 저장은 전부 성공하거나 전부 실패한다.
     VersionInput:
       type: object
