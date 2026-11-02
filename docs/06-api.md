@@ -1,0 +1,88 @@
+# 06 API
+
+요청·응답 필드의 정본은 [contracts/openapi.yaml](contracts/openapi.yaml)이다. 이 문서는 공통 규칙과 API별 동작, 실패했을 때 화면이 할 일을 설명한다.
+
+## 1. 공통 규칙
+
+- 새 API는 `/api/v1` 아래에 둔다. 아래 경로는 이 접두어를 뺀 것이다.
+- 주체는 로그인 세션이나 비회원 쿠키에서 구한다. 본문의 회원 ID를 믿지 않는다.
+- 쿠키 인증을 쓰므로 변경 요청은 `X-CSRF-TOKEN` 헤더가 필요하다.
+- 시각은 오프셋이 있는 ISO-8601, 번호는 `[1,2,3,4,5,6]` 같은 정수 배열, 버전은 십진 문자열이다.
+- 금액은 1게임 기준이다. 실제 구매 수량이나 총 수령액으로 표시하지 않는다.
+- 명령 응답은 `operationId, status, data, serverTime`이다. 오류는 `code, message, retryable, requestId, details`다. `details`에는 입력 위치나 재시도 시각 같은 안전한 정보만 넣는다.
+- 다른 회원의 자원은 존재 여부도 알 수 없게 404로 답한다.
+- 조회 실패를 빈 목록으로 바꾸지 않는다. 429와 503에는 `Retry-After`를 준다. 브라우저는 입력 내용을 유지한다.
+
+### 1.1 같은 요청의 반복
+
+번호 저장은 성공했는데 화면이 응답을 못 받는 일이 생긴다. 이때 같은 요청이라는 것을 알아보고 처음 결과를 돌려준다.
+
+- 변경 요청은 `Idempotency-Key`(UUID)와 서버가 서명한 명령 토큰(`X-Command-Token`)을 함께 보낸다.
+- 명령 토큰은 주체, 명령 종류, 발급 시각, 만료 시각(발급 후 24시간)을 묶는다. 추천은 회차와 일정 버전도 묶는다. 민감한 원문은 넣지 않는다.
+- 같은 사용자 행동을 다시 시도할 때는 같은 토큰, 같은 키, 같은 본문을 쓴다. 화면이 자동 재시도마다 새 키를 만들지 않는다.
+- 같은 키에 다른 본문이 오면 409 `IDEMPOTENCY_CONFLICT`다.
+- 처리 중인 같은 키는 202 `PROCESSING`과 조회 경로(`GET /operations/{id}`)를 준다.
+- 완료된 요청을 다시 받으면 현재 소유권과 원본 보관 상태를 확인한 뒤 처음 결과를 준다. 추천 원본이 이미 지워졌으면 410 `RESPONSE_EXPIRED`다. 새 번호를 만들거나 지난 결과를 되살리지 않는다.
+- 토큰이 만료됐고 완료 결과도 복구할 수 없으면 410 `COMMAND_EXPIRED`다. 새 행동은 새 토큰과 새 키로 한다.
+- 멱등 기록은 토큰 만료 후 7일까지 둔다. 다만 원본보다 오래 남기지 않는다. 탈퇴하면 개인 연결을 지운다.
+
+## 2. 사용자 API
+
+| API | 하는 일 | 주요 실패와 화면 동작 |
+|---|---|---|
+| `GET /lotto/context` | 현재 회차, 일정 버전, 추천 가능 여부, 다음 개시 시각 | 일정 미확인은 503. 결과 수집 지연과는 별개 |
+| `POST /guest-credentials` | 비회원 자격 발급. 쿠키와 CSRF 토큰을 준다 | Origin·Fetch Metadata 검사 실패 403, 발급 속도 초과 429. 회원 세션 중이면 발급하지 않는다 |
+| `POST /command-tokens` | 명령 토큰 발급 | 허용되지 않은 명령 403. 발급 자체는 업무 실행이 아니다 |
+| `POST /lotto/recommendations` | 5세트 추천. 넣을 번호·뺄 번호는 비우면 기본 추천 | 409 회차 변경·후보 부족, 422 조건 오류, 429 생성 중·간격, 503 계산 지연 |
+| `GET /guest/lotto/records` | 비회원의 보존 중인 본인 추천 | 회원 API와 같은 회차·페이지 규칙. 귀속된 뒤에는 비회원 자격으로 회원 자료를 볼 수 없다 |
+| `GET /operations/{id}` | 이전 명령의 처리 결과 | 404 타인, 410 원본 만료 |
+| `GET /me/lotto/records` | 내 기록. 회차·구매 여부·등수 필터, 10개씩 cursor | 아래 2.1 |
+| `POST /me/lotto/purchases` | 구매 등록. 한 회차, 최대 100세트 | 전부 검증 후 한 번에 저장. 입력별 오류 위치를 준다 |
+| `POST /me/lotto/records/{id}/cancel-purchase` | 구매 등록 취소 또는 직접 등록 기록 삭제 | 409 `VERSION_CONFLICT`면 다시 조회. 추천·직접 등록에 맞는 확인 문구를 쓴다 |
+| `GET /lotto/rounds/{round}/result` | 회차 결과, 게시본, 등수별 금액, 확인 시각 | 미발표, 수집 지연, 잘못된 원천을 구분한다 |
+| `POST /lotto/check` | 저장 없는 즉시 확인. 최대 5세트 | 입력 번호를 로그나 통계에 남기지 않는다 |
+| `POST /me/guest-claims/{id}/imports` | 비회원 기록 가져오기 | 202와 진행 상태. 다른 계정에 귀속됐거나 만료된 자료는 가져올 수 없다 |
+| `POST /me/notification-verifications` | 수신 번호 인증 코드 발송 | 60초 간격·하루 5회 초과 429. 실패해도 사이트는 그대로 쓴다 |
+| `POST /me/notification-verifications/{id}/verify` | 인증 코드 확인 | 만료 410, 시도 초과 429, 연락처 버전이 바뀌었으면 409 |
+| `GET`, `PUT /me/notification-preference` | 알림 수신 설정 조회와 변경 | 켜려면 현재 번호 인증이 필요하다. 끄면 새 발송을 바로 막는다 |
+| `DELETE /me/account` | 탈퇴 | 최근 5분 재인증이 없으면 403. 202로 삭제 접수 |
+
+### 2.1 내역 조회
+
+- 기본(필터 없음, 현재 회차) 조회가 0건이면 `emptyReason=NO_CURRENT_RECORDS`다. 화면은 이것을 보고 추천 화면으로 옮긴다. HTTP 리디렉션이 아니다.
+- 필터 결과 0건은 `NO_MATCH`, 사용자가 고른 과거 회차 0건은 `NO_RECORDS`다. 둘 다 이동하지 않는다.
+- cursor는 (회차, ID)와 필터 해시를 서명한 값이다. 변조하거나 다른 필터에 재사용할 수 없다.
+- 첫 페이지 시점을 기준으로 이어서 보여주므로, 새 기록이 생겨도 페이지가 흔들리지 않는다. 다만 수정·삭제까지 과거 시점으로 고정하지는 않는다.
+- 등수 필터에서 최신 판정이 없는 기록은 낙첨에 넣지 않는다.
+
+## 3. 로그인 경로
+
+Spring Security OAuth2 기본 경로를 쓴다. `/api/v1` 밖이다.
+
+| 경로 | 하는 일 |
+|---|---|
+| `GET /oauth2/authorization/{provider}` | 카카오·구글·네이버 로그인 시작 |
+| `GET /login/oauth2/code/{provider}` | 제공자 콜백. 로그인 후 비회원 귀속 확인 화면으로 보낸다 |
+| `POST /logout` | 로그아웃. 서버 세션 회수 |
+
+재인증 증명(`X-Reauthentication-Proof`) 발급 방식, 제공자별 재인증 실패 처리, 관리자 다중 요소 인증 방식은 아직 정하지 않았다([08 6](08-delivery.md#6-남은-설계-작업)).
+
+## 4. 관리자 API
+
+첫 출시에 필요한 최소 범위다. 모두 관리자 세션과 다중 요소 인증이 필요하고, 변경은 `admin_audit_event`에 남는다.
+
+| API | 하는 일 | 권한 |
+|---|---|---|
+| `GET /admin/rounds/{round}/notification-status` | 회차 알림 현황. 슬롯별 결과와 원인, 상태별 메시지 수 | OPERATOR 이상 |
+| `POST /admin/rounds/{round}/notification-dispatches` | 수동 다시 보내기. 사유 필수, `Idempotency-Key` 필요 | OPERATOR 이상 |
+| `POST /admin/draw-results/{resultId}/publication` | 격리된 공식 결과를 새 게시본으로 승인. 현재 게시 버전과 사유 필수 | ADMIN |
+| `GET /admin/stats/daily` | 기간별 기본 지표 | OPERATOR 이상 |
+| `GET /admin/stats/rounds/{round}` | 회차별 기본 지표 | OPERATOR 이상 |
+
+관리자 화면 구성과 권한 부여 절차는 아직 정하지 않았다.
+
+## 5. 기존 API 전환
+
+- 지금 있는 `/api/lotto/*`는 정적 화면의 호출 위치를 확인한 뒤 같은 릴리스에서 새 경로로 바꾼다.
+- 회원과 비회원의 추천 경로는 하나의 처리로 합친다.
+- `source=AD`처럼 의미가 있는 입력을 몰래 BASIC으로 바꾸는 호환 계층은 만들지 않는다. 외부 사용자가 확인되면 전환 기간을 따로 계획한다.
