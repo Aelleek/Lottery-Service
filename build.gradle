@@ -26,6 +26,9 @@ repositories {
   mavenCentral()
 }
 
+// Boot 3.4.4 BOM의 Testcontainers 1.20.6은 Docker API 1.32로 붙어 Docker 29(최소 1.40)에서 실패한다
+ext['testcontainers.version'] = '1.21.4'
+
 /* -------- Spotless (format owner) -------- */
 spotless {
   java {
@@ -121,6 +124,8 @@ dependencies {
 
   testImplementation 'org.springframework.boot:spring-boot-starter-test'
   testImplementation 'org.springframework.security:spring-security-test'
+  testImplementation 'org.testcontainers:junit-jupiter'
+  testImplementation 'org.testcontainers:mysql'
   testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
   // pmd-java 런타임 의존성 (플러그인이 알아서 받는 경우도 있으나 명시해둠)
@@ -129,7 +134,21 @@ dependencies {
 
 /* -------- Tests -------- */
 tasks.named('test') {
-  useJUnitPlatform()
+  useJUnitPlatform {
+    excludeTags 'mysql'
+  }
+}
+
+/* -------- MySQL tests (Testcontainers, Docker 필요) -------- */
+tasks.register('mysqlTest', Test) {
+  description = 'Runs tests tagged mysql against a MySQL 8.4 container.'
+  group = 'verification'
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+  useJUnitPlatform {
+    includeTags 'mysql'
+  }
+  shouldRunAfter tasks.named('test')
 }
 
 /* -------- Ensure spotlessCheck is part of 'check' pipeline -------- */
