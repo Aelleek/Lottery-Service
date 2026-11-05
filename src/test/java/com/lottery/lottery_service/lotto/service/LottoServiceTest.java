@@ -22,7 +22,6 @@ import com.lottery.lottery_service.member.repository.MemberRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -156,8 +155,7 @@ class LottoServiceTest {
     assertThat(saved.isManual()).isTrue();
     assertThat(saved.isPurchased()).isTrue();
     assertThat(saved.getSource()).isEqualTo("manual");
-    assertThat(saved.getRecommendedAt())
-        .isEqualTo(LocalDateTime.ofInstant(FIXED_NOW, ZoneId.systemDefault()));
+    assertThat(saved.getRecommendedAt()).isEqualTo(LocalDateTime.of(2026, 11, 7, 10, 59, 59));
   }
 
   /**

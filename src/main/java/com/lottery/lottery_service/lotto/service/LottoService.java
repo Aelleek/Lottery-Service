@@ -12,7 +12,7 @@ import com.lottery.lottery_service.member.repository.MemberRepository;
 import jakarta.transaction.Transactional;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -267,7 +267,7 @@ public class LottoService {
     // 쉼표/공백 구분 토큰화
     String[] tokens = raw.trim().split("[,\\s]+");
     if (tokens.length != 6) {
-      throw new IllegalArgumentException("로또 번호는 6개여야 합니다. 입력: " + raw);
+      throw new IllegalArgumentException("로또 번호는 6개여야 합니다.");
     }
 
     // 정수 파싱 + 검증
@@ -277,13 +277,13 @@ public class LottoService {
       try {
         n = Integer.parseInt(t);
       } catch (NumberFormatException e) {
-        throw new IllegalArgumentException("숫자 형식이 올바르지 않습니다: " + raw, e);
+        throw new IllegalArgumentException("숫자 형식이 올바르지 않습니다.", e);
       }
       if (n < 1 || n > 45) {
-        throw new IllegalArgumentException("로또 번호는 1~45 사이여야 합니다. 입력: " + raw);
+        throw new IllegalArgumentException("로또 번호는 1~45 사이여야 합니다.");
       }
       if (!set.add(n)) {
-        throw new IllegalArgumentException("로또 번호에 중복이 있습니다. 입력: " + raw);
+        throw new IllegalArgumentException("로또 번호에 중복이 있습니다.");
       }
     }
 
@@ -294,6 +294,6 @@ public class LottoService {
   }
 
   private LocalDateTime now() {
-    return LocalDateTime.now(clock.withZone(ZoneId.systemDefault()));
+    return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
   }
 }
