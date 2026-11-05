@@ -43,7 +43,7 @@ public final class LottoNumbers {
         throw new InvalidLottoNumberException("번호에 빈 값이 있습니다.");
       }
       if (!seen.add(value)) {
-        throw new InvalidLottoNumberException("번호가 중복됐습니다: " + value);
+        throw new InvalidLottoNumberException("번호가 중복됐습니다.");
       }
       result.add(LottoNumber.of(value));
     }
@@ -66,7 +66,7 @@ public final class LottoNumbers {
   /** {@link #key()} 형식의 문자열을 읽는다. 오름차순 두 자리 번호를 공백 하나로 구분한 형식만 받는다. */
   public static LottoNumbers fromKey(String key) {
     if (key == null || !KEY_PATTERN.matcher(key).matches()) {
-      throw new InvalidLottoNumberException("번호 키 형식이 아닙니다: " + key);
+      throw new InvalidLottoNumberException("번호 키 형식이 아닙니다.");
     }
     List<Integer> values = new ArrayList<>(SIZE);
     for (String part : key.split(" ")) {
@@ -74,7 +74,7 @@ public final class LottoNumbers {
     }
     LottoNumbers parsed = of(values);
     if (!parsed.key().equals(key)) {
-      throw new InvalidLottoNumberException("번호 키는 오름차순이어야 합니다: " + key);
+      throw new InvalidLottoNumberException("번호 키는 오름차순이어야 합니다.");
     }
     return parsed;
   }

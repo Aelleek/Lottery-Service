@@ -13,7 +13,7 @@ public record WinningNumbers(LottoNumbers main, LottoNumber bonus) {
     Objects.requireNonNull(main, "main");
     Objects.requireNonNull(bonus, "bonus");
     if (main.contains(bonus)) {
-      throw new InvalidLottoNumberException("보너스 번호가 당첨 번호와 겹칩니다: " + bonus);
+      throw new InvalidLottoNumberException("보너스 번호가 당첨 번호와 겹칩니다.");
     }
   }
 

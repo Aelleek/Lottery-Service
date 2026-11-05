@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.common.error;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -78,6 +79,36 @@ class ApiExceptionHandlerTest {
         .andExpect(jsonPath("$.retryable").value(true))
         .andExpect(jsonPath("$.details.retryAt").value("2026-11-07T10:59:30.200Z"))
         .andExpect(header().string("Retry-After", "31"));
+  }
+
+  @Test
+  @DisplayName("503에 재시도 시각이 있으면 Retry-After를 준다")
+  void retryAfterForServiceUnavailable() throws Exception {
+    mockMvc
+        .perform(get("/probe/unavailable").param("retryAt", "2026-11-07T11:00:00Z"))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.code").value("TEMPORARILY_UNAVAILABLE"))
+        .andExpect(jsonPath("$.retryable").value(true))
+        .andExpect(jsonPath("$.details.retryAt").value("2026-11-07T11:00:00Z"))
+        .andExpect(header().string("Retry-After", "60"));
+  }
+
+  @Test
+  @DisplayName("재시도 시각이 없는 503은 Retry-After 없이 빈 details로 답한다")
+  void serviceUnavailableWithoutRetryAt() throws Exception {
+    mockMvc
+        .perform(get("/probe/unavailable"))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.code").value("TEMPORARILY_UNAVAILABLE"))
+        .andExpect(jsonPath("$.details").isMap())
+        .andExpect(jsonPath("$.details.retryAt").doesNotExist())
+        .andExpect(header().doesNotExist("Retry-After"));
+  }
+
+  @Test
+  @DisplayName("재시도 시각 없이 details를 만들 수 없다")
+  void retryAtRequiresInstant() {
+    assertThatThrownBy(() -> ErrorDetails.retryAt(null)).isInstanceOf(NullPointerException.class);
   }
 
   @Test
@@ -171,6 +202,13 @@ class ApiExceptionHandlerTest {
           ErrorCode.GENERATION_BUSY,
           "잠시 뒤 다시 시도해 주세요.",
           ErrorDetails.retryAt(Instant.parse(retryAt)));
+    }
+
+    @GetMapping("/probe/unavailable")
+    String unavailable(@RequestParam(required = false) String retryAt) {
+      ErrorDetails details =
+          retryAt == null ? ErrorDetails.empty() : ErrorDetails.retryAt(Instant.parse(retryAt));
+      throw new BusinessException(ErrorCode.TEMPORARILY_UNAVAILABLE, "잠시 뒤 다시 시도해 주세요.", details);
     }
 
     @GetMapping("/probe/version")

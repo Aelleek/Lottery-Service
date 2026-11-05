@@ -12,7 +12,7 @@ public record LottoNumber(int value) implements Comparable<LottoNumber> {
   /** 범위를 벗어나면 {@link InvalidLottoNumberException}을 던진다. */
   public LottoNumber {
     if (value < MIN || value > MAX) {
-      throw new InvalidLottoNumberException("번호는 " + MIN + "~" + MAX + " 사이여야 합니다: " + value);
+      throw new InvalidLottoNumberException("번호는 " + MIN + "~" + MAX + " 사이여야 합니다.");
     }
   }
 

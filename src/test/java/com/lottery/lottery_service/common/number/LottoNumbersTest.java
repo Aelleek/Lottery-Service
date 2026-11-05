@@ -118,6 +118,18 @@ class LottoNumbersTest {
   }
 
   @Test
+  @DisplayName("예외 메시지에 입력 번호를 넣지 않는다")
+  void exceptionMessagesDoNotContainNumbers() {
+    assertThatThrownBy(() -> LottoNumbers.fromKey("06 05 04 03 02 01"))
+        .hasMessageNotContaining("06 05")
+        .hasMessageNotContaining("01");
+    assertThatThrownBy(() -> LottoNumbers.fromKey("x7 18 29 30 41 42"))
+        .hasMessageNotContaining("18 29");
+    assertThatThrownBy(() -> LottoNumbers.of(17, 17, 3, 4, 5, 6)).hasMessageNotContaining("17");
+    assertThatThrownBy(() -> LottoNumber.of(46)).hasMessageNotContaining("46");
+  }
+
+  @Test
   @DisplayName("겹치는 번호 개수를 센다")
   void matchCount() {
     LottoNumbers a = LottoNumbers.of(1, 2, 3, 4, 5, 6);

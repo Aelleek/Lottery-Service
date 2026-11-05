@@ -115,8 +115,8 @@ public class ApiExceptionHandler {
     return builder.body(body);
   }
 
-  private long secondsUntil(String retryAt) {
-    Duration wait = Duration.between(clock.instant(), Instant.parse(retryAt));
+  private long secondsUntil(Instant retryAt) {
+    Duration wait = Duration.between(clock.instant(), retryAt);
     if (wait.isNegative() || wait.isZero()) {
       return 0;
     }
