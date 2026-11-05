@@ -46,7 +46,9 @@ jobs:
           else
             range="HEAD~1...HEAD"
           fi
-          files=$(git diff --name-only --diff-filter=ACMRT "$range" | grep -E '\.java$' | paste -sd, - || true)
+          # git diff 실패는 스텝 실패로 둔다. grep의 무일치(종료 1)만 "변경 없음"으로 본다
+          all=$(git diff --name-only --diff-filter=ACMRT "$range")
+          files=$(printf '%s\n' "$all" | { grep -E '\.java$' || [ $? -eq 1 ]; } | paste -sd, -)
           echo "Changed Java files ($range): $files"
           echo "changed=$files" >> "$GITHUB_OUTPUT"
 
