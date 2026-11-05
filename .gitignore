@@ -44,3 +44,12 @@ out/
 # config 파일
 /config/oauth-client.yml
 /config/local-db.yml
+/config/integrations.yml
+/config/secrets.yml
+
+# AI Agent 파일
+CLAUDE.md
+AGENTS.md
+
+# 리뷰 결과 (로컬 전용)
+/reviews/
