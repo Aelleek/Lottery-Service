@@ -32,19 +32,21 @@ import org.springframework.jdbc.datasource.init.ScriptUtils;
 class SchemaContractMySqlTest extends MySqlContainerSupport {
 
   private static final Path SCHEMA = Path.of("docs/contracts/schema.sql");
+  private static final String DB = "schema_contract";
 
   private Connection conn;
 
   @BeforeAll
   static void applySchema() throws Exception {
-    try (Connection c = openConnection()) {
+    recreateDatabase(DB);
+    try (Connection c = openConnection(DB)) {
       ScriptUtils.executeSqlScript(c, new FileSystemResource(SCHEMA));
     }
   }
 
   @BeforeEach
   void begin() throws SQLException {
-    conn = openConnection();
+    conn = openConnection(DB);
     conn.setAutoCommit(false);
   }
 
@@ -61,7 +63,7 @@ class SchemaContractMySqlTest extends MySqlContainerSupport {
     try (PreparedStatement ps =
         conn.prepareStatement(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ?")) {
-      ps.setString(1, MYSQL.getDatabaseName());
+      ps.setString(1, DB);
       try (ResultSet rs = ps.executeQuery()) {
         rs.next();
         assertThat(rs.getLong(1)).isEqualTo(expected).isPositive();
@@ -175,7 +177,7 @@ class SchemaContractMySqlTest extends MySqlContainerSupport {
             "SELECT character_set_name, collation_name FROM information_schema.columns"
                 + " WHERE table_schema = ? AND table_name = 'lotto_record'"
                 + " AND column_name = 'numbers_key'")) {
-      ps.setString(1, MYSQL.getDatabaseName());
+      ps.setString(1, DB);
       try (ResultSet rs = ps.executeQuery()) {
         rs.next();
         assertThat(rs.getString(1)).isEqualTo("ascii");
