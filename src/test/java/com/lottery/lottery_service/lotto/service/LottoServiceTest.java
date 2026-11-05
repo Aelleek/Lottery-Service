@@ -19,14 +19,18 @@ import com.lottery.lottery_service.lotto.validation.pipeline.LottoValidationPipe
 import com.lottery.lottery_service.lotto.validation.pipeline.LottoValidationResult;
 import com.lottery.lottery_service.member.entity.Member;
 import com.lottery.lottery_service.member.repository.MemberRepository;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -53,7 +57,17 @@ class LottoServiceTest {
 
   @Mock private LottoValidationPipeline validationPipeline;
 
-  @InjectMocks private LottoService lottoService;
+  private static final Instant FIXED_NOW = Instant.parse("2026-11-07T10:59:59Z");
+
+  private final Clock clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
+
+  private LottoService lottoService;
+
+  @BeforeEach
+  void setUp() {
+    lottoService =
+        new LottoService(lottoRecordRepository, memberRepository, validationPipeline, clock);
+  }
 
   /**
    * 기존 동일 번호 기록이 존재하고 아직 purchased=false 라면, 새 레코드를 만들지 않고 기존 레코드의 purchased 값을 true로 갱신해야 한다.
@@ -142,7 +156,8 @@ class LottoServiceTest {
     assertThat(saved.isManual()).isTrue();
     assertThat(saved.isPurchased()).isTrue();
     assertThat(saved.getSource()).isEqualTo("manual");
-    assertThat(saved.getRecommendedAt()).isNotNull();
+    assertThat(saved.getRecommendedAt())
+        .isEqualTo(LocalDateTime.ofInstant(FIXED_NOW, ZoneId.systemDefault()));
   }
 
   /**
@@ -360,7 +375,7 @@ class LottoServiceTest {
     LottoSet pass5 = new LottoSet(List.of(37, 38, 39, 40, 41, 42));
 
     LottoService spyService =
-        spy(new LottoService(lottoRecordRepository, memberRepository, validationPipeline));
+        spy(new LottoService(lottoRecordRepository, memberRepository, validationPipeline, clock));
 
     // recommendAndSaveForMember()가 generateLottoNumbersSet(1)을 반복 호출하므로 순차 반환값을 제어한다.
     doReturn(List.of(fail1))
