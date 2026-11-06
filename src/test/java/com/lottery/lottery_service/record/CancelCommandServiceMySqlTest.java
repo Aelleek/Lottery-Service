@@ -8,6 +8,7 @@ import com.lottery.lottery_service.account.MemberLogin;
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.command.CommandOperationStore;
 import com.lottery.lottery_service.common.command.CommandTokenCodec;
+import com.lottery.lottery_service.common.command.OperationQuery;
 import com.lottery.lottery_service.common.db.DbValues;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
@@ -154,6 +155,34 @@ class CancelCommandServiceMySqlTest extends MySqlContainerSupport {
     String other = codec.issue(member.subjectPublicId(), "RECOMMEND", ROUND, 1L);
     assertCode(() -> cancel(other, UUID.randomUUID(), record, 0), ErrorCode.FORBIDDEN);
     assertThat(row(record)).containsEntry("purchased", true);
+  }
+
+  @Test
+  @DisplayName("명령 조회는 끝난 취소에 같은 완료 증명, 다른 주체는 NOT_FOUND, 확정 실패(지운 기록 다시 취소)는 그 오류, 처리 중은 진행 상태")
+  void operationLookup() {
+    UUID record = register();
+    String token =
+        codec.issue(member.subjectPublicId(), CancelCommandService.OPERATION, null, null);
+    CancelCommandService.CancelProof proof = cancel(token, UUID.randomUUID(), record, 0);
+    OperationQuery query = new OperationQuery(jdbc, List.of(commands));
+
+    assertThat(query.find(member.subjectId(), proof.operationId()))
+        .isEqualTo(new OperationQuery.Outcome.Done(proof.operationId(), proof));
+    assertCode(
+        () -> query.find(member.subjectId() + 1000, proof.operationId()), ErrorCode.NOT_FOUND);
+    assertCode(() -> query.find(member.subjectId(), UUID.randomUUID()), ErrorCode.NOT_FOUND);
+
+    UUID failedKey = UUID.randomUUID();
+    assertCode(() -> cancel(token, failedKey, record, 9), ErrorCode.NOT_FOUND);
+    UUID failed =
+        DbValues.uuid(
+            jdbc.queryForObject(
+                "SELECT public_id FROM command_operation WHERE state = 'FAILED'", byte[].class));
+    assertCode(() -> query.find(member.subjectId(), failed), ErrorCode.NOT_FOUND);
+
+    jdbc.update("UPDATE command_operation SET state = 'PROCESSING' WHERE state = 'FAILED'");
+    assertThat(query.find(member.subjectId(), failed))
+        .isEqualTo(new OperationQuery.Outcome.Processing(failed));
   }
 
   private CancelCommandService.CancelProof cancel(
