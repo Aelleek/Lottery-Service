@@ -20,7 +20,10 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -28,7 +31,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 class ApiExceptionHandlerTest {
 
@@ -188,8 +193,129 @@ class ApiExceptionHandlerTest {
     assertThat(first).matches(UUID_PATTERN).isNotEqualTo(second);
   }
 
+  @Test
+  @DisplayName("처리하지 않던 예외는 500 INTERNAL_ERROR, retryable=false로 답하고 예외 메시지를 싣지 않는다")
+  void unexpectedExceptionIsInternalError() throws Exception {
+    mockMvc
+        .perform(get("/probe/boom"))
+        .andExpect(status().isInternalServerError())
+        .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
+        .andExpect(jsonPath("$.message").value(ApiExceptionHandler.INTERNAL_MESSAGE))
+        .andExpect(jsonPath("$.retryable").value(false))
+        .andExpect(jsonPath("$.requestId").value(matchesPattern(UUID_PATTERN)))
+        .andExpect(jsonPath("$.details").isMap())
+        .andExpect(header().doesNotExist("Retry-After"));
+  }
+
+  @Test
+  @DisplayName("빠진 파라미터와 허용되지 않은 메서드는 500이 아니라 그 4xx 상태와 VALIDATION_FAILED로 답한다")
+  void springClientErrorsKeepTheirStatus() throws Exception {
+    mockMvc
+        .perform(get("/probe/busy"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    mockMvc
+        .perform(post("/probe/boom"))
+        .andExpect(status().isMethodNotAllowed())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.retryable").value(false));
+  }
+
+  @Test
+  @DisplayName("없는 경로와 404로 정한 예외는 NOT_FOUND로 답한다")
+  void notFound() throws Exception {
+    mockMvc
+        .perform(get("/probe/nowhere"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    mockMvc
+        .perform(get("/probe/gone"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("NOT_FOUND"))
+        .andExpect(jsonPath("$.message").value(ApiExceptionHandler.NOT_FOUND_MESSAGE));
+  }
+
+  @Test
+  @DisplayName("인가 예외는 형식을 바꾸지 않고 Spring Security에 넘긴다")
+  void accessDeniedIsRethrown() {
+    assertThatThrownBy(() -> mockMvc.perform(get("/probe/denied")))
+        .hasCauseInstanceOf(AccessDeniedException.class);
+  }
+
+  @Test
+  @DisplayName("401·403으로 정한 예외는 UNAUTHENTICATED·FORBIDDEN과 그 메시지로 답한다")
+  void declaredUnauthorizedAndForbidden() throws Exception {
+    mockMvc
+        .perform(get("/probe/unauthorized"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
+        .andExpect(jsonPath("$.message").value(ApiExceptionHandler.UNAUTHENTICATED_MESSAGE));
+    mockMvc
+        .perform(get("/probe/annotated-forbidden"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"))
+        .andExpect(jsonPath("$.message").value(ApiExceptionHandler.FORBIDDEN_MESSAGE));
+  }
+
+  @Test
+  @DisplayName("@ResponseStatus만 붙은 예외도 그 상태로 답한다")
+  void responseStatusAnnotationFallback() throws Exception {
+    mockMvc
+        .perform(get("/probe/annotated-conflict"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+  }
+
+  @Test
+  @DisplayName("인증 예외도 형식을 바꾸지 않고 Spring Security에 넘긴다")
+  void authenticationExceptionIsRethrown() {
+    assertThatThrownBy(() -> mockMvc.perform(get("/probe/bad-credentials")))
+        .hasCauseInstanceOf(BadCredentialsException.class);
+  }
+
+  @ResponseStatus(HttpStatus.FORBIDDEN)
+  static class AnnotatedForbiddenException extends RuntimeException {}
+
+  @ResponseStatus(HttpStatus.CONFLICT)
+  static class AnnotatedConflictException extends RuntimeException {}
+
   @RestController
   static class ProbeController {
+
+    @GetMapping("/probe/unauthorized")
+    String unauthorized() {
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+    }
+
+    @GetMapping("/probe/annotated-forbidden")
+    String annotatedForbidden() {
+      throw new AnnotatedForbiddenException();
+    }
+
+    @GetMapping("/probe/annotated-conflict")
+    String annotatedConflict() {
+      throw new AnnotatedConflictException();
+    }
+
+    @GetMapping("/probe/bad-credentials")
+    String badCredentials() {
+      throw new BadCredentialsException("bad");
+    }
+
+    @GetMapping("/probe/boom")
+    String boom() {
+      throw new IllegalStateException("internal detail 1 2 3 4 5 6");
+    }
+
+    @GetMapping("/probe/gone")
+    String gone() {
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "internal detail");
+    }
+
+    @GetMapping("/probe/denied")
+    String denied() {
+      throw new AccessDeniedException("denied");
+    }
 
     @GetMapping("/probe/business")
     String business(@RequestParam ErrorCode code) {
