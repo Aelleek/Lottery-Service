@@ -19,6 +19,7 @@ import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -221,6 +222,94 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     assertThat(state(fourthMember)).isEqualTo("UNKNOWN");
     assertThat(budgetRow()).containsEntry("reserved_units", 143L);
     assertThat(store.sendable(ROUND)).doesNotContain(a);
+  }
+
+  @Test
+  @DisplayName("슬롯은 대상에게 보내고 모두 접수되면 성공이며 운영자 알림이 없다")
+  void slotSuccess() {
+    SlotResult result =
+        runner(id -> new SendOutcome.Accepted("M-" + id)).run(ROUND, slot(true, false));
+
+    assertThat(result.success()).isTrue();
+    assertThat(alerts()).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'", Long.class))
+        .isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("결과가 없으면 RESULT_NOT_PUBLISHED로 실패하고, 운영자 알림 슬롯에서만 알린다(T36)")
+  void slotWithoutResult() {
+    jdbc.update("UPDATE lotto_round SET published_result_id = NULL");
+
+    assertThat(runner(id -> new SendOutcome.Accepted("x")).run(ROUND, slot(false, false)).cause())
+        .isEqualTo("RESULT_NOT_PUBLISHED");
+    assertThat(alerts()).isZero();
+    assertThat(runner(id -> new SendOutcome.Accepted("x")).run(ROUND, slot(true, false)).cause())
+        .isEqualTo("RESULT_NOT_PUBLISHED");
+    assertThat(alerts()).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("일부가 실패하면 PARTIAL_FAILURE, 다음 슬롯은 못 받은 회원에게만 보내고, 마지막 슬롯 실패 때 남은 메시지는 HALTED(T37)")
+  void partialFailureThenHalt() {
+    SlotResult first =
+        runner(
+                id ->
+                    id == message(fourthMember)
+                        ? new SendOutcome.NotAccepted("E")
+                        : new SendOutcome.Accepted("M"))
+            .run(ROUND, slot(true, false));
+    assertThat(first.cause()).isEqualTo("PARTIAL_FAILURE");
+    assertThat(first.failed()).isEqualTo(1);
+
+    List<Long> called = new ArrayList<>();
+    runner(
+            id -> {
+              called.add(id);
+              return new SendOutcome.NotAccepted("E");
+            })
+        .run(ROUND, new ResultSlot(clock.instant().plusSeconds(1800), true, true));
+
+    assertThat(called).containsExactly(message(fourthMember));
+    assertThat(state(fourthMember)).isEqualTo("HALTED");
+    assertThat(state(thirdMember)).isEqualTo("ACCEPTED");
+    assertThat(alerts()).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("제공자 호출이 예외로 끝나면 UNKNOWN으로 두고 다시 보내지 않는다")
+  void senderCrashIsUnknown() {
+    SlotResult result =
+        runner(
+                id -> {
+                  throw new IllegalStateException("timeout");
+                })
+            .run(ROUND, slot(false, false));
+
+    assertThat(result.unknown()).isEqualTo(2);
+    assertThat(store.sendable(ROUND)).isEmpty();
+  }
+
+  private ResultSlotRunner runner(MessageSender sender) {
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    return new ResultSlotRunner(
+        jdbc,
+        store,
+        sender,
+        new JobStore(jdbc, tm, clock, new JobProperties(null, null)),
+        tm,
+        clock);
+  }
+
+  private ResultSlot slot(boolean alert, boolean last) {
+    return new ResultSlot(clock.instant(), alert, last);
+  }
+
+  private long alerts() {
+    return jdbc.queryForObject(
+        "SELECT COUNT(*) FROM job WHERE job_type = 'OPERATOR_ALERT'", Long.class);
   }
 
   private String apply(UnknownMessageReconciler reconciler, long id, ProviderStatus status) {
