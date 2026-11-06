@@ -12,14 +12,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
-import org.flywaydb.core.Flyway;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** {@link JobStore}의 등록, 가져가기, lease 검사, 회수를 migration으로 만든 MySQL 스키마에서 확인한다. */
@@ -30,7 +29,7 @@ class JobStoreMySqlTest extends MySqlContainerSupport {
   private static final Duration LEASE = Duration.ofMinutes(5);
   private static final List<String> TYPES = List.of("EVALUATE");
 
-  private static DriverManagerDataSource dataSource;
+  private static DataSource dataSource;
 
   private final MutableClock clock = new MutableClock(T0);
   private JdbcTemplate jdbc;
@@ -39,19 +38,7 @@ class JobStoreMySqlTest extends MySqlContainerSupport {
 
   @BeforeAll
   static void migrate() throws SQLException {
-    recreateDatabase(DB);
-    Flyway.configure()
-        .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
-        .schemas(DB)
-        .createSchemas(false)
-        .locations("classpath:db/migration")
-        .load()
-        .migrate();
-    dataSource =
-        new DriverManagerDataSource(
-            MYSQL.getJdbcUrl().replaceFirst("/[^/?]+(\\?|$)", "/" + DB + "$1"),
-            MYSQL.getUsername(),
-            MYSQL.getPassword());
+    dataSource = migratedDatabase(DB);
   }
 
   @BeforeEach

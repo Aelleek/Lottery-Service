@@ -1,13 +1,16 @@
 package com.lottery.lottery_service.common.job;
 
-import java.nio.ByteBuffer;
+import static com.lottery.lottery_service.common.db.DbValues.bytes;
+import static com.lottery.lottery_service.common.db.DbValues.instant;
+import static com.lottery.lottery_service.common.db.DbValues.utc;
+import static com.lottery.lottery_service.common.db.DbValues.uuid;
+
 import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -244,28 +247,5 @@ public class JobStore {
         uuid(rs.getBytes("lease_token")),
         instant(rs.getObject("lease_until", LocalDateTime.class)),
         rs.getInt("attempt_count"));
-  }
-
-  private static LocalDateTime utc(Instant instant) {
-    return instant == null ? null : LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
-  }
-
-  private static Instant instant(LocalDateTime value) {
-    return value == null ? null : value.toInstant(ZoneOffset.UTC);
-  }
-
-  private static byte[] bytes(UUID id) {
-    return ByteBuffer.allocate(16)
-        .putLong(id.getMostSignificantBits())
-        .putLong(id.getLeastSignificantBits())
-        .array();
-  }
-
-  private static UUID uuid(byte[] value) {
-    if (value == null) {
-      return null;
-    }
-    ByteBuffer b = ByteBuffer.wrap(value);
-    return new UUID(b.getLong(), b.getLong());
   }
 }
