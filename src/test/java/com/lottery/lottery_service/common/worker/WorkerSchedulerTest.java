@@ -95,6 +95,8 @@ class WorkerSchedulerTest {
     verify(housekeeping).deleteFinishedJobs();
     verify(housekeeping).deleteExpiredGuestCredentials();
     verify(housekeeping).deleteEmptyGuestSubjects(1_000);
+    verify(housekeeping).clearMessageCopies(10_000);
+    verify(housekeeping).deleteAggregatedUsageEvents(10_000);
     verify(maintenance).closeNotificationPlans();
     verify(maintenance).cleanupRecords(WorkerScheduler.RECORD_CLEANUP_BATCH);
     verify(maintenance).alertDelayedCleanup();

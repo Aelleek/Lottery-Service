@@ -16,6 +16,7 @@ import com.lottery.lottery_service.common.number.LottoNumber;
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.notification.budget.BudgetProperties;
 import com.lottery.lottery_service.notification.budget.MessageBudgetStore;
+import com.lottery.lottery_service.record.HousekeepingCleaner;
 import com.lottery.lottery_service.result.domain.WinningNumbers;
 import com.lottery.lottery_service.result.evaluate.EvaluateResultJobHandler;
 import com.lottery.lottery_service.result.evaluate.EvaluationStore;
@@ -28,6 +29,7 @@ import com.lottery.lottery_service.result.source.ResultCollector;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -591,6 +593,61 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
                         fourthMember))
                 .resultId())
         .isEqualTo(first);
+  }
+
+  @Test
+  @DisplayName("알림 본문 정리 뒤 정정돼도 안내 요약으로 영향 회원 수를 세고, 다시 보내지 않으며 사본은 되살아나지 않는다(T28)")
+  void correctionAfterCopyCleanup() {
+    tx.execute(s -> store.createMissing(ROUND));
+    for (long member : List.of(fourthMember, thirdMember)) {
+      long id = message(member);
+      inTx(() -> store.startSending(id, 143));
+      tx.executeWithoutResult(s -> store.recordOutcome(id, new SendOutcome.Accepted("M-" + id)));
+    }
+    jdbc.update(
+        "UPDATE delivery_message SET payload_ciphertext = ?, recipient_ciphertext = ?",
+        new byte[] {9},
+        new byte[] {8});
+    clock.set(clock.instant().plus(Duration.ofDays(31)));
+    assertThat(
+            tx.<Integer>execute(s -> new HousekeepingCleaner(jdbc, clock).clearMessageCopies(100)))
+        .isEqualTo(2);
+
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    ResultPublisher publisher =
+        new ResultPublisher(
+            jdbc,
+            tm,
+            new JobStore(jdbc, tm, clock, new JobProperties(null, null)),
+            new PrizeProperties(null, null),
+            clock);
+    publisher.receive(
+        new OfficialDraw(
+            ROUND,
+            new WinningNumbers(LottoNumbers.of(10, 20, 30, 40, 41, 42), LottoNumber.of(43)),
+            null,
+            null,
+            new byte[32]));
+    long corrected =
+        jdbc.queryForObject("SELECT id FROM draw_result WHERE state = 'QUARANTINED'", Long.class);
+    publisher.approve(corrected, 1);
+    tx.execute(s -> new EvaluationStore(jdbc).evaluateBatch(corrected, 0, 100));
+
+    CorrectionImpact.Impact impact =
+        new CorrectionImpact(
+                jdbc,
+                new NotificationTargetQuery(jdbc),
+                new JobStore(jdbc, tm, clock, new JobProperties(null, null)),
+                clock)
+            .measure(ROUND);
+    assertThat(impact).isEqualTo(new CorrectionImpact.Impact(2, 0));
+    assertThat(store.sendable(ROUND)).isEmpty();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'"
+                    + " AND payload_ciphertext IS NULL AND recipient_ciphertext IS NULL",
+                Long.class))
+        .isEqualTo(2);
   }
 
   private ResultSlotRunner runner(MessageSender sender) {

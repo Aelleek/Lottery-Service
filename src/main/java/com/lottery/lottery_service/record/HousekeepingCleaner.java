@@ -18,6 +18,8 @@ import org.springframework.stereotype.Component;
  *   <li>기록·추천 이력·귀속·유효 자격이 하나도 없는 비회원 주체(명령 기록을 지우고 사용량 사건의 주체를 비운 뒤)
  *   <li>성공·취소 후 30일이 지난 job. 대기·실행 중과 DEAD는 남긴다
  *   <li>기록 정리가 끝난 회차의 추천 이력과 요청(판매 마감 전에는 지우지 않는다)
+ *   <li>최종 상태 뒤 30일이 지난 알림 본문과 수신자 사본
+ *   <li>90일이 지났고 집계가 확정된 통계 원천 사건
  * </ul>
  */
 @Component
@@ -25,6 +27,12 @@ public class HousekeepingCleaner {
 
   /** 비회원 자격의 만료·폐기 뒤 보관 기간. */
   public static final Duration CREDENTIAL_RETENTION = Duration.ofDays(7);
+
+  /** 알림 본문과 수신자 사본의 최종 상태 뒤 보관 기간. */
+  public static final Duration MESSAGE_COPY_RETENTION = Duration.ofDays(30);
+
+  /** 통계 원천 사건 보관 기간. */
+  public static final Duration USAGE_EVENT_RETENTION = Duration.ofDays(90);
 
   /** 끝난 job 보관 기간. */
   public static final Duration JOB_RETENTION = Duration.ofDays(30);
@@ -66,6 +74,43 @@ public class HousekeepingCleaner {
     jdbc.update("DELETE FROM command_operation WHERE subject_id IN (" + in + ")", args);
     jdbc.update("UPDATE usage_event SET subject_id = NULL WHERE subject_id IN (" + in + ")", args);
     return jdbc.update("DELETE FROM actor_subject WHERE id IN (" + in + ")", args);
+  }
+
+  /**
+   * 최종 상태가 된 뒤 30일이 지난 메시지의 본문과 수신자 사본을 비운다(02 8절). 접수 확인 중(UNKNOWN)과 아직 보낼 메시지는 건드리지 않는다. 메시지 행과
+   * 상태·비용, 안내 요약은 남긴다(예산 대조와 정정 영향 계산에 쓴다). 최종 시각은 끝난 시각, 없으면 마지막 시도 시각, 그것도 없으면 유효기간 끝이다.
+   *
+   * @return 비운 메시지 수
+   */
+  public int clearMessageCopies(int limit) {
+    return jdbc.update(
+        "UPDATE delivery_message SET payload_ciphertext = NULL, recipient_ciphertext = NULL,"
+            + " payload_hash = NULL, version = version + 1"
+            + " WHERE state IN ('ACCEPTED','DELIVERED','FAILED','SUPPRESSED','EXPIRED','HALTED')"
+            + " AND (payload_ciphertext IS NOT NULL OR recipient_ciphertext IS NOT NULL"
+            + " OR payload_hash IS NOT NULL)"
+            + " AND COALESCE(finalized_at, last_attempt_at, expires_at) <= ? ORDER BY id LIMIT ?",
+        utc(clock.instant().minus(MESSAGE_COPY_RETENTION)),
+        limit);
+  }
+
+  /**
+   * 90일이 지났고 그날·그달·그 회차 집계가 모두 VERIFIED인 통계 원천 사건을 지운다(02 8절, D-011). 확정된 집계 값은 바뀌지 않는다.
+   *
+   * @return 지운 사건 수
+   */
+  public int deleteAggregatedUsageEvents(int limit) {
+    return jdbc.update(
+        "DELETE FROM usage_event WHERE occurred_at <= ?"
+            + " AND EXISTS (SELECT 1 FROM usage_aggregate d WHERE d.period_type = 'DAY'"
+            + " AND d.period_key = CAST(usage_event.business_date AS CHAR) AND d.state = 'VERIFIED')"
+            + " AND EXISTS (SELECT 1 FROM usage_aggregate m WHERE m.period_type = 'MONTH'"
+            + " AND m.period_key = DATE_FORMAT(usage_event.business_date, '%Y-%m')"
+            + " AND m.state = 'VERIFIED')"
+            + " AND (usage_event.round_no IS NULL OR EXISTS (SELECT 1 FROM usage_aggregate r"
+            + " WHERE r.period_type = 'ROUND' AND r.period_key = CAST(usage_event.round_no AS CHAR)"
+            + " AND r.state = 'VERIFIED')) LIMIT ?",
+        utc(clock.instant().minus(USAGE_EVENT_RETENTION)), limit);
   }
 
   /** 성공·취소 후 30일이 지난 job을 지운다. */

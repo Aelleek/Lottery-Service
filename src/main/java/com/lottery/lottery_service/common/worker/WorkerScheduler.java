@@ -175,6 +175,8 @@ public class WorkerScheduler {
           housekeeping.deleteFinishedJobs();
           housekeeping.deleteExpiredGuestCredentials();
           housekeeping.deleteEmptyGuestSubjects(1_000);
+          housekeeping.clearMessageCopies(10_000);
+          housekeeping.deleteAggregatedUsageEvents(10_000);
         });
     int closed = maintenance.closeNotificationPlans();
     int deleted = maintenance.cleanupRecords(RECORD_CLEANUP_BATCH);

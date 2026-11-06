@@ -2,8 +2,10 @@ package com.lottery.lottery_service.record;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.GuestCredential;
 import com.lottery.lottery_service.account.GuestCredentialStore;
+import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.job.JobProperties;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.stats.UsageEventStore;
@@ -43,6 +45,9 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
     for (String t :
         List.of(
             "job",
+            "usage_aggregate",
+            "delivery_message",
+            "oauth_account",
             "usage_event",
             "recommendation_seen",
             "recommendation_item",
@@ -50,6 +55,7 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
             "lotto_record",
             "guest_credential",
             "actor_subject",
+            "member",
             "lotto_round")) {
       jdbc.update("DELETE FROM " + t);
     }
@@ -127,5 +133,101 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
     assertThat(cleaner.deleteOrphanRoundHistory(1200)).isZero();
     assertThat(jdbc.queryForList("SELECT round_no FROM recommendation_seen", Integer.class))
         .containsExactly(1200);
+  }
+
+  @Test
+  @DisplayName("최종 상태 뒤 30일이 지난 메시지만 본문·수신자 사본을 비우고, UNKNOWN과 보낼 메시지는 남기며 상태·비용·안내 요약은 그대로 둔다")
+  void messageCopies() {
+    jdbc.update(
+        "INSERT INTO lotto_round (round_no, sales_open_at, sales_close_at, draw_at, schedule_version)"
+            + " VALUES (1200, '2026-10-24', '2026-10-31 11:00:00', '2026-10-31 11:35:00', 1)");
+    long delivered = message("a", "DELIVERED", "2026-11-01 00:00:00", "2026-11-01 00:00:00");
+    long unknown = message("b", "UNKNOWN", null, "2026-11-01 00:00:00");
+    long retry = message("c", "RETRY_WAIT", null, "2026-11-01 00:00:00");
+    long recent = message("d", "FAILED", "2026-11-20 00:00:00", "2026-11-20 00:00:00");
+    HousekeepingCleaner cleaner = new HousekeepingCleaner(jdbc, clock);
+
+    clock.set(Instant.parse("2026-12-01T00:00:00Z").minusSeconds(1));
+    assertThat(cleaner.clearMessageCopies(100)).isZero();
+    clock.set(Instant.parse("2026-12-01T00:00:00Z"));
+    assertThat(cleaner.clearMessageCopies(100)).isEqualTo(1);
+    assertThat(cleaner.clearMessageCopies(100)).isZero();
+
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT state, payload_ciphertext, recipient_ciphertext, payload_hash,"
+                    + " CAST(communicated_summary AS CHAR) AS summary FROM delivery_message"
+                    + " WHERE id = ?",
+                delivered))
+        .containsEntry("state", "DELIVERED")
+        .containsEntry("payload_ciphertext", null)
+        .containsEntry("recipient_ciphertext", null)
+        .containsEntry("payload_hash", null)
+        .containsEntry("summary", "{\"items\": [], \"resultId\": 1}");
+    for (long kept : List.of(unknown, retry, recent)) {
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT payload_ciphertext IS NOT NULL FROM delivery_message WHERE id = ?",
+                  Boolean.class,
+                  kept))
+          .isTrue();
+    }
+  }
+
+  @Test
+  @DisplayName("90일이 지났고 그날·그달·그 회차 집계가 확정된 사건만 지우고, 확정 집계 값은 그대로다(T21 원천 정리)")
+  void usageEvents() {
+    jdbc.update(
+        "INSERT INTO lotto_round (round_no, sales_open_at, sales_close_at, draw_at, schedule_version)"
+            + " VALUES (1200, '2026-10-24', '2026-10-31 11:00:00', '2026-10-31 11:35:00', 1)");
+    long subject =
+        new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys()).issue().subjectId();
+    UsageEventStore events = new UsageEventStore(jdbc);
+    events.record(subject, null, "RECOMMENDATION_SETS", 5, T0);
+    events.record(subject, 1200, "RECOMMENDATION_SETS", 5, T0);
+    events.record(subject, null, "RECOMMENDATION_SETS", 5, T0.plus(Duration.ofDays(1)));
+    aggregate("DAY", "2026-11-01", 10);
+    aggregate("MONTH", "2026-11", 15);
+    aggregate("ROUND", "1200", 5);
+    HousekeepingCleaner cleaner = new HousekeepingCleaner(jdbc, clock);
+
+    clock.set(T0.plus(Duration.ofDays(90)).minusSeconds(1));
+    assertThat(cleaner.deleteAggregatedUsageEvents(100)).isZero();
+    clock.set(T0.plus(Duration.ofDays(91)));
+    assertThat(cleaner.deleteAggregatedUsageEvents(100)).isEqualTo(2);
+
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM usage_event", Long.class)).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT value_count FROM usage_aggregate WHERE period_type = 'MONTH'", Long.class))
+        .isEqualTo(15);
+  }
+
+  private void aggregate(String type, String key, long value) {
+    jdbc.update(
+        "INSERT INTO usage_aggregate (period_type, period_key, metric, dimension_key,"
+            + " calculation_version, value_count, as_of, state) VALUES (?, ?, 'RECOMMENDATION_SETS',"
+            + " 'ALL', 1, ?, NOW(6), 'VERIFIED')",
+        type,
+        key,
+        value);
+  }
+
+  private long message(String login, String state, String finalizedAt, String lastAttemptAt) {
+    long member = new AccountStore(jdbc, tm, clock).login(OAuthProvider.KAKAO, login).memberId();
+    jdbc.update(
+        "INSERT INTO delivery_message (public_id, purpose, member_id, round_no, state,"
+            + " provider_request_key, payload_ciphertext, recipient_ciphertext, payload_hash,"
+            + " communicated_summary, last_attempt_at, finalized_at, expires_at)"
+            + " VALUES (UUID_TO_BIN(UUID()), 'RESULT', ?, 1200, ?, UUID_TO_BIN(UUID()), ?, ?, ?,"
+            + " '{\"resultId\": 1, \"items\": []}', ?, ?, '2026-11-08 00:00:00')",
+        member,
+        state,
+        new byte[] {9},
+        new byte[] {8},
+        new byte[32],
+        lastAttemptAt,
+        finalizedAt);
+    return jdbc.queryForObject("SELECT MAX(id) FROM delivery_message", Long.class);
   }
 }
