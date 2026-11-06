@@ -1,0 +1,5 @@
+# config/integrations.yml로 복사해 실제 값으로 바꾼다. 이 파일에는 실제 값을 넣지 않는다.
+lottery:
+  integrations:
+    # 운영자 알림 Discord 웹훅 주소(D-030)
+    discord-webhook-url: REPLACE_WITH_DISCORD_WEBHOOK_URL
