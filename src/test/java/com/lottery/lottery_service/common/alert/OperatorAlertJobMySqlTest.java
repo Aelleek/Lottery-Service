@@ -3,6 +3,7 @@ package com.lottery.lottery_service.common.alert;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.job.JobProperties;
 import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobState;
@@ -75,6 +76,24 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
         .contains(JobState.DEAD);
     assertThat(jdbc.queryForObject("SELECT state FROM job WHERE job_type = 'OTHER'", String.class))
         .isEqualTo("READY");
+  }
+
+  @Test
+  @DisplayName("슬롯 실패 알림은 회차, 원인, 건수를 담고 마지막 슬롯이면 다시 보내기를 안내한다")
+  void slotFailedFormat() throws Exception {
+    String text =
+        new OperatorAlertJobHandler(sent::add, jdbc)
+            .format(
+                new ObjectMapper()
+                    .readTree(
+                        "{\"kind\":\"SLOT_FAILED\",\"roundNo\":1200,\"cause\":\"PARTIAL_FAILURE\","
+                            + "\"failed\":3,\"unknown\":1,\"last\":true}"));
+
+    assertThat(text)
+        .contains("1200회")
+        .contains("PARTIAL_FAILURE")
+        .contains("3건")
+        .contains("다시 보내기");
   }
 
   @Test

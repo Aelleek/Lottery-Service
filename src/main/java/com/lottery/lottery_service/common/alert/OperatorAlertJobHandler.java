@@ -64,6 +64,16 @@ public class OperatorAlertJobHandler implements JobHandler {
         String round = rounds.isEmpty() || rounds.get(0) == null ? "인증" : rounds.get(0) + "회";
         yield "[접수 확인 종결] " + round + " 메시지 1건을 대조 기간 안에 확정하지 못해 실패로 끝냈습니다.";
       }
+      case "SLOT_FAILED" -> "[결과 알림 슬롯 실패] "
+          + payload.path("roundNo").asInt()
+          + "회, 원인 "
+          + payload.path("cause").asText()
+          + ", 미발송 "
+          + payload.path("failed").asInt()
+          + "건, 접수 확인 중 "
+          + payload.path("unknown").asInt()
+          + "건."
+          + (payload.path("last").asBoolean() ? " 자동 발송을 끝냈습니다. 관리자 화면의 다시 보내기로 보낼 수 있습니다." : "");
       default -> "[운영자 알림] " + kind;
     };
   }
