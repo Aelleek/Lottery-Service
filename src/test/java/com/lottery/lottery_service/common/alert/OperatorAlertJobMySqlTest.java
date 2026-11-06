@@ -97,6 +97,30 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("예산 카운터 불일치는 달과 카운터·메시지 합계를 원 단위로, 정리 지연은 회차·건수·이유를 담는다")
+  void budgetAndCleanupFormat() throws Exception {
+    OperatorAlertJobHandler handler = new OperatorAlertJobHandler(sent::add, jdbc);
+    ObjectMapper mapper = new ObjectMapper();
+
+    assertThat(
+            handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"BUDGET_MISMATCH\",\"month\":\"2026-11\",\"counterReserved\":0,"
+                        + "\"counterSpent\":143,\"messageReserved\":0,\"messageSpent\":0}")))
+        .contains("2026-11")
+        .contains("사용 14.3원")
+        .contains("메시지 합계 예약 0.0원");
+    assertThat(
+            handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"CLEANUP_DELAYED\",\"roundNo\":1200,\"reason\":\"UNEVALUATED\","
+                        + "\"count\":2}")))
+        .contains("1200회")
+        .contains("2건")
+        .contains("UNEVALUATED");
+  }
+
+  @Test
   @DisplayName("웹훅 주소가 없으면 보낼 때 실패한다")
   void unconfiguredWebhook() {
     assertThatThrownBy(() -> new DiscordWebhookSender("").send("x"))

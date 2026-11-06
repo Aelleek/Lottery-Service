@@ -74,8 +74,30 @@ public class OperatorAlertJobHandler implements JobHandler {
           + payload.path("unknown").asInt()
           + "건."
           + (payload.path("last").asBoolean() ? " 자동 발송을 끝냈습니다. 관리자 화면의 다시 보내기로 보낼 수 있습니다." : "");
+      case "BUDGET_MISMATCH" -> "[예산 카운터 불일치] "
+          + payload.path("month").asText()
+          + ", 카운터 예약 "
+          + won(payload.path("counterReserved").asLong())
+          + "·사용 "
+          + won(payload.path("counterSpent").asLong())
+          + ", 메시지 합계 예약 "
+          + won(payload.path("messageReserved").asLong())
+          + "·사용 "
+          + won(payload.path("messageSpent").asLong())
+          + ".";
+      case "CLEANUP_DELAYED" -> "[정리 지연] "
+          + payload.path("roundNo").asInt()
+          + "회 기록 "
+          + payload.path("count").asLong()
+          + "건을 보관 기간이 지나고 7일 넘게 지우지 못했습니다. 이유 "
+          + payload.path("reason").asText()
+          + ".";
       default -> "[운영자 알림] " + kind;
     };
+  }
+
+  private static String won(long units) {
+    return units / 10 + "." + units % 10 + "원";
   }
 
   private static JsonNode read(String json) {

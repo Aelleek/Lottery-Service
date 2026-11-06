@@ -4,7 +4,9 @@ import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.job.RecoveredJob;
 import com.lottery.lottery_service.notification.RoundJobPlanner;
+import com.lottery.lottery_service.notification.budget.BudgetReconciler;
 import com.lottery.lottery_service.record.HousekeepingCleaner;
+import com.lottery.lottery_service.record.RoundMaintenance;
 import com.lottery.lottery_service.result.evaluate.EvaluationReconciler;
 import com.lottery.lottery_service.result.source.ResultCollectJobHandler;
 import com.lottery.lottery_service.round.RoundStore;
@@ -33,7 +35,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li>회차 계획: 10분마다 추첨이 하루 안팎인 회차의 발송 슬롯 job과 첫 결과 수집 job을 등록한다(중복 키로 한 번만).
  *   <li>미평가 대조: 매시간 판정이 빠진 기록에 판정 job을 등록한다.
  *   <li>집계: 매시간 최근 기간을 다시 계산하고 보정 기간이 끝난 기간을 확정한다.
- *   <li>보관 정리: 매일 04:00(서울) 끝난 job, 만료된 비회원 자격, 빈 비회원 주체를 정리한다.
+ *   <li>보관 정리: 매일 04:00(서울) 끝난 job, 만료된 비회원 자격, 빈 비회원 주체를 정리하고, 알림 계획 완료를 확인하고, 보관 기간이 지난 기록을 지우고,
+ *       정리 지연과 예산 카운터 불일치를 알린다.
  * </ul>
  */
 @Slf4j
@@ -44,6 +47,8 @@ public class WorkerScheduler {
 
   static final int MAX_JOBS_PER_TICK = 100;
 
+  static final int RECORD_CLEANUP_BATCH = 500;
+
   private final JobRunner runner;
   private final JobStore jobs;
   private final RoundStore rounds;
@@ -52,6 +57,8 @@ public class WorkerScheduler {
   private final RoundJobPlanner planner;
   private final ResultCollectJobHandler collect;
   private final AggregationPlanner aggregation;
+  private final RoundMaintenance maintenance;
+  private final BudgetReconciler budget;
   private final Clock clock;
   private final TransactionTemplate tx;
 
@@ -65,6 +72,8 @@ public class WorkerScheduler {
       RoundJobPlanner planner,
       ResultCollectJobHandler collect,
       AggregationPlanner aggregation,
+      RoundMaintenance maintenance,
+      BudgetReconciler budget,
       Clock clock,
       PlatformTransactionManager transactionManager) {
     this.runner = runner;
@@ -75,6 +84,8 @@ public class WorkerScheduler {
     this.planner = planner;
     this.collect = collect;
     this.aggregation = aggregation;
+    this.maintenance = maintenance;
+    this.budget = budget;
     this.clock = clock;
     this.tx = new TransactionTemplate(transactionManager);
   }
@@ -143,5 +154,14 @@ public class WorkerScheduler {
           housekeeping.deleteExpiredGuestCredentials();
           housekeeping.deleteEmptyGuestSubjects(1_000);
         });
+    int closed = maintenance.closeNotificationPlans();
+    int deleted = maintenance.cleanupRecords(RECORD_CLEANUP_BATCH);
+    Integer delayed = tx.execute(status -> maintenance.alertDelayedCleanup());
+    tx.executeWithoutResult(status -> budget.reconcile());
+    log.info(
+        "daily cleanup closedPlans={} deletedRecords={} delayedAlerts={}",
+        closed,
+        deleted,
+        delayed);
   }
 }

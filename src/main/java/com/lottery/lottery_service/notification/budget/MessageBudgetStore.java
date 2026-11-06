@@ -90,6 +90,11 @@ public class MessageBudgetStore {
    * @return 같으면 {@code true}. 그 달 행이 없고 메시지도 없으면 {@code true}
    */
   public boolean matchesMessages(LocalDate month) {
+    return compare(month).matches();
+  }
+
+  /** 그 달 카운터와 메시지 비용 합계를 함께 읽는다. 그 달 행이 없으면 카운터는 0으로 본다. */
+  public BudgetComparison compare(LocalDate month) {
     Map<String, Object> sums =
         jdbc.queryForMap(
             "SELECT COALESCE(SUM(CASE WHEN cost_state = 'RESERVED' THEN cost_units END), 0) AS r,"
@@ -102,13 +107,16 @@ public class MessageBudgetStore {
                 + " AND business_month = ?",
             PROVIDER,
             month);
-    long reserved = ((Number) sums.get("r")).longValue();
-    long spent = ((Number) sums.get("s")).longValue();
-    if (counter.isEmpty()) {
-      return reserved == 0 && spent == 0;
-    }
-    return ((Number) counter.get(0).get("reserved_units")).longValue() == reserved
-        && ((Number) counter.get(0).get("spent_units")).longValue() == spent;
+    long counterReserved =
+        counter.isEmpty() ? 0 : ((Number) counter.get(0).get("reserved_units")).longValue();
+    long counterSpent =
+        counter.isEmpty() ? 0 : ((Number) counter.get(0).get("spent_units")).longValue();
+    return new BudgetComparison(
+        month,
+        counterReserved,
+        counterSpent,
+        ((Number) sums.get("r")).longValue(),
+        ((Number) sums.get("s")).longValue());
   }
 
   private boolean move(long messageId, String to, String spentClause) {

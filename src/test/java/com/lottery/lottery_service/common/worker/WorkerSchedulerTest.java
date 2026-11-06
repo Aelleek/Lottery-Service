@@ -11,7 +11,9 @@ import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobState;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.notification.RoundJobPlanner;
+import com.lottery.lottery_service.notification.budget.BudgetReconciler;
 import com.lottery.lottery_service.record.HousekeepingCleaner;
+import com.lottery.lottery_service.record.RoundMaintenance;
 import com.lottery.lottery_service.result.evaluate.EvaluationReconciler;
 import com.lottery.lottery_service.result.source.ResultCollectJobHandler;
 import com.lottery.lottery_service.round.RoundStore;
@@ -40,13 +42,26 @@ class WorkerSchedulerTest {
   private final RoundJobPlanner planner = mock(RoundJobPlanner.class);
   private final ResultCollectJobHandler collect = mock(ResultCollectJobHandler.class);
   private final AggregationPlanner aggregation = mock(AggregationPlanner.class);
+  private final RoundMaintenance maintenance = mock(RoundMaintenance.class);
+  private final BudgetReconciler budget = mock(BudgetReconciler.class);
   private final Clock clock = Clock.fixed(Instant.parse("2026-11-14T12:00:00Z"), ZoneOffset.UTC);
 
   private WorkerScheduler scheduler() {
     TransactionStatus status = new SimpleTransactionStatus();
     when(tm.getTransaction(any())).thenReturn(status);
     return new WorkerScheduler(
-        runner, jobs, rounds, reconciler, housekeeping, planner, collect, aggregation, clock, tm);
+        runner,
+        jobs,
+        rounds,
+        reconciler,
+        housekeeping,
+        planner,
+        collect,
+        aggregation,
+        maintenance,
+        budget,
+        clock,
+        tm);
   }
 
   @Test
@@ -77,6 +92,10 @@ class WorkerSchedulerTest {
     verify(housekeeping).deleteFinishedJobs();
     verify(housekeeping).deleteExpiredGuestCredentials();
     verify(housekeeping).deleteEmptyGuestSubjects(1_000);
+    verify(maintenance).closeNotificationPlans();
+    verify(maintenance).cleanupRecords(WorkerScheduler.RECORD_CLEANUP_BATCH);
+    verify(maintenance).alertDelayedCleanup();
+    verify(budget).reconcile();
   }
 
   @Test
