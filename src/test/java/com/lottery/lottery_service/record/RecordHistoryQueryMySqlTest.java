@@ -14,12 +14,14 @@ import com.lottery.lottery_service.result.domain.WinningNumbers;
 import com.lottery.lottery_service.result.evaluate.EvaluationStore;
 import com.lottery.lottery_service.result.publish.PrizeProperties;
 import com.lottery.lottery_service.result.publish.ResultPublisher;
+import com.lottery.lottery_service.result.query.RoundResultQuery;
 import com.lottery.lottery_service.result.source.OfficialDraw;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.TestSecrets;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -82,7 +84,8 @@ class RecordHistoryQueryMySqlTest extends MySqlContainerSupport {
     GuestCredentialStore guests = new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys());
     subject = guests.issue().subjectId();
     other = guests.issue().subjectId();
-    query = new RecordHistoryQuery(jdbc, rounds, TestSecrets.keys(), clock);
+    query =
+        new RecordHistoryQuery(jdbc, rounds, TestSecrets.keys(), clock, new RoundResultQuery(jdbc));
   }
 
   @Test
@@ -204,6 +207,20 @@ class RecordHistoryQueryMySqlTest extends MySqlContainerSupport {
     assertThat(none.items()).isEmpty();
     assertThat(none.emptyReason()).isEqualTo(RecordPage.EmptyReason.NO_MATCH);
     assertInvalid(() -> query.list(subject, 1199, null, "6", null));
+  }
+
+  @Test
+  @DisplayName("게시 전 회차의 마지막 수집 시도가 실패했으면 기록 판정은 DELAYED(낙첨 아님)")
+  void delayedCollection() {
+    insertNumbers(1200, LottoNumbers.of(1, 2, 3, 4, 5, 6));
+    jdbc.update(
+        "INSERT INTO job (public_id, job_type, dedupe_key, state, payload, available_at,"
+            + " last_error_code, finished_at) VALUES (UUID_TO_BIN(UUID()), 'RESULT_COLLECT', ?,"
+            + " 'SUCCEEDED', '{}', NOW(6), 'RESULT_FETCH_ERROR', NOW(6))",
+        "collect:1200:2026-11-14T11:45:00Z".getBytes(StandardCharsets.UTF_8));
+
+    assertThat(query.list(subject, 1200, null, null, null).items().get(0).evaluation())
+        .isEqualTo(new RecordEvaluation("DELAYED", null, null, null));
   }
 
   private void insertNumbers(int round, LottoNumbers numbers) {
