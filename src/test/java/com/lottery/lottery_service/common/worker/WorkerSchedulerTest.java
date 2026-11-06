@@ -17,6 +17,7 @@ import com.lottery.lottery_service.result.source.ResultCollectJobHandler;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.round.domain.RoundCalendar;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
+import com.lottery.lottery_service.stats.AggregationPlanner;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -38,13 +39,14 @@ class WorkerSchedulerTest {
   private final PlatformTransactionManager tm = mock(PlatformTransactionManager.class);
   private final RoundJobPlanner planner = mock(RoundJobPlanner.class);
   private final ResultCollectJobHandler collect = mock(ResultCollectJobHandler.class);
+  private final AggregationPlanner aggregation = mock(AggregationPlanner.class);
   private final Clock clock = Clock.fixed(Instant.parse("2026-11-14T12:00:00Z"), ZoneOffset.UTC);
 
   private WorkerScheduler scheduler() {
     TransactionStatus status = new SimpleTransactionStatus();
     when(tm.getTransaction(any())).thenReturn(status);
     return new WorkerScheduler(
-        runner, jobs, rounds, reconciler, housekeeping, planner, collect, clock, tm);
+        runner, jobs, rounds, reconciler, housekeeping, planner, collect, aggregation, clock, tm);
   }
 
   @Test
