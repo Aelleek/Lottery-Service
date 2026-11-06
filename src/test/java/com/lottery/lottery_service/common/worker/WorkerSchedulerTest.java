@@ -11,6 +11,7 @@ import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobState;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.notification.RoundJobPlanner;
+import com.lottery.lottery_service.notification.UnknownMessageReconciler;
 import com.lottery.lottery_service.notification.budget.BudgetReconciler;
 import com.lottery.lottery_service.record.HousekeepingCleaner;
 import com.lottery.lottery_service.record.RoundMaintenance;
@@ -44,6 +45,7 @@ class WorkerSchedulerTest {
   private final AggregationPlanner aggregation = mock(AggregationPlanner.class);
   private final RoundMaintenance maintenance = mock(RoundMaintenance.class);
   private final BudgetReconciler budget = mock(BudgetReconciler.class);
+  private final UnknownMessageReconciler unknown = mock(UnknownMessageReconciler.class);
   private final Clock clock = Clock.fixed(Instant.parse("2026-11-14T12:00:00Z"), ZoneOffset.UTC);
 
   private WorkerScheduler scheduler() {
@@ -60,6 +62,7 @@ class WorkerSchedulerTest {
         aggregation,
         maintenance,
         budget,
+        unknown,
         clock,
         tm);
   }
@@ -96,6 +99,9 @@ class WorkerSchedulerTest {
     verify(maintenance).cleanupRecords(WorkerScheduler.RECORD_CLEANUP_BATCH);
     verify(maintenance).alertDelayedCleanup();
     verify(budget).reconcile();
+    scheduler.watchDelivery();
+    verify(budget).alertUsage();
+    verify(unknown).alertLongUnresolved();
   }
 
   @Test

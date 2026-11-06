@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -91,6 +92,23 @@ public class MessageBudgetStore {
    */
   public boolean matchesMessages(LocalDate month) {
     return compare(month).matches();
+  }
+
+  /** 그 달 카운터. 행이 없으면 빈 값. */
+  public Optional<BudgetUsage> usage(LocalDate month) {
+    return jdbc
+        .query(
+            "SELECT limit_units, reserved_units, spent_units FROM message_budget WHERE provider = ?"
+                + " AND business_month = ?",
+            (rs, i) ->
+                new BudgetUsage(
+                    rs.getLong("limit_units"),
+                    rs.getLong("reserved_units"),
+                    rs.getLong("spent_units")),
+            PROVIDER,
+            month)
+        .stream()
+        .findFirst();
   }
 
   /** 그 달 카운터와 메시지 비용 합계를 함께 읽는다. 그 달 행이 없으면 카운터는 0으로 본다. */

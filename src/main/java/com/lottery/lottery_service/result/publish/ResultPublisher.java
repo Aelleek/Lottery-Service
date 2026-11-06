@@ -113,7 +113,8 @@ public class ResultPublisher {
   }
 
   /**
-   * ADMIN의 결과 직접 등록(D-034, 05 6절 직접 등록). 권한·재인증·감사는 호출한 쪽에서 한다.
+   * ADMIN의 결과 직접 등록(D-034, 05 6절 직접 등록). 권한·재인증·감사는 호출한 쪽에서 한다. 같은 트랜잭션에 운영자 알림 job을 등록한다(번호는 넣지
+   * 않는다, 07 2.1절).
    *
    * @return 새 게시본 ID
    * @throws BusinessException 이미 게시됐으면 {@code RESULT_ALREADY_PUBLISHED}, 게시 버전이 다르면 {@code
@@ -140,6 +141,11 @@ public class ResultPublisher {
           long id = insertResult(roundNo, winning, null, "VERIFIED", "MANUAL", adminMemberId);
           insertPrizes(id, null, null);
           publish(roundNo, id, null);
+          jobs.enqueue(
+              JobStore.OPERATOR_ALERT,
+              "result-manual:" + id,
+              "{\"kind\":\"RESULT_MANUAL_REGISTERED\",\"roundNo\":" + roundNo + "}",
+              clock.instant());
           return id;
         });
   }

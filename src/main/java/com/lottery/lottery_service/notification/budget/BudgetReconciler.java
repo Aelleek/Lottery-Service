@@ -28,6 +28,40 @@ public class BudgetReconciler {
     this.clock = clock;
   }
 
+  /** 월 예산 사용(예약+확정)이 이 비율에 닿으면 알린다(07 2.1절). */
+  public static final int USAGE_ALERT_PERCENT = 80;
+
+  /** 사용량 알림 종류. */
+  public static final String USAGE_ALERT_KIND = "BUDGET_THRESHOLD";
+
+  /**
+   * 이번 달 예산 사용이 80%에 닿았으면 운영자 알림을 달마다 한 번 등록한다. 호출한 쪽 트랜잭션에서 돈다.
+   *
+   * @return 이번에 등록했으면 {@code true}
+   */
+  public boolean alertUsage() {
+    LocalDate month = SeoulTime.today(clock).withDayOfMonth(1);
+    return budget
+        .usage(month)
+        .filter(u -> (u.reserved() + u.spent()) * 100 >= u.limit() * USAGE_ALERT_PERCENT)
+        .map(
+            u ->
+                jobs.enqueue(
+                    JobStore.OPERATOR_ALERT,
+                    "budget-threshold:" + month,
+                    "{\"kind\":\""
+                        + USAGE_ALERT_KIND
+                        + "\",\"month\":\""
+                        + month.toString().substring(0, 7)
+                        + "\",\"used\":"
+                        + (u.reserved() + u.spent())
+                        + ",\"limit\":"
+                        + u.limit()
+                        + "}",
+                    clock.instant()))
+        .orElse(false);
+  }
+
   /**
    * 대조한다. 호출한 쪽 트랜잭션에서 돈다.
    *

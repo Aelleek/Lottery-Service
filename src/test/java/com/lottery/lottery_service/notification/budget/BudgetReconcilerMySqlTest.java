@@ -72,6 +72,20 @@ class BudgetReconcilerMySqlTest extends MySqlContainerSupport {
         .isEqualTo("2026-11");
   }
 
+  @Test
+  @DisplayName("이번 달 사용(예약+확정)이 80%에 닿으면 달마다 한 번 알리고, 그 전에는 알리지 않는다")
+  void alertsUsageThreshold() {
+    jdbc.update(
+        "INSERT INTO message_budget (provider, business_month, limit_units, reserved_units,"
+            + " spent_units) VALUES ('SOLAPI', '2026-12-01', 1000, 100, 699)");
+    assertThat(reconciler.alertUsage()).isFalse();
+
+    jdbc.update("UPDATE message_budget SET spent_units = 700");
+    assertThat(reconciler.alertUsage()).isTrue();
+    assertThat(reconciler.alertUsage()).isFalse();
+    assertThat(alerts()).isEqualTo(1);
+  }
+
   private long alerts() {
     return jdbc.queryForObject(
         "SELECT COUNT(*) FROM job WHERE job_type = 'OPERATOR_ALERT'", Long.class);

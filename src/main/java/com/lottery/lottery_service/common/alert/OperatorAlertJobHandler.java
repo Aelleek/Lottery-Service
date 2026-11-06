@@ -85,6 +85,21 @@ public class OperatorAlertJobHandler implements JobHandler {
           + "·사용 "
           + won(payload.path("messageSpent").asLong())
           + ".";
+      case "BUDGET_THRESHOLD" -> "[메시지 예산] "
+          + payload.path("month").asText()
+          + " 사용 "
+          + won(payload.path("used").asLong())
+          + ", 남은 "
+          + won(Math.max(0, payload.path("limit").asLong() - payload.path("used").asLong()))
+          + ". 월 예산의 80%에 닿았습니다.";
+      case "RESULT_MANUAL_REGISTERED" -> "[결과 직접 등록] "
+          + payload.path("roundNo").asInt()
+          + "회 결과를 ADMIN이 직접 등록해 게시했습니다.";
+      case "MESSAGE_UNKNOWN_LONG" -> "[접수 확인 장기화] 접수 여부를 모르는 메시지 "
+          + payload.path("count").asLong()
+          + "건이 24시간 넘게 풀리지 않았습니다. 가장 오래된 발송 시도 "
+          + payload.path("oldest").asText()
+          + ".";
       case "CLEANUP_DELAYED" -> "[정리 지연] "
           + payload.path("roundNo").asInt()
           + "회 기록 "

@@ -118,6 +118,25 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
         .contains("1200회")
         .contains("2건")
         .contains("UNEVALUATED");
+    assertThat(
+            handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"BUDGET_THRESHOLD\",\"month\":\"2026-12\",\"used\":240000,"
+                        + "\"limit\":300000}")))
+        .contains("사용 24000.0원")
+        .contains("남은 6000.0원");
+    assertThat(
+            handler.format(
+                mapper.readTree("{\"kind\":\"RESULT_MANUAL_REGISTERED\",\"roundNo\":1200}")))
+        .contains("1200회")
+        .doesNotContain("[운영자 알림]");
+    assertThat(
+            handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"MESSAGE_UNKNOWN_LONG\",\"count\":3,"
+                        + "\"oldest\":\"2026-11-14T12:30:00Z\"}")))
+        .contains("3건")
+        .contains("2026-11-14T12:30:00Z");
   }
 
   @Test

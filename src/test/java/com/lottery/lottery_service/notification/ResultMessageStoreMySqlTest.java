@@ -223,6 +223,28 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("마지막 시도 뒤 24시간 넘게 UNKNOWN이면 서울 날짜마다 한 번 건수와 가장 오래된 시각으로 알린다")
+  void longUnknownAlert() {
+    UnknownMessageReconciler reconciler = reconciler();
+    unknownMessage(fourthMember);
+    Instant attempted = clock.instant();
+    jdbc.update("DELETE FROM job");
+
+    clock.set(attempted.plus(UnknownMessageReconciler.LONG_UNKNOWN).minusSeconds(1));
+    assertThat(tx.<Boolean>execute(s -> reconciler.alertLongUnresolved())).isFalse();
+    clock.set(attempted.plus(UnknownMessageReconciler.LONG_UNKNOWN));
+    assertThat(tx.<Boolean>execute(s -> reconciler.alertLongUnresolved())).isTrue();
+    assertThat(tx.<Boolean>execute(s -> reconciler.alertLongUnresolved())).isFalse();
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT CAST(payload AS CHAR) FROM job WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .contains("\"count\": 1")
+        .contains("MESSAGE_UNKNOWN_LONG");
+  }
+
+  @Test
   @DisplayName("발송 job 회수 때 IN_FLIGHT는 다시 호출하지 않고 UNKNOWN으로 바꾸며 예약은 유지한다(T27 일부)")
   void inFlightBecomesUnknownOnRecovery() {
     tx.execute(s -> store.createMissing(ROUND));
