@@ -22,6 +22,7 @@ import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.stats.UsageEventStore;
 import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.TestSecrets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -85,7 +86,7 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
             dbNow.plus(Duration.ofHours(2)),
             1);
     rounds.register(schedule);
-    subject = new GuestCredentialStore(jdbc, tm, clock).issue().subjectId();
+    subject = new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys()).issue().subjectId();
     GenerationFilterPipeline filters =
         new GenerationFilterPipeline(
             List.of(

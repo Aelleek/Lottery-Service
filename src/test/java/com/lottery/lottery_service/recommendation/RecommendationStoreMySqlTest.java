@@ -10,6 +10,7 @@ import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.recommendation.filter.GenerationFilterPipeline;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.TestSecrets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -211,7 +212,9 @@ class RecommendationStoreMySqlTest extends MySqlContainerSupport {
   }
 
   private long guest() {
-    return new GuestCredentialStore(jdbc, tm, Clock.fixed(T0, ZoneOffset.UTC)).issue().subjectId();
+    return new GuestCredentialStore(jdbc, tm, Clock.fixed(T0, ZoneOffset.UTC), TestSecrets.keys())
+        .issue()
+        .subjectId();
   }
 
   private static List<LottoNumbers> sets(int base) {

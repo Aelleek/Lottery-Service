@@ -8,6 +8,7 @@ import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.TestSecrets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,7 +50,7 @@ class GenerationLeaseStoreMySqlTest extends MySqlContainerSupport {
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
     tx = new TransactionTemplate(tm);
     leases = new GenerationLeaseStore(jdbc, tm, clock);
-    subject = new GuestCredentialStore(jdbc, tm, clock).issue().subjectId();
+    subject = new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys()).issue().subjectId();
   }
 
   @Test
