@@ -173,6 +173,36 @@ class HistoryImportStoreMySqlTest extends MySqlContainerSupport {
         .isEqualTo(records);
   }
 
+  @Test
+  @DisplayName("로그인 때 가져오지 않고 며칠 뒤 가져와도 같은 결과이고, 비회원 보관 기한이 지난 뒤에는 아무것도 가져오지 않는다(T48)")
+  void laterImportAndExpiredSource() {
+    jdbc.update(
+        "UPDATE subject_claim SET claimed_at = NOW(6) - INTERVAL 3 DAY WHERE id = ?", claim);
+    jdbc.update(
+        "UPDATE lotto_record SET expires_at = NOW(6) - INTERVAL 1 SECOND"
+            + " WHERE owner_subject_id = ? AND numbers_key IN (?, ?)",
+        guest,
+        B,
+        C);
+    long memberRecords =
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM lotto_record WHERE owner_subject_id = ?", Long.class, member);
+
+    ImportBatch batch = tx.execute(s -> store.importBatch(claim, 0, 100));
+
+    assertThat(batch.finished()).isTrue();
+    assertThat(outcomes())
+        .containsEntry(A, "CREATED")
+        .containsEntry(B, "SKIPPED_SOURCE_EXPIRED")
+        .containsEntry(C, "SKIPPED_SOURCE_EXPIRED");
+    assertThat(batch.roundsAfterSalesClose()).isEmpty();
+    assertThat(memberRow(OPEN, B).get("recommended_at")).isNull();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM lotto_record WHERE owner_subject_id = ?", Long.class, member))
+        .isEqualTo(memberRecords + 1);
+  }
+
   private void guestRecord(int round, String key, boolean expired) {
     jdbc.update(
         "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key,"
