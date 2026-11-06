@@ -12,7 +12,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * 기록을 게시본으로 판정한다(05 7절). 판정은 (기록, 게시본, 기록 버전)당 하나라 같은 묶음을 다시 돌려도 결과가 같다. 화면은 현재 게시본과 현재 기록 버전의 판정만
- * 등수로 보여 주고, 없으면 "확인 중"이다. 호출한 쪽 트랜잭션 안에서 부른다.
+ * 등수로 보여 주고, 없으면 "확인 중"이다. 정정 게시본에서 낙첨이 된 기록이 직전 게시본에서 1~5등이었고 구매 표시가 없으면 정정 게시 시각+30일까지 정리에서
+ * 보호한다(05 8.5절 2번). 호출한 쪽 트랜잭션 안에서 부른다.
  */
 @Component
 public class EvaluationStore {
@@ -116,13 +117,31 @@ public class EvaluationStore {
         rank.isWinning() ? rank.ordinal() + 1 : null,
         matched,
         bonus);
+    if (!rank.isWinning() && p.previousResultId() != null) {
+      protectCorrectedLoss(p, recordId);
+    }
     return rank;
+  }
+
+  private void protectCorrectedLoss(Published p, long recordId) {
+    jdbc.update(
+        "UPDATE lotto_record l JOIN draw_result d ON d.id = ?"
+            + " SET l.correction_protected_until = GREATEST(COALESCE(l.correction_protected_until,"
+            + " d.published_at), d.published_at + INTERVAL 30 DAY)"
+            + " WHERE l.id = ? AND l.purchased = FALSE AND EXISTS (SELECT 1 FROM winning_evaluation e"
+            + " WHERE e.record_id = l.id AND e.result_id = ? AND e.rank_no IS NOT NULL)",
+        p.resultId(),
+        recordId,
+        p.previousResultId());
   }
 
   private Optional<Published> current(long resultId) {
     List<Map<String, Object>> rows =
         jdbc.queryForList(
-            "SELECT d.round_no, d.numbers_key, d.bonus_number FROM draw_result d"
+            "SELECT d.round_no, d.numbers_key, d.bonus_number, (SELECT o.id FROM draw_result o"
+                + " WHERE o.round_no = d.round_no AND o.state = 'SUPERSEDED'"
+                + " AND o.published_at IS NOT NULL AND o.id <> d.id"
+                + " ORDER BY o.published_at DESC, o.id DESC LIMIT 1) AS previous_id FROM draw_result d"
                 + " JOIN lotto_round r ON r.published_result_id = d.id WHERE d.id = ?",
             resultId);
     if (rows.isEmpty()) {
@@ -135,8 +154,10 @@ public class EvaluationStore {
             ((Number) r.get("round_no")).intValue(),
             new WinningNumbers(
                 LottoNumbers.fromKey((String) r.get("numbers_key")),
-                LottoNumber.of(((Number) r.get("bonus_number")).intValue()))));
+                LottoNumber.of(((Number) r.get("bonus_number")).intValue())),
+            r.get("previous_id") == null ? null : ((Number) r.get("previous_id")).longValue()));
   }
 
-  private record Published(long resultId, int roundNo, WinningNumbers winning) {}
+  private record Published(
+      long resultId, int roundNo, WinningNumbers winning, Long previousResultId) {}
 }
