@@ -59,6 +59,15 @@ public final class KeyRing {
     return mac(key, message);
   }
 
+  /** 주어진 버전의 원래 키 사본. 암호화처럼 HMAC이 아닌 용도에 쓴다. 그 버전이 없으면 예외. */
+  public byte[] key(int version) {
+    byte[] key = keys.get(version);
+    if (key == null) {
+      throw new IllegalArgumentException("unknown key version");
+    }
+    return key.clone();
+  }
+
   /** 모든 버전 키로 계산한 HMAC. 현재 버전이 먼저다. */
   public List<byte[]> signWithAll(byte[] message) {
     List<byte[]> result = new ArrayList<>();
