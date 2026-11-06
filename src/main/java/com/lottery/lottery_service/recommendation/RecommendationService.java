@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -73,6 +74,12 @@ public class RecommendationService {
    *     ROUND_CHANGED}
    */
   public SavedRecommendation recommend(RecommendCommand command) {
+    return recommend(command, saved -> {});
+  }
+
+  /** 5세트를 추천하고 저장한다. {@code inTransaction}은 저장과 같은 트랜잭션에서 불린다. 멱등 기록 완료처럼 저장과 함께 커밋해야 하는 일에 쓴다. */
+  public SavedRecommendation recommend(
+      RecommendCommand command, Consumer<SavedRecommendation> inTransaction) {
     GenerationLease lease = leases.acquire(command.subjectId());
     try {
       CandidateFilter filter =
@@ -84,7 +91,12 @@ public class RecommendationService {
         Set<LottoNumbers> seen = recommendations.seen(command.subjectId(), command.roundNo());
         List<LottoNumbers> sets = generate(command, filter, seen);
         try {
-          return tx.execute(status -> saveLocked(command, lease, sets));
+          return tx.execute(
+              status -> {
+                SavedRecommendation saved = saveLocked(command, lease, sets);
+                inTransaction.accept(saved);
+                return saved;
+              });
         } catch (RecommendationConflictException e) {
           if (attempt >= MAX_REGENERATIONS) {
             throw new BusinessException(ErrorCode.GENERATION_TIMEOUT, "잠시 뒤 다시 시도해 주세요.");
