@@ -21,6 +21,10 @@ public abstract class MySqlContainerSupport {
   /** 설계 기준 MySQL 이미지. */
   public static final DockerImageName IMAGE = DockerImageName.parse("mysql:8.4");
 
+  /** DB 세션 시간대를 UTC로 고정하는 Connector/J 속성. {@code application-local.yml}의 URL과 같다. */
+  public static final String SESSION_UTC =
+      "connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true";
+
   protected static final MySQLContainer<?> MYSQL =
       new MySQLContainer<>(IMAGE).withUsername("root").withPassword("test");
 
@@ -47,10 +51,13 @@ public abstract class MySqlContainerSupport {
         .locations("classpath:db/migration")
         .load()
         .migrate();
-    return new DriverManagerDataSource(
-        MYSQL.getJdbcUrl().replaceFirst("/[^/?]+(\\?|$)", "/" + name + "$1"),
-        MYSQL.getUsername(),
-        MYSQL.getPassword());
+    return new DriverManagerDataSource(databaseUrl(name), MYSQL.getUsername(), MYSQL.getPassword());
+  }
+
+  /** 주어진 DB의 JDBC URL. 앱 설정처럼 DB 세션 시간대를 UTC로 고정한다(D-045). */
+  protected static String databaseUrl(String name) {
+    String url = MYSQL.getJdbcUrl().replaceFirst("/[^/?]+(\\?|$)", "/" + name + "$1");
+    return url + (url.contains("?") ? "&" : "?") + SESSION_UTC;
   }
 
   /** 주어진 DB에 연결한다. {@code null}이면 컨테이너 기본 DB다. */

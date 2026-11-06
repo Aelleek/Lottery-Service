@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:mysql://${lottery.db.host}:${lottery.db.port}/${lottery.db.name}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    url: jdbc:mysql://${lottery.db.host}:${lottery.db.port}/${lottery.db.name}?useSSL=false&allowPublicKeyRetrieval=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&characterEncoding=UTF-8
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: ${lottery.db.username}
     password: ${lottery.db.password}
