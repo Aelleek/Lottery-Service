@@ -4,15 +4,18 @@
 -- 테이블 책임, 불변조건, 삭제 순서: ../04-data.md
 -- 세션은 Spring Session JDBC 표준 테이블(SPRING_SESSION, SPRING_SESSION_ATTRIBUTES)을 따로 쓴다.
 
--- 계정 상태를 먼저 차단하고 개인 자료 삭제는 추적 가능한 작업으로 진행한다.
--- 탈퇴가 끝나도 행은 WITHDRAWN 묘비로 남는다. 개인정보 컬럼은 두지 않는다.
+-- 계정 상태를 먼저 차단하고 개인 자료 삭제는 추적 가능한 job으로 진행한다.
+-- 탈퇴가 끝나도 행은 WITHDRAWN 묘비로 남는다. 이름·이메일 같은 개인정보 컬럼은 두지 않는다.
+-- 마지막 로그인 시각은 로그인 성공 때 갱신하고 탈퇴 차단 때 비운다(D-038).
 CREATE TABLE member (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   public_id BINARY(16) NOT NULL UNIQUE,
   state VARCHAR(20) NOT NULL,
   auth_version BIGINT NOT NULL DEFAULT 0,
   created_at DATETIME(6) NOT NULL,
+  last_login_at DATETIME(6) NULL,
   withdrawn_at DATETIME(6) NULL,
+  KEY ix_member_last_login (last_login_at),
   CONSTRAINT ck_member_0 CHECK (state IN ('ACTIVE','WITHDRAWING','WITHDRAWN'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
@@ -74,6 +77,7 @@ CREATE TABLE subject_claim (
 -- publication_version은 published_result_id가 바뀔 때마다 1씩 늘어난다. 승인·직접 등록 요청은 화면이 본 값을 함께 보내고, 다르면 거부한다.
 -- draw_result.revision은 결과 행의 회차 안 순번이라 이 값과 다르다.
 -- notification_plan_closed_at의 설정 조건은 ../05-flows.md 8.7.
+-- cutoff_close_at은 봉인할 때 고정한 판매 마감 시각이다. 알림 대상은 이 값으로 정한다(../05-flows.md 5절).
 CREATE TABLE lotto_round (
   round_no INT NOT NULL PRIMARY KEY,
   sales_open_at DATETIME(6) NOT NULL,
@@ -84,11 +88,13 @@ CREATE TABLE lotto_round (
   published_result_id BIGINT NULL,
   cutoff_state VARCHAR(16) NOT NULL DEFAULT 'OPEN',
   cutoff_sealed_at DATETIME(6) NULL,
+  cutoff_close_at DATETIME(6) NULL,
   notification_plan_closed_at DATETIME(6) NULL,
   cleanup_held BOOLEAN NOT NULL DEFAULT FALSE,
   CONSTRAINT ck_lotto_round_0 CHECK (round_no > 0),
   CONSTRAINT ck_lotto_round_1 CHECK (sales_open_at < sales_close_at),
-  CONSTRAINT ck_lotto_round_2 CHECK (cutoff_state IN ('OPEN','SEALED'))
+  CONSTRAINT ck_lotto_round_2 CHECK (cutoff_state IN ('OPEN','SEALED')),
+  CONSTRAINT ck_lotto_round_3 CHECK ((cutoff_state='OPEN' AND cutoff_close_at IS NULL) OR (cutoff_state='SEALED' AND cutoff_close_at IS NOT NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 완료 응답을 받지 못한 요청을 같은 업무로 확인하고 재실행을 막는다.
@@ -115,6 +121,7 @@ CREATE TABLE command_operation (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 동일 사용자·회차·조합은 한 행이다. 추천 이력과 구매 상태를 따로 둔다.
+-- created_at은 현재 주인 아래 행이 생긴 시각이다(가져온 기록은 가져온 시각). 알림 대상 판단에 쓴다.
 CREATE TABLE lotto_record (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   public_id BINARY(16) NOT NULL UNIQUE,
@@ -124,7 +131,7 @@ CREATE TABLE lotto_record (
   recommended_at DATETIME(6) NULL,
   purchased BOOLEAN NOT NULL DEFAULT FALSE,
   purchased_at DATETIME(6) NULL,
-  created_at DATETIME(6) NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   deleted_at DATETIME(6) NULL,
   version BIGINT NOT NULL DEFAULT 0,
   expires_at DATETIME(6) NULL,
@@ -138,24 +145,6 @@ CREATE TABLE lotto_record (
   CONSTRAINT fk_lotto_record_1 FOREIGN KEY (round_no) REFERENCES lotto_round (round_no),
   CONSTRAINT ck_lotto_record_0 CHECK (purchased IN (0,1)),
   CONSTRAINT ck_lotto_record_1 CHECK ((purchased=1 AND purchased_at IS NOT NULL) OR (purchased=0 AND purchased_at IS NULL))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 최초 생성과 모든 실제 변경을 남겨 마감 당시 상태를 복원한다.
--- 변경 후 상태만 저장한다. 변경 전 상태는 같은 기록의 직전 버전 행에서 읽는다.
-CREATE TABLE record_transition (
-  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  record_id BIGINT NOT NULL,
-  record_version BIGINT NOT NULL,
-  owner_subject_id BIGINT NOT NULL,
-  action VARCHAR(24) NOT NULL,
-  accepted_at DATETIME(6) NOT NULL,
-  after_recommended BOOLEAN NOT NULL,
-  after_purchased BOOLEAN NOT NULL,
-  after_deleted BOOLEAN NOT NULL,
-  UNIQUE KEY uq_transition_version (record_id, record_version),
-  KEY ix_transition_cutoff (record_id, accepted_at, id),
-  CONSTRAINT fk_record_transition_0 FOREIGN KEY (record_id) REFERENCES lotto_record (id),
-  CONSTRAINT fk_record_transition_1 FOREIGN KEY (owner_subject_id) REFERENCES actor_subject (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 성공한 발행 사건이다. 정리 뒤에도 발행 수는 집계에서 유지한다.
@@ -278,24 +267,32 @@ CREATE TABLE winning_evaluation (
   CONSTRAINT ck_winning_evaluation_2 CHECK (bonus_matched IN (0,1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
--- 작업 위치를 저장하고 오래된 결과 기준 작업을 중단한다.
-CREATE TABLE evaluation_run (
-  result_id BIGINT NOT NULL PRIMARY KEY,
-  watermark BIGINT NOT NULL,
-  cursor_id BIGINT NOT NULL DEFAULT 0,
-  state VARCHAR(20) NOT NULL,
-  CONSTRAINT fk_evaluation_run_0 FOREIGN KEY (result_id) REFERENCES draw_result (id),
-  CONSTRAINT ck_evaluation_run_0 CHECK (state IN ('READY','RUNNING','SUCCEEDED','SUPERSEDED','FAILED'))
+-- 철회 후 재동의를 이전 동의와 구별한다.
+CREATE TABLE consent_event (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  member_id BIGINT NOT NULL,
+  granted BOOLEAN NOT NULL,
+  policy_version VARCHAR(40) NOT NULL,
+  occurred_at DATETIME(6) NOT NULL,
+  UNIQUE KEY uq_consent_member (id, member_id),
+  CONSTRAINT fk_consent_event_0 FOREIGN KEY (member_id) REFERENCES member (id),
+  CONSTRAINT ck_consent_event_0 CHECK (granted IN (0,1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 연락처는 암호화하고 번호 변경마다 버전을 올린다.
+-- 결과 알림 수신 설정도 여기에 둔다. 번호를 바꾸면 같은 갱신에서 수신을 끄고 동의 참조를 비운다(D-040).
 CREATE TABLE member_contact (
   member_id BIGINT NOT NULL PRIMARY KEY,
   address_ciphertext VARBINARY(1024) NULL,
   key_version INT NOT NULL,
   verified_at DATETIME(6) NULL,
   version BIGINT NOT NULL DEFAULT 0,
-  CONSTRAINT fk_member_contact_0 FOREIGN KEY (member_id) REFERENCES member (id)
+  notify_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  consent_event_id BIGINT NULL,
+  CONSTRAINT fk_member_contact_0 FOREIGN KEY (member_id) REFERENCES member (id),
+  CONSTRAINT fk_member_contact_1 FOREIGN KEY (consent_event_id, member_id) REFERENCES consent_event (id, member_id),
+  CONSTRAINT ck_member_contact_0 CHECK (notify_enabled IN (0,1)),
+  CONSTRAINT ck_member_contact_1 CHECK (notify_enabled=0 OR (consent_event_id IS NOT NULL AND verified_at IS NOT NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- OTP 추측/동시 소비 방지는 이 행 잠금과 시도 수로 처리한다.
@@ -331,122 +328,19 @@ CREATE TABLE verification_rate_bucket (
   CONSTRAINT ck_verification_rate_bucket_1 CHECK (send_count BETWEEN 0 AND 5)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
--- 철회 후 재동의를 이전 동의와 구별한다.
-CREATE TABLE consent_event (
-  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  member_id BIGINT NOT NULL,
-  granted BOOLEAN NOT NULL,
-  policy_version VARCHAR(40) NOT NULL,
-  occurred_at DATETIME(6) NOT NULL,
-  UNIQUE KEY uq_consent_member (id, member_id),
-  CONSTRAINT fk_consent_event_0 FOREIGN KEY (member_id) REFERENCES member (id),
-  CONSTRAINT ck_consent_event_0 CHECK (granted IN (0,1))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 현재 연락처와 동의에 맞는 발송만 허용한다.
-CREATE TABLE notification_preference (
-  member_id BIGINT NOT NULL PRIMARY KEY,
-  enabled BOOLEAN NOT NULL,
-  contact_version BIGINT NOT NULL,
-  consent_event_id BIGINT NOT NULL,
-  version BIGINT NOT NULL DEFAULT 0,
-  CONSTRAINT fk_notification_preference_0 FOREIGN KEY (member_id) REFERENCES member (id),
-  CONSTRAINT fk_notification_preference_1 FOREIGN KEY (consent_event_id, member_id) REFERENCES consent_event (id, member_id),
-  CONSTRAINT ck_notification_preference_0 CHECK (enabled IN (0,1))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 0건 완료도 저장하며 회차당 초기 계획을 다시 만들지 않는다.
-CREATE TABLE notification_cycle (
-  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  member_id BIGINT NOT NULL,
-  round_no INT NOT NULL,
-  channel VARCHAR(16) NOT NULL DEFAULT 'ALIMTALK',
-  cutoff_version BIGINT NOT NULL,
-  evaluation_result_id BIGINT NULL,
-  state VARCHAR(24) NOT NULL,
-  next_sequence BIGINT NOT NULL DEFAULT 1,
-  UNIQUE KEY uq_cycle (member_id, round_no, channel),
-  UNIQUE KEY uq_cycle_round (id, round_no),
-  CONSTRAINT fk_notification_cycle_0 FOREIGN KEY (member_id) REFERENCES member (id),
-  CONSTRAINT fk_notification_cycle_1 FOREIGN KEY (round_no) REFERENCES lotto_round (round_no),
-  CONSTRAINT fk_notification_cycle_2 FOREIGN KEY (evaluation_result_id, round_no) REFERENCES draw_result (id, round_no),
-  CONSTRAINT ck_notification_cycle_0 CHECK (state IN ('WAITING_EVALUATION','PLANNED','NO_TARGET','CLOSED')),
-  CONSTRAINT ck_notification_cycle_1 CHECK (channel='ALIMTALK')
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 판매 마감 전에 표시 기록으로 귀속된 번호만 계획에 참여한다.
-CREATE TABLE notification_cutoff_item (
-  cycle_id BIGINT NOT NULL,
-  record_id BIGINT NOT NULL,
-  round_no INT NOT NULL,
-  record_version BIGINT NOT NULL,
-  was_recommended BOOLEAN NOT NULL,
-  was_purchased BOOLEAN NOT NULL,
-  PRIMARY KEY (cycle_id, record_id),
-  CONSTRAINT fk_notification_cutoff_item_0 FOREIGN KEY (cycle_id, round_no) REFERENCES notification_cycle (id, round_no),
-  CONSTRAINT fk_notification_cutoff_item_1 FOREIGN KEY (record_id, round_no) REFERENCES lotto_record (id, round_no)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 초기 1건과 기발송 내용의 정정 사건을 구분한다.
-CREATE TABLE notification_intent (
-  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  cycle_id BIGINT NOT NULL,
-  round_no INT NOT NULL,
-  kind VARCHAR(16) NOT NULL,
-  sequence_no BIGINT NOT NULL,
-  previous_intent_id BIGINT NULL,
-  result_id BIGINT NOT NULL,
-  expires_at DATETIME(6) NOT NULL,
-  UNIQUE KEY uq_intent_sequence (cycle_id, kind, sequence_no),
-  UNIQUE KEY uq_intent_correction (cycle_id, previous_intent_id, result_id),
-  UNIQUE KEY uq_intent_cycle (id, cycle_id),
-  CONSTRAINT fk_notification_intent_0 FOREIGN KEY (cycle_id, round_no) REFERENCES notification_cycle (id, round_no),
-  CONSTRAINT fk_notification_intent_1 FOREIGN KEY (result_id, round_no) REFERENCES draw_result (id, round_no),
-  CONSTRAINT fk_notification_intent_2 FOREIGN KEY (previous_intent_id, cycle_id) REFERENCES notification_intent (id, cycle_id),
-  CONSTRAINT ck_notification_intent_0 CHECK ((kind='INITIAL' AND sequence_no=0 AND previous_intent_id IS NULL) OR (kind='CORRECTION' AND sequence_no>0 AND previous_intent_id IS NOT NULL))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 본문을 지워도 어떤 보존 기록에 대한 안내인지 비교한다.
-CREATE TABLE notification_item (
-  intent_id BIGINT NOT NULL,
-  record_id BIGINT NOT NULL,
-  rank_no TINYINT NULL,
-  explicit_prize BIGINT NULL,
-  PRIMARY KEY (intent_id, record_id),
-  CONSTRAINT fk_notification_item_0 FOREIGN KEY (intent_id) REFERENCES notification_intent (id),
-  CONSTRAINT fk_notification_item_1 FOREIGN KEY (record_id) REFERENCES lotto_record (id),
-  CONSTRAINT ck_notification_item_0 CHECK (rank_no IS NULL OR rank_no BETWEEN 1 AND 5),
-  CONSTRAINT ck_notification_item_1 CHECK (explicit_prize IS NULL OR explicit_prize>=0)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 본문/수신자와 별개로 마지막 안내 사실만 개인 기록 수명 내 보존한다.
-CREATE TABLE notification_communicated_fact (
-  cycle_id BIGINT NOT NULL,
-  record_id BIGINT NOT NULL,
-  last_intent_id BIGINT NOT NULL,
-  result_id BIGINT NOT NULL,
-  rank_no TINYINT NULL,
-  explicit_prize BIGINT NULL,
-  communicated_at DATETIME(6) NOT NULL,
-  PRIMARY KEY (cycle_id, record_id),
-  CONSTRAINT fk_notification_communicated_fact_0 FOREIGN KEY (cycle_id) REFERENCES notification_cycle (id),
-  CONSTRAINT fk_notification_communicated_fact_1 FOREIGN KEY (record_id) REFERENCES lotto_record (id),
-  CONSTRAINT fk_notification_communicated_fact_2 FOREIGN KEY (last_intent_id, cycle_id) REFERENCES notification_intent (id, cycle_id),
-  CONSTRAINT fk_notification_communicated_fact_3 FOREIGN KEY (result_id) REFERENCES draw_result (id),
-  CONSTRAINT ck_notification_communicated_fact_0 CHECK (rank_no IS NULL OR rank_no BETWEEN 1 AND 5)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
 -- 결과와 번호 인증이 발송 기반만 공유한다. 두 업무의 동의/기한은 다르다.
+-- 결과 알림은 회원·회차당 한 행이다(D-040). 인증 메시지는 round_no가 NULL이라 이 유일 제약 밖이다.
+-- 시도는 동시에 하나만 진행하므로 마지막 시도만 둔다. 비용 상태는 message_budget 카운터와 같은 트랜잭션에서 바꾼다.
 CREATE TABLE delivery_message (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   public_id BINARY(16) NOT NULL UNIQUE,
   purpose VARCHAR(16) NOT NULL,
-  intent_id BIGINT NULL UNIQUE,
+  member_id BIGINT NOT NULL,
+  round_no INT NULL,
   challenge_id BIGINT NULL UNIQUE,
   state VARCHAR(20) NOT NULL,
   provider_request_key BINARY(16) NOT NULL UNIQUE,
   recipient_version BIGINT NULL,
-  preference_version BIGINT NULL,
   consent_event_id BIGINT NULL,
   payload_ciphertext MEDIUMBLOB NULL,
   recipient_ciphertext VARBINARY(1024) NULL,
@@ -454,49 +348,33 @@ CREATE TABLE delivery_message (
   key_version INT NULL,
   template_version VARCHAR(80) NULL,
   communicated_summary JSON NULL,
+  attempt_count INT NOT NULL DEFAULT 0,
+  last_attempt_at DATETIME(6) NULL,
+  last_error_code VARCHAR(80) NULL,
+  provider_message_id VARCHAR(64) NULL,
+  cost_units BIGINT NULL,
+  budget_month DATE NULL,
+  cost_state VARCHAR(12) NULL,
   expires_at DATETIME(6) NOT NULL,
   next_attempt_at DATETIME(6) NULL,
   finalized_at DATETIME(6) NULL,
   version BIGINT NOT NULL DEFAULT 0,
+  UNIQUE KEY uq_delivery_result (member_id, round_no),
   KEY ix_delivery_due (state, next_attempt_at, id),
-  CONSTRAINT fk_delivery_message_0 FOREIGN KEY (intent_id) REFERENCES notification_intent (id),
+  KEY ix_delivery_round (round_no, state),
+  CONSTRAINT fk_delivery_message_0 FOREIGN KEY (member_id) REFERENCES member (id),
   CONSTRAINT fk_delivery_message_1 FOREIGN KEY (challenge_id) REFERENCES verification_challenge (id),
   CONSTRAINT fk_delivery_message_2 FOREIGN KEY (consent_event_id) REFERENCES consent_event (id),
-  CONSTRAINT ck_delivery_message_0 CHECK ((purpose='RESULT' AND intent_id IS NOT NULL AND challenge_id IS NULL) OR (purpose='VERIFICATION' AND intent_id IS NULL AND challenge_id IS NOT NULL)),
-  CONSTRAINT ck_delivery_message_1 CHECK (state IN ('PENDING','IN_FLIGHT','ACCEPTED','DELIVERED','RETRY_WAIT','UNKNOWN','HALTED','FAILED','SUPPRESSED','EXPIRED'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 외부 요청 응답과 실제 전달 상태를 나누어 대조한다.
-CREATE TABLE delivery_attempt (
-  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  message_id BIGINT NOT NULL,
-  attempt_no INT NOT NULL,
-  provider_message_id VARCHAR(128) NULL,
-  outcome VARCHAR(24) NOT NULL,
-  started_at DATETIME(6) NOT NULL,
-  completed_at DATETIME(6) NULL,
-  error_code VARCHAR(80) NULL,
-  UNIQUE KEY uq_attempt (message_id, attempt_no),
-  KEY ix_attempt_provider (provider_message_id),
-  CONSTRAINT fk_delivery_attempt_0 FOREIGN KEY (message_id) REFERENCES delivery_message (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 중복/역순 콜백을 접수하고 인증된 제공자 조회와 대조한다.
-CREATE TABLE provider_callback (
-  provider VARCHAR(16) NOT NULL,
-  event_id VARCHAR(128) NOT NULL,
-  message_id BIGINT NULL,
-  provider_message_id VARCHAR(128) NULL,
-  normalized_status VARCHAR(24) NOT NULL,
-  state VARCHAR(16) NOT NULL,
-  received_at DATETIME(6) NOT NULL,
-  processed_at DATETIME(6) NULL,
-  PRIMARY KEY (provider, event_id),
-  CONSTRAINT fk_provider_callback_0 FOREIGN KEY (message_id) REFERENCES delivery_message (id),
-  CONSTRAINT ck_provider_callback_0 CHECK (state IN ('UNMATCHED','PENDING','PROCESSED'))
+  CONSTRAINT fk_delivery_message_3 FOREIGN KEY (round_no) REFERENCES lotto_round (round_no),
+  CONSTRAINT ck_delivery_message_0 CHECK ((purpose='RESULT' AND round_no IS NOT NULL AND challenge_id IS NULL) OR (purpose='VERIFICATION' AND round_no IS NULL AND challenge_id IS NOT NULL)),
+  CONSTRAINT ck_delivery_message_1 CHECK (state IN ('PENDING','IN_FLIGHT','ACCEPTED','DELIVERED','RETRY_WAIT','UNKNOWN','HALTED','FAILED','SUPPRESSED','EXPIRED')),
+  CONSTRAINT ck_delivery_message_2 CHECK (attempt_count>=0),
+  CONSTRAINT ck_delivery_message_3 CHECK (cost_state IS NULL OR cost_state IN ('RESERVED','SPENT','RELEASED')),
+  CONSTRAINT ck_delivery_message_4 CHECK ((cost_state IS NULL AND cost_units IS NULL AND budget_month IS NULL) OR (cost_state IS NOT NULL AND cost_units>=0 AND budget_month IS NOT NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 금액은 0.1원 정수 단위. 미확정 요청의 예약도 월 상한에 포함한다.
+-- 메시지별 비용 상태는 delivery_message.cost_state에 두고, 이 행은 같은 트랜잭션에서 조건부로 늘리거나 줄인다. 합계는 메시지에서 다시 계산할 수 있다.
 CREATE TABLE message_budget (
   provider VARCHAR(16) NOT NULL,
   business_month DATE NOT NULL,
@@ -510,38 +388,9 @@ CREATE TABLE message_budget (
   CONSTRAINT ck_message_budget_2 CHECK (spent_units>=0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
--- 메시지별 예약을 한 번만 만들고 예산 분류를 보존한다.
-CREATE TABLE budget_reservation (
-  message_id BIGINT NOT NULL PRIMARY KEY,
-  provider VARCHAR(16) NOT NULL,
-  business_month DATE NOT NULL,
-  category VARCHAR(16) NOT NULL,
-  amount_units BIGINT NOT NULL,
-  state VARCHAR(16) NOT NULL,
-  version BIGINT NOT NULL DEFAULT 0,
-  CONSTRAINT fk_budget_reservation_0 FOREIGN KEY (message_id) REFERENCES delivery_message (id),
-  CONSTRAINT fk_budget_reservation_1 FOREIGN KEY (provider, business_month) REFERENCES message_budget (provider, business_month),
-  CONSTRAINT ck_budget_reservation_0 CHECK (category IN ('INITIAL','CORRECTION','VERIFICATION')),
-  CONSTRAINT ck_budget_reservation_1 CHECK (state IN ('RESERVED','ACCEPTED','RELEASED','UNKNOWN')),
-  CONSTRAINT ck_budget_reservation_2 CHECK (amount_units>=0)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 업무 저장과 후속 작업 등록을 한 트랜잭션에 묶는다.
-CREATE TABLE outbox_event (
-  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  event_id BINARY(16) NOT NULL UNIQUE,
-  event_type VARCHAR(64) NOT NULL,
-  aggregate_public_id BINARY(16) NOT NULL,
-  aggregate_version BIGINT NOT NULL,
-  payload JSON NOT NULL,
-  created_at DATETIME(6) NOT NULL,
-  dispatched_at DATETIME(6) NULL,
-  UNIQUE KEY uq_outbox_version (event_type, aggregate_public_id, aggregate_version),
-  KEY ix_outbox_pending (dispatched_at, id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
 -- DB 안의 작업 권한은 매 저장 때 lease를 검증한다. 외부 발송은 별도 대조한다.
 -- 발송 슬롯(중복 키: 회차+슬롯 시각)과 운영자 알림(중복 키: 사건 종류+대상+슬롯)도 job으로 처리한다.
+-- 업무 트랜잭션 안에서 바로 등록해 후속 작업 기록을 대신한다(C-28). 판정·탈퇴 삭제의 진행 위치는 cursor_json에 둔다.
 CREATE TABLE job (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   public_id BINARY(16) NOT NULL UNIQUE,
@@ -563,14 +412,6 @@ CREATE TABLE job (
   CONSTRAINT ck_job_0 CHECK (state IN ('READY','RUNNING','SUCCEEDED','RETRY_WAIT','DEAD','CANCELED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
--- 같은 사건의 내부 업무 효과가 중복 반영되지 않도록 한다.
-CREATE TABLE consumer_receipt (
-  consumer VARCHAR(64) NOT NULL,
-  event_id BINARY(16) NOT NULL,
-  processed_at DATETIME(6) NOT NULL,
-  PRIMARY KEY (consumer, event_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
 -- 숫자/전화번호를 복제하지 않고 발행량 사건을 보관한다.
 CREATE TABLE usage_event (
   event_id BINARY(16) NOT NULL PRIMARY KEY,
@@ -585,6 +426,7 @@ CREATE TABLE usage_event (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 개인 식별 차원 없이 일·월·회차 집계 결과를 장기 보존한다.
+-- 집계 job이 원천에서 다시 계산해 덮어쓴다. 보정 기간이 끝나 원천과 대조하면 VERIFIED로 확정한다.
 CREATE TABLE usage_aggregate (
   period_type VARCHAR(8) NOT NULL,
   period_key VARCHAR(24) NOT NULL,
@@ -593,45 +435,12 @@ CREATE TABLE usage_aggregate (
   calculation_version BIGINT NOT NULL,
   value_count BIGINT NOT NULL,
   as_of DATETIME(6) NOT NULL,
-  PRIMARY KEY (period_type, period_key, metric, dimension_key, calculation_version),
-  CONSTRAINT ck_usage_aggregate_0 CHECK (period_type IN ('DAY','MONTH','ROUND'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 일별 이용자 수를 더하지 않고 각 기간의 중복 사용자를 제거한다.
-CREATE TABLE period_membership (
-  period_type VARCHAR(8) NOT NULL,
-  period_key VARCHAR(24) NOT NULL,
-  subject_id BIGINT NOT NULL,
-  expires_at DATETIME(6) NOT NULL,
-  PRIMARY KEY (period_type, period_key, subject_id),
-  CONSTRAINT fk_period_membership_0 FOREIGN KEY (subject_id) REFERENCES actor_subject (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 원본을 지우기 전에 집계 반영/대조가 끝났음을 확인한다.
-CREATE TABLE aggregate_seal (
-  scope_type VARCHAR(24) NOT NULL,
-  scope_key VARCHAR(80) NOT NULL,
-  calculation_version BIGINT NOT NULL,
-  source_watermark BIGINT NOT NULL,
-  state VARCHAR(16) NOT NULL,
+  state VARCHAR(16) NOT NULL DEFAULT 'BUILDING',
+  source_watermark BIGINT NULL,
   sealed_at DATETIME(6) NULL,
-  PRIMARY KEY (scope_type, scope_key, calculation_version),
-  CONSTRAINT ck_aggregate_seal_0 CHECK (state IN ('BUILDING','VERIFIED','FAILED'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
-
--- 접근 차단과 실제 삭제 완료 및 외부 journal 저장 확인을 구분한다.
-CREATE TABLE account_deletion (
-  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  public_id BINARY(16) NOT NULL UNIQUE,
-  member_id BIGINT NULL,
-  subject_public_id BINARY(16) NOT NULL,
-  state VARCHAR(24) NOT NULL,
-  journal_receipt VARCHAR(160) NULL,
-  requested_at DATETIME(6) NOT NULL,
-  completed_at DATETIME(6) NULL,
-  expires_at DATETIME(6) NULL,
-  CONSTRAINT fk_account_deletion_0 FOREIGN KEY (member_id) REFERENCES member (id),
-  CONSTRAINT ck_account_deletion_0 CHECK (state IN ('BLOCKED','JOURNAL_PENDING','DELETING','COMPLETE','FAILED'))
+  PRIMARY KEY (period_type, period_key, metric, dimension_key, calculation_version),
+  CONSTRAINT ck_usage_aggregate_0 CHECK (period_type IN ('DAY','MONTH','ROUND')),
+  CONSTRAINT ck_usage_aggregate_1 CHECK (state IN ('BUILDING','VERIFIED','FAILED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 관리자 권한. 역할마다 할 수 있는 일은 ../06-api.md 4절.

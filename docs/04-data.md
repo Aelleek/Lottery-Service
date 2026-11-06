@@ -28,50 +28,34 @@
 
 ## 2. 테이블
 
-42개다. 이 밖에 세션 저장용 Spring Session JDBC 표준 테이블 2개를 쓴다 **[미확인]**.
+26개다(D-040). 이 밖에 세션 저장용 Spring Session JDBC 표준 테이블 2개를 쓴다 **[미확인]**.
 
 | 묶음 | 테이블 | 하는 일 | 꼭 지키는 규칙 |
 |---|---|---|---|
-| 회원과 주체 | `member` | 회원. 개인정보 컬럼이 없다 | 상태: ACTIVE, WITHDRAWING(탈퇴 처리 중), WITHDRAWN(묘비) |
+| 회원과 주체 | `member` | 회원. 이름·이메일 같은 개인정보 컬럼이 없다. 마지막 로그인 시각(`last_login_at`)은 둔다(D-038) | 상태: ACTIVE, WITHDRAWING(탈퇴 처리 중), WITHDRAWN(묘비) |
 | | `oauth_account` | 소셜 계정 연결 | (제공자, 제공자 사용자 ID) 유일. 이메일은 신원 키가 아니다 |
 | | `actor_subject` | 회원과 비회원을 같은 "주체"로 다룬다. 기록 변경의 잠금 기준. `generation_lease_until`은 주체당 동시에 하나만 추천을 생성하게 하는 lease, `generation_fence`는 늦게 끝난 생성의 저장을 거부하는 번호, `next_generation_at`은 다음 추천이 가능한 시각 | 회원 주체는 ACTIVE, WITHDRAWING, WITHDRAWN만, 비회원 주체는 ACTIVE, CLAIMED(귀속됨)만 가진다 |
 | | `guest_credential` | 비회원 자격 | 쿠키 원문은 저장하지 않고 해시만 둔다 |
 | | `subject_claim` | 비회원 자료를 회원에게 귀속 | 비회원 주체 하나는 한 번만 귀속. `imported_at`이 비었으면 귀속만 되고 아직 가져오지 않은 상태 |
-| 회차 | `lotto_round` | 판매 개시·마감·추첨 시각, 일정 버전, 게시된 결과, 게시 버전, 마감 봉인 상태, 알림 계획 완료 시각 | 게시된 결과의 정본은 `published_result_id`. 게시 버전(`publication_version`)은 게시 결과가 바뀔 때마다 1 오르고 승인·직접 등록의 충돌 검사에 쓴다. 봉인 상태: OPEN, SEALED. 알림 계획 완료 조건은 [05 8.7](05-flows.md#87-알림-계획-완료) |
+| 회차 | `lotto_round` | 판매 개시·마감·추첨 시각, 일정 버전, 게시된 결과, 게시 버전, 마감 봉인 상태와 봉인 때 고정한 마감 시각(`cutoff_close_at`), 알림 계획 완료 시각 | 게시된 결과의 정본은 `published_result_id`. 게시 버전(`publication_version`)은 게시 결과가 바뀔 때마다 1 오르고 승인·직접 등록의 충돌 검사에 쓴다. 봉인 상태: OPEN, SEALED. 알림 계획 완료 조건은 [05 8.7](05-flows.md#87-알림-계획-완료) |
 | 명령 | `command_operation` | 같은 요청을 다시 받으면 처음 결과를 돌려주기 위한 기록 | (주체, 명령, 토큰 ID, 클라이언트 키) 유일. 상태: PROCESSING, SUCCEEDED, RETRYABLE, FAILED, EXPIRED |
 | 추천 | `recommendation_request` | 성공한 추천 요청 하나. 생성 방식과 필터 버전을 함께 기록 | 기본 추천은 필터 버전 필수, 조건 추천은 필터 버전 없음 |
 | | `recommendation_item` | 그 요청의 5세트 | 요청당 정확히 5개, 서로 다른 조합 |
 | | `recommendation_seen` | 같은 회차에 이미 추천한 조합 | (주체, 회차, 조합) 유일. 화면 기록과 독립 |
-| 기록 | `lotto_record` | 사용자에게 보이는 번호 기록 | (주체, 회차, 조합) 유일. 추천 이력은 `recommended_at`, 구매는 `purchased`로 따로 표시 |
-| | `record_transition` | 기록의 모든 변경 이력. 최초 생성 포함 | (기록, 버전) 유일. 변경 **후** 상태만 저장하고, 변경 전 상태는 직전 버전 행에서 읽는다 |
+| 기록 | `lotto_record` | 사용자에게 보이는 번호 기록 | (주체, 회차, 조합) 유일. 추천 이력은 `recommended_at`, 구매는 `purchased`로 따로 표시. `created_at`은 현재 주인 아래 행이 생긴 시각(가져온 기록은 가져온 시각)이고 알림 대상 판단에 쓴다([05 5](05-flows.md#5-회차-마감과-알림-대상)) |
 | | `history_import_item` | 비회원 기록 가져오기의 항목별 결과 | (귀속, 원본 기록) 유일. 재실행이 사용자가 지운 기록을 되살리지 않게 한다 |
 | 결과와 판정 | `draw_result` | 회차 공식 결과의 게시본. 결과 API로 받았거나 ADMIN이 직접 등록한 것(`source`) | (회차, 게시본 번호) 유일. 의미가 같은 결과는 새 게시본을 만들지 않는다. 외부 ID가 있다. 상태: VERIFIED(검증을 통과함. 게시 여부는 회차의 `published_result_id`), QUARANTINED(게시본과 달라 승인 대기), SUPERSEDED(새 게시본으로 대체됨) |
 | | `draw_prize` | 등수별 1게임 금액과 당첨자 수 | 모르는 값은 NULL |
 | | `winning_evaluation` | 기록별 판정 | (기록, 게시본, 기록 버전) 유일. 행이 없으면 판정 대기, `rank_no`가 NULL이면 낙첨 |
-| | `evaluation_run` | 게시본별 판정 작업의 진행 위치 | 상태: READY, RUNNING, SUCCEEDED, SUPERSEDED(새 게시본이 나와 중단), FAILED |
-| 연락처와 동의 | `member_contact` | 암호화한 수신 번호 | 번호를 바꿀 때마다 버전 증가 |
+| 연락처와 동의 | `member_contact` | 암호화한 수신 번호와 결과 알림 수신 설정(`notify_enabled`, 근거 동의 `consent_event_id`) | 번호를 바꿀 때마다 버전 증가. 번호를 바꾸면 같은 갱신에서 수신을 끄고 동의 참조를 비운다. 수신을 켜려면 인증된 번호와 동의가 있어야 한다 |
 | | `verification_challenge` | 인증 코드 요청 | 코드는 HMAC으로만 저장. 시도 상한은 [02 6.4](02-policies.md#64-수신-번호와-동의). 상태: ACTIVE, CONSUMED(사용함), EXPIRED, REVOKED(재발급으로 무효), LOCKED(시도 초과) |
 | | `verification_rate_bucket` | 계정별·번호별 하루 발송 횟수 | 번호 원문 대신 HMAC |
 | | `consent_event` | 동의와 철회 이력 | 재동의를 이전 동의와 구분 |
-| | `notification_preference` | 현재 수신 설정 | 현재 인증된 번호 버전과 동의에 묶인다 |
-| 알림 계획 | `notification_cycle` | 회원·회차별 알림 묶음 | (회원, 회차, 채널) 유일. 대상 0건도 완료 행을 남긴다. 상태: WAITING_EVALUATION(마감 대상의 판정 대기), PLANNED(보낼 알림이 있음), NO_TARGET(대상 없음으로 완료), CLOSED(회차 알림 계획 완료) |
-| | `notification_cutoff_item` | 판매 마감 시점의 대상 기록 | 마감 때 그 회원에게 속한 기록만 |
-| | `notification_intent` | 기본 알림 1건과 정정 알림 | 기본은 회차당 하나(순번 0), 정정은 이전 안내를 가리킨다. 정정으로 처음 대상이 된 회원은 기본 intent가 정정 뒤에 생길 수 있다([05 8.5](05-flows.md#85-정정-알림)) |
-| | `notification_item` | 알림에 담긴 기록별 등수와 금액 | — |
-| | `notification_communicated_fact` | 기록별로 마지막으로 접수된 안내 사실 | 본문이 정리된 뒤에도 정정 비교에 쓴다. 번호·전화번호는 복제하지 않는다 |
-| 발송 | `delivery_message` | 실제로 보낼 메시지 하나. 결과 알림 또는 인증 코드 | 목적에 맞는 참조가 정확히 하나. 상태는 [05 8](05-flows.md#8-알림-발송) |
-| | `delivery_attempt` | 제공자 호출 시도 | (메시지, 시도 번호) 유일 |
-| | `provider_callback` | 제공자 콜백 | (제공자, 이벤트 ID) 유일. 서명 검증을 통과한 것만. 상태: UNMATCHED(메시지를 아직 못 찾음), PENDING(메시지를 찾았고 반영 전), PROCESSED. 이 PENDING은 메시지의 PENDING과 다르다 |
-| | `message_budget` | 월 예산 | 0.1원 단위 정수. 예약과 확인 중 비용도 상한에 포함 |
-| | `budget_reservation` | 메시지별 비용 예약 | 메시지당 하나. 분류는 기본·정정·인증. 상태: RESERVED, ACCEPTED(확정 사용), RELEASED(확정 미접수로 반환), UNKNOWN(확인 중 비용) |
-| 비동기 작업 | `outbox_event` | 업무 저장과 함께 기록한 후속 사건 | 사건 ID 유일. 번호·전화번호를 payload에 넣지 않는다 |
-| | `job` | worker가 처리할 일. 발송 슬롯과 운영자 알림도 job이다 | (종류, 중복 키) 유일. 마지막 오류 코드를 남긴다. 상태: READY, RUNNING(lease 보유), SUCCEEDED, RETRY_WAIT(다음 시도 시각까지 대기), DEAD(시도 상한 초과, 운영자 확인 필요), CANCELED. job의 RETRY_WAIT는 메시지의 RETRY_WAIT와 다른 상태다. lease 회수는 [03 4](03-architecture.md#4-비동기-처리) |
-| | `consumer_receipt` | 소비자별로 처리한 사건 | (소비자, 사건 ID) 유일 |
+| 발송 | `delivery_message` | 실제로 보낼 메시지 하나. 결과 알림 또는 인증 코드. 마지막 시도(시도 수, 시각, 오류 코드, 제공자 메시지 ID)와 비용(금액, 예산 월, 비용 상태)을 함께 둔다 | 결과 알림은 (회원, 회차) 유일, 인증 메시지는 인증 요청 하나를 가리킨다. 상태는 [05 8](05-flows.md#8-알림-발송). 비용 상태: RESERVED, SPENT, RELEASED |
+| | `message_budget` | 월 예산 카운터 | 0.1원 단위 정수. 예약과 확인 중 비용도 상한에 포함. 메시지 비용 상태와 같은 트랜잭션에서 조건부로 바꾸고, 메시지 합계로 다시 계산할 수 있다([05 8.4](05-flows.md#84-예산)) |
+| 비동기 작업 | `job` | worker가 처리할 일. 업무 트랜잭션 안에서 바로 등록해 후속 작업 기록을 대신한다(C-28). 발송 슬롯, 운영자 알림, 판정, 탈퇴 삭제도 job이다 | (종류, 중복 키) 유일. 마지막 오류 코드를 남긴다. 상태: READY, RUNNING(lease 보유), SUCCEEDED, RETRY_WAIT(다음 시도 시각까지 대기), DEAD(시도 상한 초과, 운영자 확인 필요), CANCELED. job의 RETRY_WAIT는 메시지의 RETRY_WAIT와 다른 상태다. lease 회수는 [03 4](03-architecture.md#4-비동기-처리) |
 | 통계 | `usage_event` | 활동 원천 이벤트 | 번호·연락처 없음 |
-| | `usage_aggregate` | 일·월·회차 집계 | 개인 차원 없음. 기간 만료 없음 |
-| | `period_membership` | 기간별 고유 이용자 계산용 | (기간, 주체) 유일 |
-| | `aggregate_seal` | 범위별 집계 완료 증거 | 날짜가 지났다는 이유만으로 완료로 보지 않는다. 상태: BUILDING, VERIFIED(원천과 대조를 마침), FAILED |
-| 탈퇴 | `account_deletion` | 접근 차단, 삭제 기록 저장, 실제 삭제 완료를 구분해 추적 | 상태: BLOCKED, JOURNAL_PENDING, DELETING, COMPLETE, FAILED. 순서는 6.2 |
+| | `usage_aggregate` | 일·월·회차 집계. 원천에서 다시 계산해 덮어쓴다 | 개인 차원 없음. 기간 만료 없음. 상태: BUILDING, VERIFIED(보정 기간 뒤 원천과 대조를 마침), FAILED |
 | 관리자 | `admin_grant` | 관리자 권한 | 역할: OPERATOR, ADMIN |
 | | `admin_audit_event` | 관리자 변경 감사 기록 | 대상, 사유, 전후 값, 결과. 비밀값과 개인정보 원문 제외 |
 
@@ -81,16 +65,16 @@
 2. 한 주체의 같은 회차 추천 이력에 같은 조합이 두 번 들어가지 않는다.
 3. 한 주체의 같은 회차 기록에 같은 조합이 두 번 들어가지 않는다.
 4. 같은 요청은 한 번만 처리된다.
-5. 기본 알림은 회원·회차당 최대 하나다.
+5. 기본 알림은 회원·회차당 최대 하나다(`delivery_message`의 (회원, 회차) 유일 제약).
 6. 같은 메시지를 제공자에게 두 번 접수시키지 않는다. 확실하지 않으면 보내지 않고 대조한다.
 7. 기록을 지우거나 합치거나 가져와도 이미 집계한 생성량은 바뀌지 않는다.
 
 ## 4. 잠금과 트랜잭션
 
 - 입력 검증, 후보 계산, 외부 호출은 트랜잭션 밖에서 한다. 최종 권한·시간·중복 확인과 상태 변경만 짧은 트랜잭션 안에서 한다.
-- 잠금 순서는 항상 같다. job(있으면) → 주체 ID 오름차순 → 회차 → 기록 ID 오름차순 → 알림 주기·intent → 예산. 어떤 경로도 이 순서를 거꾸로 잡지 않는다.
+- 잠금 순서는 항상 같다. job(있으면) → 주체 ID 오름차순 → 회차 → 기록 ID 오름차순 → 메시지 → 예산. 어떤 경로도 이 순서를 거꾸로 잡지 않는다.
 - 같은 회원의 기록 변경, 추천, 귀속, 탈퇴는 주체 행 잠금으로 줄을 세운다. 다른 회원까지 한 잠금에 묶지 않는다.
-- 일반 기록 저장은 회차 행을 공유 잠금하고, 일정 변경과 마감 봉인은 배타 잠금한다. 결과 게시 트랜잭션은 회차만 잠그고, 회원별 판정은 outbox 뒤에 따로 한다.
+- 일반 기록 저장은 회차 행을 공유 잠금하고, 일정 변경과 마감 봉인은 배타 잠금한다. 결과 게시 트랜잭션은 회차만 잠그고, 회원별 판정은 판정 job으로 따로 한다.
 - 격리 수준은 READ COMMITTED를 기준으로 하고, 불변조건은 명시 잠금, 유일성, 버전으로 지킨다.
 - 교착이나 잠금 시간 초과가 나면 전체를 rollback하고 최대 2회 다시 시도한다. 다시 시도할 때 회차, 동의, 버전을 다시 확인한다. 외부 발송은 이 재시도에 넣지 않는다.
 
@@ -112,56 +96,54 @@
 |---|---|---|---|
 | 1 | `recommendation_item` | 삭제. 주체·회차 정리라면 그 회차의 요청 항목 전부 | — |
 | 2 | `history_import_item` | 이 기록이 원본이면 삭제. 대상이면 `target_record_id`를 NULL로 | — |
-| 3 | `notification_communicated_fact` | 삭제 | 그 회차의 알림 계획 완료 |
-| 4 | `notification_item` | 삭제 | 같음 |
-| 5 | `notification_cutoff_item` | 삭제 | 같음 |
-| 6 | `winning_evaluation` | 삭제 | 최신 판정 완료 |
-| 7 | `record_transition` | 삭제 | 그 회차의 마감 봉인과 대상 고정 완료 |
-| 8 | `lotto_record` | 삭제 | 1~7 완료 |
+| 3 | `winning_evaluation` | 삭제 | 최신 판정 완료 |
+| 4 | `lotto_record` | 삭제 | 1~3 완료 |
 
 주체·회차 정리라면 이어서 `recommendation_seen`(그 회차) → `recommendation_request`(그 회차)를 지운다.
 
-마감 시점 상태를 이력에서 되살릴 수 있다는 보증은 **그 회차의 알림 계획이 끝날 때까지**다. 기록의 보관 기간은 알림 계획 완료보다 길어서, 정상 정리는 이 보증과 부딪치지 않는다. 정정 알림 대상 기록도 당첨이면 기간 만료가 없고, 정정으로 낙첨이 됐으면 정정 확정일+30일까지 남으므로([02 8](02-policies.md#8-보관과-삭제)) 정정 알림의 다시 보내기 기한 안에는 지워지지 않는다. 탈퇴는 그 회원을 알림에서 먼저 빼므로 기다리지 않고 지운다.
+알림 대상은 기록의 시각 컬럼으로 정하므로([05 5](05-flows.md#5-회차-마감과-알림-대상)) 기록을 지우기 전에 따로 남겨 둘 이력이 없다. 지워진 기록은 대상에서 빠지고, 이미 만든 메시지는 보내기 직전 확인에서 SUPPRESSED가 된다. 탈퇴는 그 회원을 알림에서 먼저 빼므로 기다리지 않고 지운다.
 
 ### 6.2 탈퇴할 때
 
 | 순서 | 대상 | 처리 |
 |---|---|---|
-| 1 | 차단 | `member`와 회원 주체를 WITHDRAWING으로, `auth_version` 증가, 세션 회수, 대기 중 메시지 SUPPRESSED |
-| 2 | 삭제 기록 | DB 밖 저장소에 삭제 기록(journal)을 쓰고 저장 확인을 받는다. 실패하면 차단을 유지하고 다시 시도하며 운영자에게 알린다 |
+| 1 | 차단 | `member`와 회원 주체를 WITHDRAWING으로, `auth_version` 증가, `last_login_at`을 NULL로, 세션 회수, 대기 중 메시지 SUPPRESSED |
+| 2 | 삭제 기록 | DB 밖 저장소에 삭제 기록(journal)을 쓰고 저장 확인을 받아 탈퇴 삭제 job에 남긴다. 실패하면 차단을 유지하고 다시 시도하며 운영자에게 알린다 |
 | 3 | 기록 | 회원 주체와 그가 귀속한 비회원 주체의 기록 전부를 6.1 순서로 삭제 |
 | 4 | 추천 | 두 주체의 `recommendation_seen` → `recommendation_item` → `recommendation_request` |
 | 5 | 귀속 | `history_import_item` → `subject_claim` → 비회원 주체의 `guest_credential` |
-| 6 | 알림 | `delivery_attempt`, 확정되거나 해제된 `budget_reservation`, `provider_callback`(메시지 참조 NULL) → `delivery_message` → `notification_intent`(정정부터) → `notification_cycle`. 접수 확인 중(UNKNOWN)인 메시지는 본문·수신자 사본만 즉시 지운다. 그 메시지와 메시지가 가리키는 intent·cycle은 대조가 끝난 뒤 지운다 |
-| 7 | 연락처와 동의 | `notification_preference` → `consent_event` → 인증 메시지 → `verification_challenge` → `member_contact` |
-| 8 | 명령과 통계 | `command_operation` 삭제, `period_membership` 삭제, `usage_event.subject_id`를 NULL로 |
+| 6 | 알림 | 결과 알림 `delivery_message`는 지우지 않는다. 본문, 수신자 사본, 안내 요약(`communicated_summary`)을 즉시 비우고 묘비 회원 ID, 회차, 상태, 비용만 남겨 월 예산 대조([05 8.4](05-flows.md#84-예산))에 쓴다. 접수 확인 중(UNKNOWN)인 메시지는 제공자 메시지 ID가 있으면 그 ID로 계속 대조하고, ID가 없으면 대조할 수단이 수신 번호뿐이라 FAILED로 닫고 비용을 SPENT로 한다(D-043). 탈퇴한 회원에게는 다시 보내지 않으므로 중복 발송은 생기지 않는다 |
+| 7 | 연락처와 동의 | `member_contact` → `consent_event` → 인증 메시지 → `verification_challenge`. `verification_rate_bucket`은 번호 원문 없이 HMAC만 있어 지우지 않고 자기 기한에 정리한다. 탈퇴와 재가입을 반복해 같은 번호로 인증 문자를 계속 보내게 하는 것을 막는다 |
+| 8 | 명령과 통계 | `command_operation` 삭제, `usage_event.subject_id`를 NULL로 |
 | 9 | 소셜 계정 | `oauth_account` 삭제. 이제 같은 소셜 계정으로 새로 가입할 수 있다 |
-| 10 | 묘비 | `member`와 회원 주체는 WITHDRAWN으로 남긴다. 비회원 주체는 삭제. `account_deletion`을 COMPLETE로 |
+| 10 | 묘비 | `member`와 회원 주체는 WITHDRAWN으로 남기고 `withdrawn_at`을 채운다. 비회원 주체는 삭제. 탈퇴 삭제 job을 SUCCEEDED로 |
 
 회원 행을 지우지 않고 남기는 이유는 여러 테이블이 회원을 가리키기 때문이다 **[미확인]**. 남는 행에는 외부 ID, 상태, 시각만 있고 사람과 이어지는 정보는 없다. 다시 가입하면 새 외부 ID를 가진 새 회원이 된다. 이전 외부 ID는 재사용하지 않는다.
 
 ### 6.3 비회원을 정리할 때
 
 - 만료되거나 폐기된 `guest_credential`은 [02 8](02-policies.md#8-보관과-삭제)의 기간이 지나면 삭제한다.
-- 기록, 추천 이력, 귀속, 유효한 자격이 하나도 없는 비회원 주체는 `command_operation`, `period_membership`을 지우고 `usage_event.subject_id`를 NULL로 한 뒤 삭제한다.
+- 기록, 추천 이력, 귀속, 유효한 자격이 하나도 없는 비회원 주체는 `command_operation`을 지우고 `usage_event.subject_id`를 NULL로 한 뒤 삭제한다.
 
 ## 7. 집계
 
-- 원천 이벤트를 소비할 때 `consumer_receipt`와 집계 증가를 같은 트랜잭션에 저장한다. 하나가 실패하면 둘 다 rollback된다.
+- 집계 job은 기간 단위로 원천 사건(`usage_event`)에서 다시 계산해 `usage_aggregate`를 덮어쓴다. 같은 job이 두 번 돌아도 결과가 같아서 처리 표시를 따로 두지 않는다(C-28).
+- VERIFIED가 된 집계는 정기 job이 다시 덮어쓰지 않는다. 고칠 때는 아래의 재집계로만 한다.
 - 생성 세트 수와 추천 성공 수는 추천 요청·항목이 생긴 시점 기준이다. 구매 현재 조합 수와 최초 등록 수는 다른 지표다.
-- 일·월·회차 고유 이용자는 `period_membership`에서 기간마다 따로 센다. 보조 자료는 원천 이벤트의 보관 기간 안에 유지하고, 기간 집계가 봉인되면 익명 숫자만 남긴다.
-- 원본을 지우기 전에 해당 범위의 `aggregate_seal`이 VERIFIED인지 확인한다.
+- 일·월·회차 고유 이용자는 그 기간 사건의 서로 다른 주체 수로 기간마다 따로 센다. 일별 값을 더해 월별 값을 만들지 않는다. 원천 보관 기간(90일) 안에서만 다시 계산할 수 있다.
+- 기간 집계가 VERIFIED가 되기 전에 탈퇴하거나 정리된 주체는 `usage_event.subject_id`가 NULL이 되어 그 기간 고유 이용자 수에서 빠질 수 있다. 이 지표는 원천이 사라진 지표로 표시한다(D-044).
+- 보정 기간([02 9](02-policies.md#9-통계))이 지나면 원천과 대조해 그 기간 집계를 VERIFIED로 확정한다. 원본을 지우기 전에 해당 범위의 집계가 VERIFIED인지 확인한다.
 - 탈퇴 전에 확정된 생성량을 아직 집계하지 못했으면, 개인 연결을 먼저 끊고 숫자 사건만 남겨 집계한다.
 - 재집계는 새 계산 버전을 만들어 검증한 뒤 바꾼다. 원천을 지운 뒤 다시 계산할 수 없는 지표는 그렇다고 표시한다.
 
-## 8. 정정 근거
+## 8. 결과 정정
 
-- 알림 본문과 수신자 사본은 보관 기간이 지나면 지운다. 그 뒤에도 정정이 필요한지 비교하려고 `notification_communicated_fact`에 기록별로 "마지막으로 접수된 안내의 등수와 명시한 금액"만 남긴다.
-- 이 사실은 접수(ACCEPTED)나 전달(DELIVERED)이 확인된 안내로만 갱신한다. 대기, 확인 중, 확정 미접수는 보낸 것으로 기록하지 않는다.
-- 기록이 지워지거나 탈퇴하면 함께 지운다. 기록이 지워져 비교 범위가 줄어든 것을 정정으로 알리지 않는다.
+- 정정 알림은 후속 기능이라([09 2.10](09-later-features.md#210-결과-정정-알림), D-042) 기록별 안내 사실을 따로 저장하지 않는다.
+- 결과가 정정되면 판정을 다시 하고 화면은 최신 판정을 보여 준다. 운영자 알림의 영향 회원 수는 메시지의 안내 요약(`communicated_summary`)과 새 판정을 비교해 센다([05 8.5](05-flows.md#85-결과가-정정됐을-때)).
+- 안내 요약은 접수(ACCEPTED)나 전달(DELIVERED)이 확인된 메시지끼리만 비교한다. 번호·전화번호는 담지 않는다.
 
 ## 9. 삭제 기록과 복원
 
-- 삭제 기록(journal)은 복원 대상 DB와 함께 되돌아가지 않는 별도 저장소에 둔다. DB를 되돌리면 같이 사라지는 outbox만으로는 저장을 보장할 수 없다.
+- 삭제 기록(journal)은 복원 대상 DB와 함께 되돌아가지 않는 별도 저장소에 둔다. DB를 되돌리면 같이 사라지는 job 행만으로는 저장을 보장할 수 없다.
 - journal에는 복원 후 다시 지우는 데 필요한 최소 정보(주체 외부 ID, 요청 시각, 범위)만 둔다. 보관 기간은 [02 8](02-policies.md#8-보관과-삭제)에 있다.
 - 백업으로 복원할 때는 외부 발송, 로그인, 쓰기를 멈춘 상태에서 한다. 최신 journal을 다시 적용하고, 세션을 회수하고, 발송 상태를 대조한 뒤에 서비스를 연다. 최신 journal을 확보하지 못하면 열지 않는다. 절차는 [07 4](07-operations.md#4-백업과-복원)에 있다.

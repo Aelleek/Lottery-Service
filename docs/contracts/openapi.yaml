@@ -623,8 +623,8 @@ paths:
     post:
       operationId: dispatchRoundNotifications
       summary: 수동 다시 보내기
-      description: 자동 발송이 끝난 뒤 못 보낸 기본 알림과 정정 알림을 보낸다. 가능 기간은 ../02-policies.md 6.2와 6.3을 따르고, 지났으면 409
-        DISPATCH_WINDOW_CLOSED. 접수·전달·확인 중인 회원과 자격이 없어진 회원은 제외한다. OPERATOR 이상, 감사 기록을 남긴다.
+      description: 자동 발송이 끝난 뒤 못 보낸 기본 알림과, 정정으로 새로 대상이 된 회원의 기본 알림을 보낸다. 가능 기간은 ../02-policies.md
+        6.2를 따르고, 지났으면 409 DISPATCH_WINDOW_CLOSED. 접수·전달·확인 중인 회원과 자격이 없어진 회원은 제외한다. OPERATOR 이상, 감사 기록을 남긴다.
       security:
       - AdminSession: []
       parameters:
@@ -970,6 +970,12 @@ components:
           schema:
             type: integer
             minimum: 0
+    '500':
+      description: 예상하지 못한 서버 오류. retryable은 false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   schemas:
     Numbers:
       type: array
@@ -1039,6 +1045,8 @@ components:
             description: 503. 회차 일정을 확인할 수 없음
           - const: TEMPORARILY_UNAVAILABLE
             description: 503. 일시적인 서버·외부 환경 실패
+          - const: INTERNAL_ERROR
+            description: 500. 예상하지 못한 서버 오류. 같은 요청을 자동으로 다시 보내지 않는다
         message:
           type: string
           description: 사용자에게 표시할 설명
@@ -1936,7 +1944,6 @@ components:
           enum:
           - AUTO
           - MANUAL
-          - CORRECTION
         outcome:
           type: string
           enum:
