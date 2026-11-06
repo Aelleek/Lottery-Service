@@ -3,6 +3,7 @@ spring:
     import: 
     - optional:file:./config/oauth-client.yml
     - optional:file:./config/local-db.yml
+    - optional:file:./config/secrets.yml
 
   # V1은 첫 출시 스키마(docs/contracts/schema.sql)다. 지금 엔티티는 아직 옛 테이블을 쓰므로
   # 엔티티를 새 스키마로 옮길 때까지 앱 시작 때는 적용하지 않는다. 적용 검증은 mysqlTest가 한다.

@@ -2,9 +2,14 @@ package com.lottery.lottery_service.account;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.lottery.lottery_service.common.secret.SecretKeys;
+import com.lottery.lottery_service.common.secret.SecretProperties;
 import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.TestSecrets;
 import java.time.Instant;
+import java.util.Base64;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +39,9 @@ class GuestCredentialStoreMySqlTest extends MySqlContainerSupport {
     jdbc = new JdbcTemplate(dataSource);
     jdbc.update("DELETE FROM guest_credential");
     jdbc.update("DELETE FROM actor_subject");
-    store = new GuestCredentialStore(jdbc, new DataSourceTransactionManager(dataSource), clock);
+    store =
+        new GuestCredentialStore(
+            jdbc, new DataSourceTransactionManager(dataSource), clock, TestSecrets.keys());
   }
 
   @Test
@@ -50,7 +57,9 @@ class GuestCredentialStoreMySqlTest extends MySqlContainerSupport {
             "SELECT token_hash FROM guest_credential WHERE subject_id = ?",
             byte[].class,
             issued.subjectId());
-    assertThat(stored).hasSize(32).isNotEqualTo(issued.token().getBytes());
+    assertThat(stored)
+        .hasSize(32)
+        .isEqualTo(TestSecrets.keys().guestCredential().sign(issued.token().getBytes()));
     assertThat(
             jdbc.queryForObject(
                 "SELECT kind FROM actor_subject WHERE id = ?", String.class, issued.subjectId()))
@@ -109,5 +118,25 @@ class GuestCredentialStoreMySqlTest extends MySqlContainerSupport {
 
     assertThat(store.resolve(issued.token())).isEmpty();
     assertThat(store.rotate(issued.token())).isEmpty();
+  }
+
+  @Test
+  @DisplayName("키를 새 버전으로 바꿔도 옛 키로 만든 자격을 찾고, 다른 키로는 찾지 못한다")
+  void keyRotation() {
+    GuestCredential issued = store.issue();
+    String oldKey =
+        Base64.getEncoder().encodeToString("guest-credential-test-key-012345".getBytes());
+    String newKey =
+        Base64.getEncoder().encodeToString("guest-credential-next-key-678901".getBytes());
+    SecretKeys rotated =
+        new SecretKeys(
+            new SecretProperties(null, new SecretProperties.Ring(2, Map.of(1, oldKey, 2, newKey))));
+    SecretKeys unrelated = TestSecrets.keys("x".repeat(32), "another-guest-key-00000000000000");
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+
+    assertThat(new GuestCredentialStore(jdbc, tm, clock, rotated).resolve(issued.token()))
+        .isPresent();
+    assertThat(new GuestCredentialStore(jdbc, tm, clock, unrelated).resolve(issued.token()))
+        .isEmpty();
   }
 }
