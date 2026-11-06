@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.TestSecrets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -46,7 +47,7 @@ class SubjectClaimStoreMySqlTest extends MySqlContainerSupport {
     }
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
     claims = new SubjectClaimStore(jdbc, tm, CLOCK);
-    guests = new GuestCredentialStore(jdbc, tm, CLOCK);
+    guests = new GuestCredentialStore(jdbc, tm, CLOCK, TestSecrets.keys());
     accounts = new AccountStore(jdbc, tm, CLOCK);
   }
 

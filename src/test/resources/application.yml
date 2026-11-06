@@ -43,3 +43,14 @@ spring:
             user-info-uri: https://example.com/userinfo
             user-name-attribute: id
 
+# 테스트 전용 키. 운영 키가 아니다.
+lottery:
+  secrets:
+    command-token:
+      current: 1
+      keys:
+        1: dGVzdC1jb21tYW5kLXRva2VuLWtleS0wMTIzNDU2Nzg5YWI=
+    guest-credential:
+      current: 1
+      keys:
+        1: dGVzdC1ndWVzdC1jcmVkZW50aWFsLWtleS0wMTIzNDU2Nzg=

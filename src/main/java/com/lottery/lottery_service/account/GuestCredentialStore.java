@@ -5,9 +5,8 @@ import static com.lottery.lottery_service.common.db.DbValues.instant;
 import static com.lottery.lottery_service.common.db.DbValues.utc;
 import static com.lottery.lottery_service.common.db.DbValues.uuid;
 
+import com.lottery.lottery_service.common.secret.SecretKeys;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -15,7 +14,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -38,14 +39,19 @@ public class GuestCredentialStore {
   private final JdbcTemplate jdbc;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final SecretKeys secrets;
   private final SecureRandom random = new SecureRandom();
 
   /** 저장소를 만든다. */
   public GuestCredentialStore(
-      JdbcTemplate jdbc, PlatformTransactionManager transactionManager, Clock clock) {
+      JdbcTemplate jdbc,
+      PlatformTransactionManager transactionManager,
+      Clock clock,
+      SecretKeys secrets) {
     this.jdbc = jdbc;
     this.tx = new TransactionTemplate(transactionManager);
     this.clock = clock;
+    this.secrets = secrets;
   }
 
   /** 새 비회원 주체와 자격을 만든다. */
@@ -67,19 +73,21 @@ public class GuestCredentialStore {
     if (token == null || token.isEmpty()) {
       return Optional.empty();
     }
+    List<byte[]> candidates = hashes(token);
     List<GuestSubject> found =
         jdbc.query(
             "SELECT s.id, s.public_id, c.expires_at FROM guest_credential c"
                 + " JOIN actor_subject s ON s.id = c.subject_id"
-                + " WHERE c.token_hash = ? AND c.revoked_at IS NULL AND c.expires_at > ?"
+                + " WHERE c.token_hash IN ("
+                + placeholders(candidates.size())
+                + ") AND c.revoked_at IS NULL AND c.expires_at > ?"
                 + " AND s.kind = 'GUEST' AND s.state = 'ACTIVE'",
             (rs, n) ->
                 new GuestSubject(
                     rs.getLong(1),
                     uuid(rs.getBytes(2)),
                     instant(rs.getObject(3, LocalDateTime.class))),
-            hash(token),
-            utc(clock.instant()));
+            args(candidates, utc(clock.instant())));
     return found.stream().findFirst();
   }
 
@@ -95,15 +103,17 @@ public class GuestCredentialStore {
     return tx.execute(
         status -> {
           Instant now = clock.instant();
+          List<byte[]> candidates = hashes(token);
           List<long[]> found =
               jdbc.query(
                   "SELECT c.id, c.subject_id FROM guest_credential c"
                       + " JOIN actor_subject s ON s.id = c.subject_id"
-                      + " WHERE c.token_hash = ? AND c.revoked_at IS NULL AND c.expires_at > ?"
+                      + " WHERE c.token_hash IN ("
+                      + placeholders(candidates.size())
+                      + ") AND c.revoked_at IS NULL AND c.expires_at > ?"
                       + " AND s.kind = 'GUEST' AND s.state = 'ACTIVE' FOR UPDATE",
                   (rs, n) -> new long[] {rs.getLong(1), rs.getLong(2)},
-                  hash(token),
-                  utc(now));
+                  args(candidates, utc(now)));
           if (found.isEmpty()) {
             return Optional.<GuestCredential>empty();
           }
@@ -141,7 +151,7 @@ public class GuestCredentialStore {
     jdbc.update(
         "INSERT INTO guest_credential (subject_id, token_hash, expires_at) VALUES (?, ?, ?)",
         subjectId,
-        hash(token),
+        secrets.guestCredential().sign(token.getBytes(StandardCharsets.UTF_8)),
         utc(expiresAt));
     return new GuestCredential(token, subjectId, publicId, expiresAt);
   }
@@ -152,11 +162,17 @@ public class GuestCredentialStore {
     return Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
   }
 
-  private static byte[] hash(String token) {
-    try {
-      return MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException(e);
-    }
+  private List<byte[]> hashes(String token) {
+    return secrets.guestCredential().signWithAll(token.getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static String placeholders(int n) {
+    return String.join(",", Collections.nCopies(n, "?"));
+  }
+
+  private static Object[] args(List<byte[]> hashes, Object last) {
+    List<Object> args = new ArrayList<>(hashes);
+    args.add(last);
+    return args.toArray();
   }
 }
