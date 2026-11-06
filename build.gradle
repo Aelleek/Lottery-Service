@@ -65,7 +65,7 @@ pmd {
 /* =========================================================
    Changed-files gate wiring
    - CI에서 -DchangedFiles=path1,path2,... 로 주입
-   - 값이 있으면 해당 파일만 검사 + 실패 가드 ON
+   - 값이 있으면 각 태스크의 소스 중 해당 파일만 검사 + 실패 가드 ON
    - 없으면 전체 리포트(비강제)
    ========================================================= */
 def changedFilesProp = System.getProperty('changedFiles') ?: ''
@@ -78,7 +78,8 @@ def changedJavaFiles = changedFilesProp
 
 tasks.withType(Checkstyle).configureEach { t ->
   if (!changedJavaFiles.isEmpty()) {
-    t.source = files(changedJavaFiles)
+    def ownSource = t.source
+    t.source = ownSource.filter { changedJavaFiles.contains(it) }
     t.ignoreFailures = false     // 변경 파일 있을 때 실패 가드
   } else {
     t.ignoreFailures = true      // 변경 없으면 리포트만
@@ -91,7 +92,8 @@ tasks.withType(Checkstyle).configureEach { t ->
 
 tasks.withType(Pmd).configureEach { t ->
   if (!changedJavaFiles.isEmpty()) {
-    t.source = files(changedJavaFiles)
+    def ownSource = t.source
+    t.source = ownSource.filter { changedJavaFiles.contains(it) }
     t.ignoreFailures = false
   } else {
     t.ignoreFailures = true

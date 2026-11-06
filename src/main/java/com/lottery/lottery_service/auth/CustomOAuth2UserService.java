@@ -4,7 +4,7 @@ import com.lottery.lottery_service.member.entity.Member;
 import com.lottery.lottery_service.member.oauth.entity.MemberOAuthAccount;
 import com.lottery.lottery_service.member.oauth.repository.MemberOAuthAccountRepository;
 import com.lottery.lottery_service.member.repository.MemberRepository;
-import java.time.Instant;
+import java.time.Clock;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +32,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
   private final MemberRepository memberRepository;
   private final MemberOAuthAccountRepository oauthRepository;
   private final List<OAuth2UserInfoExtractor> extractors;
+  private final Clock clock;
 
   /**
    * 1) registrationId로 추출기 선택 → OAuthUserInfo 추출 2) (provider, providerUserId)로 기존 링크 조회 → 없으면
@@ -72,7 +73,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
             .orElseGet(() -> createOrLinkMember(provider, info));
 
     // 최근 로그인 시각 갱신
-    member.setLastLoginAt(Instant.now());
+    member.setLastLoginAt(clock.instant());
 
     // Principal 생성 (Kakao의 경우 user-name-attribute = "id")
     String nameAttributeKey =

@@ -33,51 +33,37 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # PR 기준 변경된 Java 파일 계산 (멀티라인 안전)
-      - name: Compute changed Java files (PR)
-        if: ${{ github.event_name == 'pull_request' }}
-        id: diff_pr
+      # 변경된 Java 파일 계산. PR은 base 브랜치 기준, push는 직전 커밋(before) 기준
+      - name: Compute changed Java files
+        id: diff
         shell: bash
         run: |
-          git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
-          files=$(git diff --name-only --diff-filter=ACMRT origin/${{ github.base_ref }}...HEAD | grep -E '\.java$' || true)
-          {
-            echo 'changed<<EOF'
-            echo "$files"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      # main push 기준 변경된 Java 파일 계산 (멀티라인 안전)
-      - name: Compute changed Java files (push)
-        if: ${{ github.event_name == 'push' }}
-        id: diff_push
-        shell: bash
-        run: |
-          git fetch origin main:refs/remotes/origin/main
-          files=$(git diff --name-only --diff-filter=ACMRT origin/main...HEAD | grep -E '\.java$' || true)
-          {
-            echo 'changed<<EOF'
-            echo "$files"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
+            range="origin/${{ github.base_ref }}...HEAD"
+          elif [ -n "${{ github.event.before }}" ] && ! echo "${{ github.event.before }}" | grep -qE '^0+$'; then
+            range="${{ github.event.before }}...${{ github.sha }}"
+          else
+            range="HEAD~1...HEAD"
+          fi
+          # git diff 실패는 스텝 실패로 둔다. grep의 무일치(종료 1)만 "변경 없음"으로 본다
+          all=$(git diff --name-only --diff-filter=ACMRT "$range")
+          files=$(printf '%s\n' "$all" | { grep -E '\.java$' || [ $? -eq 1 ]; } | paste -sd, -)
+          echo "Changed Java files ($range): $files"
+          echo "changed=$files" >> "$GITHUB_OUTPUT"
 
       # 항상 포맷 검사 (PR/Push 공통)
       - name: Spotless (always)
-        run: ./gradlew --no-daemon spotlessCheck -x test
+        run: ./gradlew --no-daemon spotlessCheck
 
-      # 변경된 파일이 있을 때만 정적 분석 실행
+      # 변경된 파일만 검사하고, 위반이 있으면 CI 실패
       - name: Static analysis (changed-files gate)
-        if: |
-          (github.event_name == 'pull_request' && steps.diff_pr.outputs.changed != '') ||
-          (github.event_name == 'push' && steps.diff_push.outputs.changed != '')
-        run: |
-          echo "Changed Java files:"
-          echo "${{ steps.diff_pr.outputs.changed || steps.diff_push.outputs.changed }}"
-          ./gradlew --no-daemon checkstyleMain pmdMain -x test
+        if: ${{ steps.diff.outputs.changed != '' }}
+        run: ./gradlew --no-daemon checkstyleMain checkstyleTest pmdMain pmdTest "-DchangedFiles=${{ steps.diff.outputs.changed }}"
 
-      # 빌드 (PR/Push 공통, 테스트 스킵)
-      - name: Build
-        run: ./gradlew --no-daemon build -x test
+      # 테스트를 포함한 전체 빌드
+      - name: Build and test
+        run: ./gradlew --no-daemon build
 
       - name: Upload reports
         if: always()
@@ -88,3 +74,5 @@ jobs:
             **/build/reports/checkstyle/**
             **/build/reports/pmd/**
             **/build/reports/spotless/**
+            **/build/reports/tests/**
+            **/build/test-results/**
