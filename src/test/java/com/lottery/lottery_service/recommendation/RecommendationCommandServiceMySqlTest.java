@@ -7,6 +7,7 @@ import com.lottery.lottery_service.account.GuestCredential;
 import com.lottery.lottery_service.account.GuestCredentialStore;
 import com.lottery.lottery_service.common.command.CommandOperationStore;
 import com.lottery.lottery_service.common.command.CommandTokenCodec;
+import com.lottery.lottery_service.common.command.OperationQuery;
 import com.lottery.lottery_service.common.db.DbValues;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
@@ -132,6 +133,19 @@ class RecommendationCommandServiceMySqlTest extends MySqlContainerSupport {
     assertThat(again).isEqualTo(first);
     assertThat(count("recommendation_request")).isEqualTo(1);
     assertThat(count("usage_event")).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("명령 조회로 끝난 추천을 다시 읽으면 처음 5세트를 돌려준다")
+  void operationLookupReturnsSameSets() {
+    String token = codec.issue(subjectPublicId, "RECOMMEND", ROUND, 1L);
+    RecommendationView first =
+        recommend(token, UUID.randomUUID(), RecommendationCondition.none(), 1);
+    UUID operation =
+        DbValues.uuid(jdbc.queryForObject("SELECT public_id FROM command_operation", byte[].class));
+
+    assertThat(new OperationQuery(jdbc, List.of(commands)).find(subject, operation))
+        .isEqualTo(new OperationQuery.Outcome.Done(operation, first));
   }
 
   @Test
