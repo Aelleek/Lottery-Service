@@ -3,6 +3,7 @@ package com.lottery.lottery_service.common.job;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import java.sql.Connection;
 import java.sql.SQLException;
