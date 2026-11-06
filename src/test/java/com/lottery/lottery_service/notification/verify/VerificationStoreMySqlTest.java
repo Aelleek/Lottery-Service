@@ -4,7 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.lottery.lottery_service.account.AccountStore;
+import com.lottery.lottery_service.account.MemberLogin;
 import com.lottery.lottery_service.auth.OAuthProvider;
+import com.lottery.lottery_service.common.command.CommandOperationStore;
+import com.lottery.lottery_service.common.command.CommandTokenCodec;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.support.MutableClock;
@@ -12,6 +15,7 @@ import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.TestSecrets;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
@@ -47,6 +51,7 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
     jdbc = new JdbcTemplate(dataSource);
     for (String t :
         List.of(
+            "command_operation",
             "verification_rate_bucket",
             "verification_challenge",
             "member_contact",
@@ -167,6 +172,60 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
     tx.execute(s -> store.verify(member, again.publicId(), again.code(), 3));
     assertThat(jdbc.queryForObject("SELECT notify_enabled FROM member_contact", Boolean.class))
         .isFalse();
+  }
+
+  @Test
+  @DisplayName(
+      "확인 명령: 틀린 코드는 시도 수를 커밋한 뒤 VALIDATION_FAILED, 같은 키 재전송은 같은 실패이고 시도 수가 늘지 않으며, 맞는 코드는 인증된 연락처 버전")
+  void verifyCommand() {
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    MemberLogin login = new AccountStore(jdbc, tm, clock).login(OAuthProvider.KAKAO, "c");
+    CommandTokenCodec codec = new CommandTokenCodec(TestSecrets.keys(), clock);
+    VerifyCommandService commands =
+        new VerifyCommandService(
+            codec, new CommandOperationStore(jdbc, tm, clock), store, jdbc, tm);
+    String token = codec.issue(login.subjectPublicId(), VerifyCommandService.OPERATION, null, null);
+    IssuedChallenge c = issue(login.memberId());
+    String wrong = c.code().equals("000000") ? "111111" : "000000";
+    UUID wrongKey = UUID.randomUUID();
+
+    for (int i = 0; i < 2; i++) {
+      assertThatThrownBy(
+              () ->
+                  commands.verify(
+                      login.memberId(),
+                      login.subjectId(),
+                      login.subjectPublicId(),
+                      token,
+                      wrongKey,
+                      c.publicId(),
+                      wrong))
+          .isInstanceOfSatisfying(
+              BusinessException.class,
+              e -> assertThat(e.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT attempts FROM verification_challenge WHERE id = ?",
+                Integer.class,
+                c.challengeId()))
+        .isEqualTo(1);
+
+    long version =
+        commands.verify(
+            login.memberId(),
+            login.subjectId(),
+            login.subjectPublicId(),
+            token,
+            UUID.randomUUID(),
+            c.publicId(),
+            c.code());
+    assertThat(version)
+        .isEqualTo(
+            jdbc.queryForObject(
+                "SELECT version FROM member_contact WHERE member_id = ?",
+                Long.class,
+                login.memberId()));
   }
 
   private IssuedChallenge issue(long memberId) {
