@@ -3,6 +3,7 @@ package com.lottery.lottery_service.record;
 import static com.lottery.lottery_service.common.db.DbValues.bytes;
 
 import com.lottery.lottery_service.common.command.CommandOperationStore;
+import com.lottery.lottery_service.common.command.CommandResultLoader;
 import com.lottery.lottery_service.common.command.CommandStart;
 import com.lottery.lottery_service.common.command.CommandToken;
 import com.lottery.lottery_service.common.command.CommandTokenCodec;
@@ -28,7 +29,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 그래서 그 사이 다시 구매 등록한 기록을 옛 취소 요청이 취소하지 않는다. 확인 순서는 토큰의 주체·명령, 멱등 기록(완료 여부), 기록의 소유권·버전이다.
  */
 @Component
-public class CancelCommandService {
+public class CancelCommandService implements CommandResultLoader {
 
   /** 취소 명령 종류. 명령 토큰에 묶인다. */
   public static final String OPERATION = "CANCEL_PURCHASE";
@@ -117,6 +118,18 @@ public class CancelCommandService {
       operations.markRetryable(started, ErrorCode.TEMPORARILY_UNAVAILABLE.name());
       throw e;
     }
+  }
+
+  @Override
+  public String operation() {
+    return OPERATION;
+  }
+
+  /** 끝난 취소 명령의 번호 없는 완료 증명. */
+  @Override
+  public CancelProof load(
+      long subjectId, UUID operationPublicId, UUID resourcePublicId, String completionCode) {
+    return new CancelProof(operationPublicId, completionCode, completedAt(operationPublicId));
   }
 
   private Instant completedAt(UUID operationPublicId) {
