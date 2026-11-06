@@ -28,6 +28,11 @@ public class BudgetReconciler {
     this.clock = clock;
   }
 
+  /** 이번 달(서울) 예산 행을 만든다. 이미 있으면 그대로 둔다. */
+  public void openMonth() {
+    budget.ensureMonth(SeoulTime.today(clock));
+  }
+
   /** 월 예산 사용(예약+확정)이 이 비율에 닿으면 알린다(07 2.1절). */
   public static final int USAGE_ALERT_PERCENT = 80;
 

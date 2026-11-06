@@ -86,6 +86,22 @@ class BudgetReconcilerMySqlTest extends MySqlContainerSupport {
     assertThat(alerts()).isEqualTo(1);
   }
 
+  @Test
+  @DisplayName("월 전환은 서울 기준 이번 달 예산 행을 설정값으로 만들고, 있으면 그대로 둔다")
+  void opensMonth() {
+    reconciler.openMonth();
+    jdbc.update("UPDATE message_budget SET spent_units = 10");
+    reconciler.openMonth();
+
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT CAST(business_month AS CHAR) AS business_month, limit_units, spent_units"
+                    + " FROM message_budget"))
+        .containsEntry("business_month", "2026-12-01")
+        .containsEntry("limit_units", 300_000L)
+        .containsEntry("spent_units", 10L);
+  }
+
   private long alerts() {
     return jdbc.queryForObject(
         "SELECT COUNT(*) FROM job WHERE job_type = 'OPERATOR_ALERT'", Long.class);

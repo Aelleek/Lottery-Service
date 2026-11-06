@@ -43,12 +43,7 @@ public class MessageBudgetStore {
    */
   public boolean reserve(long messageId, MessagePurpose purpose, long units, Instant at) {
     LocalDate month = SeoulTime.monthOf(at).atDay(1);
-    jdbc.update(
-        "INSERT INTO message_budget (provider, business_month, limit_units) VALUES (?, ?, ?)"
-            + " ON DUPLICATE KEY UPDATE provider = provider",
-        PROVIDER,
-        month,
-        properties.monthlyLimitUnits());
+    ensureMonth(month);
     int counter =
         jdbc.update(
             "UPDATE message_budget SET reserved_units = reserved_units + ?, version = version + 1"
@@ -92,6 +87,16 @@ public class MessageBudgetStore {
    */
   public boolean matchesMessages(LocalDate month) {
     return compare(month).matches();
+  }
+
+  /** 그 달 예산 행이 없으면 설정값으로 만든다(07 1절 예산 월 전환). 이미 있으면 그대로 둔다. */
+  public void ensureMonth(LocalDate month) {
+    jdbc.update(
+        "INSERT INTO message_budget (provider, business_month, limit_units) VALUES (?, ?, ?)"
+            + " ON DUPLICATE KEY UPDATE provider = provider",
+        PROVIDER,
+        month.withDayOfMonth(1),
+        properties.monthlyLimitUnits());
   }
 
   /** 그 달 카운터. 행이 없으면 빈 값. */

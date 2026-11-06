@@ -107,6 +107,17 @@ public class OperatorAlertJobHandler implements JobHandler {
           + "건이 24시간 넘게 풀리지 않았습니다. 가장 오래된 발송 시도 "
           + payload.path("oldest").asText()
           + ".";
+      case "MANUAL_RESEND" -> "[수동 다시 보내기] "
+          + payload.path("roundNo").asInt()
+          + "회, 실행 "
+          + payload.path("actor").asText()
+          + ", 접수 "
+          + payload.path("sent").asLong()
+          + "건, 실패 "
+          + payload.path("failed").asLong()
+          + "건, 접수 확인 중 "
+          + payload.path("unknown").asLong()
+          + "건.";
       case "CLEANUP_DELAYED" -> "[정리 지연] "
           + payload.path("roundNo").asInt()
           + "회 기록 "

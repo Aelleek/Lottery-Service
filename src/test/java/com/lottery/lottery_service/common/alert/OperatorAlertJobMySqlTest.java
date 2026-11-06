@@ -136,6 +136,15 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
         .contains("정정 알림은 보내지 않습니다");
     assertThat(
             handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"MANUAL_RESEND\",\"roundNo\":1200,\"actor\":\"OPERATOR\","
+                        + "\"sent\":3,\"failed\":1,\"unknown\":0}")))
+        .contains("1200회")
+        .contains("실행 OPERATOR")
+        .contains("접수 3건")
+        .contains("실패 1건");
+    assertThat(
+            handler.format(
                 mapper.readTree("{\"kind\":\"RESULT_MANUAL_REGISTERED\",\"roundNo\":1200}")))
         .contains("1200회")
         .doesNotContain("[운영자 알림]");

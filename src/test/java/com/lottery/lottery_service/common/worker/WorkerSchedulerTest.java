@@ -100,6 +100,8 @@ class WorkerSchedulerTest {
     verify(maintenance).alertDelayedCleanup();
     verify(budget).reconcile();
     scheduler.watchDelivery();
+    scheduler.openBudgetMonth();
+    verify(budget).openMonth();
     verify(budget).alertUsage();
     verify(unknown).alertLongUnresolved();
   }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.lottery.lottery_service.account.AccountStore;
+import com.lottery.lottery_service.admin.AdminRole;
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
@@ -426,15 +427,28 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
                   called.add(id);
                   return new SendOutcome.Accepted("M2");
                 }),
+            new JobStore(
+                jdbc,
+                new DataSourceTransactionManager(dataSource),
+                clock,
+                new JobProperties(null, null)),
             new DataSourceTransactionManager(dataSource),
             clock);
+    jdbc.update("DELETE FROM job WHERE job_type = 'OPERATOR_ALERT'");
 
-    assertThat(resend.resend(ROUND).success()).isTrue();
+    assertThat(resend.resend(ROUND, AdminRole.OPERATOR).success()).isTrue();
     assertThat(called).containsExactly(message(fourthMember));
     assertThat(state(fourthMember)).isEqualTo("ACCEPTED");
+    assertThat(
+            jdbc.queryForList(
+                "SELECT CAST(payload AS CHAR) FROM job WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .containsExactly(
+            "{\"kind\": \"MANUAL_RESEND\", \"sent\": 1, \"actor\": \"OPERATOR\", \"failed\": 0,"
+                + " \"roundNo\": 1200, \"unknown\": 0}");
 
     clock.set(published.plus(ResultMessageStore.VALIDITY));
-    assertThatThrownBy(() -> resend.resend(ROUND))
+    assertThatThrownBy(() -> resend.resend(ROUND, AdminRole.OPERATOR))
         .isInstanceOfSatisfying(
             BusinessException.class,
             e -> assertThat(e.getCode()).isEqualTo(ErrorCode.DISPATCH_WINDOW_CLOSED));
