@@ -15,6 +15,7 @@ class ProviderUserInfoExtractorTest {
 
   private final GoogleUserInfoExtractor google = new GoogleUserInfoExtractor();
   private final NaverUserInfoExtractor naver = new NaverUserInfoExtractor();
+  private final KakaoUserInfoExtractor kakao = new KakaoUserInfoExtractor();
 
   @Test
   @DisplayName("Google은 sub를 식별자로 쓰고 이름·이메일·사진을 읽는다")
@@ -87,6 +88,35 @@ class ProviderUserInfoExtractorTest {
     assertThat(Attributes.string(Map.of("id", 42L), "id")).isEqualTo("42");
     assertThat(Attributes.string(Map.of("id", List.of()), "id")).isNull();
     assertThat(Attributes.string(Map.of(), "id")).isNull();
+  }
+
+  @Test
+  @DisplayName("Kakao는 숫자 id를 식별자로 읽고 중첩된 프로필 값을 꺼낸다")
+  void kakao() {
+    Map<String, Object> account =
+        Map.of(
+            "email",
+            "a@example.com",
+            "profile",
+            Map.of("nickname", "영희", "profile_image_url", "https://img/1"));
+    OAuthUserInfo info =
+        kakao.extract(user(Map.of("id", 4433749540L, "kakao_account", account), "id"));
+
+    assertThat(info.providerUserId()).isEqualTo("4433749540");
+    assertThat(info.email()).isEqualTo("a@example.com");
+    assertThat(info.nickname()).isEqualTo("영희");
+    assertThat(info.name()).isNull();
+    assertThat(info.profileImageUrl()).isEqualTo("https://img/1");
+  }
+
+  @Test
+  @DisplayName("Kakao 응답에 id가 없으면 문자열 \"null\"이 아니라 null이다")
+  void kakaoWithoutIdGivesNullId() {
+    OAuthUserInfo info =
+        kakao.extract(user(Map.of("kakao_account", Map.of("email", "")), "kakao_account"));
+
+    assertThat(info.providerUserId()).isNull();
+    assertThat(info.email()).isNull();
   }
 
   private static OAuth2User user(Map<String, Object> attrs, String nameKey) {
