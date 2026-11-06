@@ -3,3 +3,7 @@ lottery:
   integrations:
     # 운영자 알림 Discord 웹훅 주소(D-030)
     discord-webhook-url: REPLACE_WITH_DISCORD_WEBHOOK_URL
+  # 만료를 지켜볼 인증서·연동과 만료일(서울 기준). 30·14·7·1일 전에 운영자 알림(07 2.1). 날짜만 적는다.
+  # expirations:
+  #   items:
+  #     solapi-api-key: 2027-03-31

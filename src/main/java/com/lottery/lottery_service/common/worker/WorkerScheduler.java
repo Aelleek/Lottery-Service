@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.common.worker;
 
+import com.lottery.lottery_service.common.alert.ExpiryWatch;
 import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.job.RecoveredJob;
@@ -39,7 +40,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li>발송 감시: 매시간 예산 80% 도달과 24시간 넘은 접수 확인을 운영자에게 알린다.
  *   <li>예산 월 전환: 매월 1일 00:00(서울) 그 달 예산 행을 만든다.
  *   <li>보관 정리: 매일 04:00(서울) 끝난 job, 만료된 비회원 자격, 빈 비회원 주체를 정리하고, 알림 계획 완료를 확인하고, 보관 기간이 지난 기록을 지우고,
- *       정리 지연과 예산 카운터 불일치를 알린다.
+ *       정리 지연과 예산 카운터 불일치, 인증서·연동 만료를 알린다.
  * </ul>
  */
 @Slf4j
@@ -63,6 +64,7 @@ public class WorkerScheduler {
   private final RoundMaintenance maintenance;
   private final BudgetReconciler budget;
   private final UnknownMessageReconciler unknown;
+  private final ExpiryWatch expiry;
   private final Clock clock;
   private final TransactionTemplate tx;
 
@@ -79,6 +81,7 @@ public class WorkerScheduler {
       RoundMaintenance maintenance,
       BudgetReconciler budget,
       UnknownMessageReconciler unknown,
+      ExpiryWatch expiry,
       Clock clock,
       PlatformTransactionManager transactionManager) {
     this.runner = runner;
@@ -92,6 +95,7 @@ public class WorkerScheduler {
     this.maintenance = maintenance;
     this.budget = budget;
     this.unknown = unknown;
+    this.expiry = expiry;
     this.clock = clock;
     this.tx = new TransactionTemplate(transactionManager);
   }
@@ -182,6 +186,7 @@ public class WorkerScheduler {
     int deleted = maintenance.cleanupRecords(RECORD_CLEANUP_BATCH);
     Integer delayed = tx.execute(status -> maintenance.alertDelayedCleanup());
     tx.executeWithoutResult(status -> budget.reconcile());
+    tx.executeWithoutResult(status -> expiry.check());
     log.info(
         "daily cleanup closedPlans={} deletedRecords={} delayedAlerts={}",
         closed,

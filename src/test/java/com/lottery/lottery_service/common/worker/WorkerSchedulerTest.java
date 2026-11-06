@@ -7,6 +7,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.lottery.lottery_service.common.alert.ExpiryWatch;
 import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobState;
 import com.lottery.lottery_service.common.job.JobStore;
@@ -46,6 +47,7 @@ class WorkerSchedulerTest {
   private final RoundMaintenance maintenance = mock(RoundMaintenance.class);
   private final BudgetReconciler budget = mock(BudgetReconciler.class);
   private final UnknownMessageReconciler unknown = mock(UnknownMessageReconciler.class);
+  private final ExpiryWatch expiry = mock(ExpiryWatch.class);
   private final Clock clock = Clock.fixed(Instant.parse("2026-11-14T12:00:00Z"), ZoneOffset.UTC);
 
   private WorkerScheduler scheduler() {
@@ -63,6 +65,7 @@ class WorkerSchedulerTest {
         maintenance,
         budget,
         unknown,
+        expiry,
         clock,
         tm);
   }
@@ -101,6 +104,7 @@ class WorkerSchedulerTest {
     verify(maintenance).cleanupRecords(WorkerScheduler.RECORD_CLEANUP_BATCH);
     verify(maintenance).alertDelayedCleanup();
     verify(budget).reconcile();
+    verify(expiry).check();
     scheduler.watchDelivery();
     scheduler.openBudgetMonth();
     verify(budget).openMonth();
