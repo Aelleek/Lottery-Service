@@ -119,7 +119,7 @@ public class ResultMessageStore {
   }
 
   /**
-   * 비용을 예약하고 IN_FLIGHT로 바꾼다. 커밋한 뒤 제공자를 부른다.
+   * 비용을 예약하고 IN_FLIGHT로 바꾼다. 이때 보낼 내용의 안내 요약({@link CommunicatedSummary})을 남긴다. 커밋한 뒤 제공자를 부른다.
    *
    * @return 예약했으면 {@code true}, 예산이 모자라면 상태를 바꾸지 않고 {@code false}
    */
@@ -128,12 +128,23 @@ public class ResultMessageStore {
     if (!budget.reserve(messageId, MessagePurpose.RESULT, costUnits, now)) {
       return false;
     }
+    Map<String, Object> message =
+        jdbc.queryForMap(
+            "SELECT member_id, round_no FROM delivery_message WHERE id = ?", messageId);
+    long member = ((Number) message.get("member_id")).longValue();
+    int round = ((Number) message.get("round_no")).intValue();
+    NotificationTarget target =
+        targets.targets(round).stream()
+            .filter(t -> t.memberId() == member)
+            .findFirst()
+            .orElse(null);
     int changed =
         jdbc.update(
             "UPDATE delivery_message SET state = 'IN_FLIGHT', attempt_count = attempt_count + 1,"
-                + " last_attempt_at = ?, version = version + 1 WHERE id = ?"
-                + " AND state IN ('PENDING','RETRY_WAIT')",
+                + " last_attempt_at = ?, communicated_summary = ?, version = version + 1"
+                + " WHERE id = ? AND state IN ('PENDING','RETRY_WAIT')",
             utc(now),
+            CommunicatedSummary.current(jdbc, round, target).toJson(),
             messageId);
     if (changed != 1) {
       throw new IllegalStateException("message is not ready to send: " + messageId);

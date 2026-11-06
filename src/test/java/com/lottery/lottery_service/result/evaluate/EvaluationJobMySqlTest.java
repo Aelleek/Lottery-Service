@@ -89,7 +89,7 @@ class EvaluationJobMySqlTest extends MySqlContainerSupport {
   void evaluationJobRunsToCompletion() {
     publish();
 
-    JobRunner runner = runner(new EvaluateResultJobHandler(evaluations, 2));
+    JobRunner runner = runner(new EvaluateResultJobHandler(evaluations, List.of(), 2));
     assertThat(runner.runOnce()).contains(JobState.SUCCEEDED);
 
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM winning_evaluation", Long.class))
@@ -107,7 +107,7 @@ class EvaluationJobMySqlTest extends MySqlContainerSupport {
     publish();
     jdbc.update("UPDATE job SET cancel_requested = TRUE");
 
-    assertThat(runner(new EvaluateResultJobHandler(evaluations, 2)).runOnce())
+    assertThat(runner(new EvaluateResultJobHandler(evaluations, List.of(), 2)).runOnce())
         .contains(JobState.CANCELED);
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM winning_evaluation", Long.class)).isZero();
   }

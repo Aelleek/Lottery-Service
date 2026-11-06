@@ -6,6 +6,7 @@ import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
 import com.lottery.lottery_service.result.publish.ResultPublisher;
+import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -19,16 +20,20 @@ public class EvaluateResultJobHandler implements JobHandler {
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private final EvaluationStore evaluations;
+  private final List<ResultEvaluatedListener> listeners;
   private final int batchSize;
 
   /** 처리기를 만든다. */
   @Autowired
-  public EvaluateResultJobHandler(EvaluationStore evaluations) {
-    this(evaluations, BATCH);
+  public EvaluateResultJobHandler(
+      EvaluationStore evaluations, List<ResultEvaluatedListener> listeners) {
+    this(evaluations, listeners, BATCH);
   }
 
-  EvaluateResultJobHandler(EvaluationStore evaluations, int batch) {
+  EvaluateResultJobHandler(
+      EvaluationStore evaluations, List<ResultEvaluatedListener> listeners, int batch) {
     this.evaluations = evaluations;
+    this.listeners = List.copyOf(listeners);
     this.batchSize = batch;
   }
 
@@ -43,6 +48,9 @@ public class EvaluateResultJobHandler implements JobHandler {
     long after = cursorJson == null ? 0 : read(cursorJson).path("lastRecordId").asLong();
     EvaluationBatch batch = evaluations.evaluateBatch(resultId, after, batchSize);
     if (batch.finished()) {
+      if (!batch.superseded()) {
+        listeners.forEach(l -> l.evaluated(resultId));
+      }
       return new JobStep.Done();
     }
     return new JobStep.Continue("{\"lastRecordId\":" + batch.lastRecordId() + "}");
