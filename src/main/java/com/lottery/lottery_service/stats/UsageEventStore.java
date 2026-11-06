@@ -19,6 +19,9 @@ public class UsageEventStore {
   /** 추천으로 생성한 세트 수. */
   public static final String RECOMMENDATION_SETS = "RECOMMENDATION_SETS";
 
+  /** 구매 등록으로 새로 생기거나 구매 표시가 붙은 조합 수. */
+  public static final String PURCHASE_REGISTERED = "PURCHASE_REGISTERED";
+
   private final JdbcTemplate jdbc;
 
   /** 저장소를 만든다. */
