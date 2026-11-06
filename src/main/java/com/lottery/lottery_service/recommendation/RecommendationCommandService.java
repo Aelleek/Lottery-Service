@@ -3,6 +3,7 @@ package com.lottery.lottery_service.recommendation;
 import static com.lottery.lottery_service.common.db.DbValues.bytes;
 
 import com.lottery.lottery_service.common.command.CommandOperationStore;
+import com.lottery.lottery_service.common.command.CommandResultLoader;
 import com.lottery.lottery_service.common.command.CommandStart;
 import com.lottery.lottery_service.common.command.CommandToken;
 import com.lottery.lottery_service.common.command.CommandTokenCodec;
@@ -28,7 +29,7 @@ import org.springframework.stereotype.Component;
  * RESPONSE_EXPIRED}다.
  */
 @Component
-public class RecommendationCommandService {
+public class RecommendationCommandService implements CommandResultLoader {
 
   /** 추천 명령 종류. 명령 토큰에 묶인다. */
   public static final String OPERATION = "RECOMMEND";
@@ -114,6 +115,18 @@ public class RecommendationCommandService {
       operations.markRetryable(started, ErrorCode.TEMPORARILY_UNAVAILABLE.name());
       throw e;
     }
+  }
+
+  @Override
+  public String operation() {
+    return OPERATION;
+  }
+
+  /** 끝난 추천 명령의 처음 5세트. 원본이 지워졌으면 {@code RESPONSE_EXPIRED}, 다른 주체면 {@code NOT_FOUND}. */
+  @Override
+  public RecommendationView load(
+      long subjectId, UUID operationPublicId, UUID resourcePublicId, String completionCode) {
+    return load(subjectId, resourcePublicId);
   }
 
   private RecommendationView load(long subjectId, UUID requestPublicId) {
