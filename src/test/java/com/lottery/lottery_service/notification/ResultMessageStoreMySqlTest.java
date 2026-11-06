@@ -8,6 +8,8 @@ import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.job.JobProperties;
+import com.lottery.lottery_service.common.job.JobRunner;
+import com.lottery.lottery_service.common.job.JobState;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.number.LottoNumber;
 import com.lottery.lottery_service.common.number.LottoNumbers;
@@ -18,6 +20,9 @@ import com.lottery.lottery_service.result.evaluate.EvaluationStore;
 import com.lottery.lottery_service.result.publish.PrizeProperties;
 import com.lottery.lottery_service.result.publish.ResultPublisher;
 import com.lottery.lottery_service.result.source.OfficialDraw;
+import com.lottery.lottery_service.result.source.ParsedDraw;
+import com.lottery.lottery_service.result.source.ResultCollector;
+import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import java.time.Instant;
@@ -332,6 +337,37 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
         .isInstanceOfSatisfying(
             BusinessException.class,
             e -> assertThat(e.getCode()).isEqualTo(ErrorCode.DISPATCH_WINDOW_CLOSED));
+  }
+
+  @Test
+  @DisplayName("회차 일정으로 슬롯 job 12개를 한 번만 등록하고, 때가 된 슬롯 job은 실행기 트랜잭션 밖에서 발송한다")
+  void slotJobs() {
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    JobStore jobs = new JobStore(jdbc, tm, clock, new JobProperties(null, null));
+    RoundJobPlanner planner = new RoundJobPlanner(jobs);
+    RoundSchedule schedule =
+        new RoundSchedule(
+            ROUND,
+            Instant.parse("2026-11-07T12:00:00Z"),
+            Instant.parse("2026-11-14T11:00:00Z"),
+            Instant.parse("2026-11-14T11:35:00Z"),
+            1);
+
+    assertThat(planner.planSlots(schedule)).isEqualTo(12);
+    assertThat(planner.planSlots(schedule)).isZero();
+
+    jdbc.update("DELETE FROM job WHERE job_type <> 'RESULT_SLOT'");
+    ResultSlotJobHandler handler =
+        new ResultSlotJobHandler(
+            runner(id -> new SendOutcome.Accepted("M")),
+            new ResultCollector(r -> new ParsedDraw.NotAnnounced(), null),
+            jdbc);
+    assertThat(new JobRunner(jobs, List.of(handler), tm, clock).runOnce())
+        .contains(JobState.SUCCEEDED);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'", Long.class))
+        .isEqualTo(2);
   }
 
   private ResultSlotRunner runner(MessageSender sender) {

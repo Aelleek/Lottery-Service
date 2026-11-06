@@ -60,17 +60,13 @@ public class JobRunner {
           return Optional.of(JobState.CANCELED);
         }
         String current = cursor;
-        JobStep step =
-            tx.execute(
-                status -> {
-                  JobStep s = handler.step(lease, current);
-                  if (s instanceof JobStep.Continue c) {
-                    jobs.saveProgress(lease, c.cursorJson());
-                  } else {
-                    jobs.complete(lease);
-                  }
-                  return s;
-                });
+        JobStep step;
+        if (handler.transactional()) {
+          step = tx.execute(status -> save(lease, handler.step(lease, current)));
+        } else {
+          JobStep done = handler.step(lease, current);
+          step = tx.execute(status -> save(lease, done));
+        }
         if (step instanceof JobStep.Done) {
           return Optional.of(JobState.SUCCEEDED);
         }
@@ -84,5 +80,14 @@ public class JobRunner {
       return Optional.of(
           jobs.fail(lease, e.getClass().getSimpleName(), clock.instant().plus(RETRY_DELAY)));
     }
+  }
+
+  private JobStep save(JobLease lease, JobStep step) {
+    if (step instanceof JobStep.Continue c) {
+      jobs.saveProgress(lease, c.cursorJson());
+    } else {
+      jobs.complete(lease);
+    }
+    return step;
   }
 }
