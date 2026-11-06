@@ -6,7 +6,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.lottery.lottery_service.account.GuestCredentialStore;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.job.JobProperties;
+import com.lottery.lottery_service.common.job.JobStore;
+import com.lottery.lottery_service.common.number.LottoNumber;
 import com.lottery.lottery_service.common.number.LottoNumbers;
+import com.lottery.lottery_service.result.domain.WinningNumbers;
+import com.lottery.lottery_service.result.evaluate.EvaluationStore;
+import com.lottery.lottery_service.result.publish.PrizeProperties;
+import com.lottery.lottery_service.result.publish.ResultPublisher;
+import com.lottery.lottery_service.result.source.OfficialDraw;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MutableClock;
@@ -24,6 +32,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** 내역 조회의 쪽 나누기와 0건 이유를 MySQL에서 확인한다. */
 class RecordHistoryQueryMySqlTest extends MySqlContainerSupport {
@@ -46,6 +55,11 @@ class RecordHistoryQueryMySqlTest extends MySqlContainerSupport {
   @BeforeEach
   void setUp() {
     jdbc = new JdbcTemplate(dataSource);
+    jdbc.update("DELETE FROM winning_evaluation");
+    jdbc.update("DELETE FROM job");
+    jdbc.update("UPDATE lotto_round SET published_result_id = NULL");
+    jdbc.update("DELETE FROM draw_prize");
+    jdbc.update("DELETE FROM draw_result");
     for (String t : List.of("lotto_record", "guest_credential", "actor_subject", "lotto_round")) {
       jdbc.update("DELETE FROM " + t);
     }
@@ -138,6 +152,67 @@ class RecordHistoryQueryMySqlTest extends MySqlContainerSupport {
 
     assertThat(page.selectedRound()).isEqualTo(1199);
     assertThat(page.items()).hasSize(1);
+  }
+
+  @Test
+  @DisplayName("등수 필터는 현재 판정으로 고르고 판정 전 기록은 낙첨에 넣지 않으며, 기록마다 판정 상태·등수·금액을 준다(06 2.1)")
+  void rankFilterAndEvaluation() {
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    insertNumbers(1199, LottoNumbers.of(1, 2, 3, 4, 20, 30));
+    insertNumbers(1199, LottoNumbers.of(10, 20, 30, 40, 41, 42));
+    insertNumbers(1200, LottoNumbers.of(1, 2, 3, 4, 5, 6));
+    new ResultPublisher(
+            jdbc,
+            tm,
+            new JobStore(jdbc, tm, clock, new JobProperties(null, null)),
+            new PrizeProperties(null, null),
+            clock)
+        .receive(
+            new OfficialDraw(
+                1199,
+                new WinningNumbers(LottoNumbers.of(1, 2, 3, 4, 5, 6), LottoNumber.of(7)),
+                null,
+                null,
+                new byte[32]));
+    long result =
+        jdbc.queryForObject(
+            "SELECT published_result_id FROM lotto_round WHERE round_no = 1199", Long.class);
+    new TransactionTemplate(tm)
+        .execute(s -> new EvaluationStore(jdbc).evaluateBatch(result, 0, 100));
+    insertNumbers(1199, LottoNumbers.of(1, 2, 3, 10, 20, 30));
+
+    assertThat(query.list(subject, 1199, null, "4", null).items())
+        .singleElement()
+        .satisfies(
+            r -> {
+              assertThat(r.numbers()).isEqualTo(LottoNumbers.of(1, 2, 3, 4, 20, 30));
+              assertThat(r.evaluation())
+                  .isEqualTo(new RecordEvaluation("EVALUATED", 1L, 4, 50_000L));
+            });
+    assertThat(query.list(subject, 1199, null, "LOSING", null).items())
+        .singleElement()
+        .satisfies(
+            r ->
+                assertThat(r.evaluation())
+                    .isEqualTo(new RecordEvaluation("EVALUATED", 1L, null, null)));
+    assertThat(query.list(subject, 1199, null, null, null).items())
+        .extracting(r -> r.evaluation().state())
+        .containsExactly("PENDING", "EVALUATED", "EVALUATED");
+    assertThat(query.list(subject, 1200, null, null, null).items().get(0).evaluation())
+        .isEqualTo(new RecordEvaluation("NOT_PUBLISHED", null, null, null));
+    RecordPage none = query.list(subject, 1199, null, "1", null);
+    assertThat(none.items()).isEmpty();
+    assertThat(none.emptyReason()).isEqualTo(RecordPage.EmptyReason.NO_MATCH);
+    assertInvalid(() -> query.list(subject, 1199, null, "6", null));
+  }
+
+  private void insertNumbers(int round, LottoNumbers numbers) {
+    jdbc.update(
+        "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key,"
+            + " recommended_at) VALUES (UUID_TO_BIN(UUID()), ?, ?, ?, NOW(6))",
+        subject,
+        round,
+        numbers.key());
   }
 
   private void insert(long owner, int round, int n, boolean purchased) {
