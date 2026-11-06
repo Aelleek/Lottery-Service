@@ -1,12 +1,17 @@
 package com.lottery.lottery_service.account.withdrawal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.GuestCredentialStore;
 import com.lottery.lottery_service.account.MemberLogin;
 import com.lottery.lottery_service.account.SubjectClaimStore;
 import com.lottery.lottery_service.auth.OAuthProvider;
+import com.lottery.lottery_service.common.command.CommandOperationStore;
+import com.lottery.lottery_service.common.command.CommandTokenCodec;
+import com.lottery.lottery_service.common.error.BusinessException;
+import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.job.JobProperties;
 import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobState;
@@ -283,6 +288,55 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
         .containsEntry("communicated_summary", null);
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isZero();
     assertThat(budget.matchesMessages(LocalDate.parse("2026-11-01"))).isTrue();
+  }
+
+  @Test
+  @DisplayName(
+      "탈퇴 명령은 최근 5분 재인증이 없으면 REAUTH_REQUIRED, 있으면 접근 차단과 삭제 job 접수, 같은 요청을 다시 보내면 같은 접수 결과")
+  void withdrawCommand() {
+    CommandTokenCodec codec = new CommandTokenCodec(TestSecrets.keys(), clock);
+    WithdrawCommandService commands =
+        new WithdrawCommandService(
+            codec,
+            new CommandOperationStore(jdbc, tm, clock),
+            new WithdrawalService(jdbc, tm, jobs, clock),
+            jdbc,
+            tm,
+            clock);
+    String token =
+        codec.issue(member.subjectPublicId(), WithdrawCommandService.OPERATION, null, null);
+    UUID key = UUID.randomUUID();
+    jdbc.update("DELETE FROM command_operation");
+
+    assertThatThrownBy(
+            () ->
+                commands.withdraw(
+                    member.memberId(),
+                    member.subjectId(),
+                    member.subjectPublicId(),
+                    token,
+                    key,
+                    0,
+                    clock.instant().minus(Duration.ofMinutes(6))))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.getCode()).isEqualTo(ErrorCode.REAUTH_REQUIRED));
+    assertThat(state("member", member.memberId())).isEqualTo("ACTIVE");
+
+    Instant reauth = clock.instant().minus(Duration.ofMinutes(4));
+    UUID first =
+        commands.withdraw(
+            member.memberId(), member.subjectId(), member.subjectPublicId(), token, key, 0, reauth);
+    UUID again =
+        commands.withdraw(
+            member.memberId(), member.subjectId(), member.subjectPublicId(), token, key, 0, reauth);
+
+    assertThat(again).isEqualTo(first);
+    assertThat(state("member", member.memberId())).isEqualTo("WITHDRAWING");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM job WHERE job_type = ?", Long.class, WithdrawalService.JOB))
+        .isEqualTo(1);
   }
 
   private DeletionJournal journal() {
