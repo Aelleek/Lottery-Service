@@ -187,6 +187,13 @@ class RoundStoreMySqlTest extends MySqlContainerSupport {
     }
   }
 
+  @Test
+  @DisplayName("앱 연결의 격리 수준은 READ COMMITTED다(04 4절)")
+  void isolationIsReadCommitted() {
+    assertThat(jdbc.queryForObject("SELECT @@transaction_isolation", String.class))
+        .isEqualTo("READ-COMMITTED");
+  }
+
   private static RoundSchedule schedule(int roundNo, Instant open, Instant close) {
     return new RoundSchedule(roundNo, open, close, close.plus(Duration.ofMinutes(35)), 1);
   }
