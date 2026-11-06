@@ -1,0 +1,124 @@
+package com.lottery.lottery_service.notification;
+
+import static com.lottery.lottery_service.common.db.DbValues.instant;
+import static com.lottery.lottery_service.common.db.DbValues.utc;
+
+import com.lottery.lottery_service.common.job.JobStore;
+import com.lottery.lottery_service.notification.budget.MessageBudgetStore;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+
+/**
+ * 접수 여부를 모르는 메시지(UNKNOWN)를 제공자 조회 결과로 정리한다(05 8.3절). 호출한 쪽 트랜잭션 안에서 부른다. 조회 자체는 트랜잭션 밖에서 한다.
+ *
+ * <ul>
+ *   <li>접수·전달이 확인되면 ACCEPTED·DELIVERED와 비용 확정.
+ *   <li>제공자가 실패로 처리했으면 FAILED와 예약 반환.
+ *   <li>찾지 못했으면 그대로 둔다. 다만 UNKNOWN이 된 뒤 7일이 지나면 FAILED로 끝내고 비용은 쓴 것으로 보며 운영자에게 알린다.
+ *   <li>이미 끝난 메시지에 늦게 온 조회 결과로는 다시 보내지 않고 상태를 뒤로 돌리지 않는다.
+ * </ul>
+ */
+@Component
+public class UnknownMessageReconciler {
+
+  /** UNKNOWN 대조 기간. */
+  public static final Duration RECONCILE_WINDOW = Duration.ofDays(7);
+
+  private final JdbcTemplate jdbc;
+  private final MessageBudgetStore budget;
+  private final JobStore jobs;
+  private final Clock clock;
+
+  /** 대조기를 만든다. */
+  public UnknownMessageReconciler(
+      JdbcTemplate jdbc, MessageBudgetStore budget, JobStore jobs, Clock clock) {
+    this.jdbc = jdbc;
+    this.budget = budget;
+    this.jobs = jobs;
+    this.clock = clock;
+  }
+
+  /**
+   * 조회 결과를 반영한다.
+   *
+   * @return 반영 뒤 상태
+   */
+  public String apply(long messageId, ProviderStatus status) {
+    List<Map<String, Object>> rows =
+        jdbc.queryForList(
+            "SELECT state, last_attempt_at FROM delivery_message WHERE id = ? FOR UPDATE",
+            messageId);
+    if (rows.isEmpty()) {
+      throw new IllegalArgumentException("unknown message: " + messageId);
+    }
+    String state = (String) rows.get(0).get("state");
+    if (!"UNKNOWN".equals(state)) {
+      if ("ACCEPTED".equals(state) && status instanceof ProviderStatus.Delivered) {
+        set(messageId, "DELIVERED", null, true);
+        return "DELIVERED";
+      }
+      return state;
+    }
+    Instant now = clock.instant();
+    if (status instanceof ProviderStatus.Accepted a) {
+      set(messageId, "ACCEPTED", a.providerMessageId(), false);
+      budget.spend(messageId);
+      return "ACCEPTED";
+    }
+    if (status instanceof ProviderStatus.Delivered d) {
+      set(messageId, "DELIVERED", d.providerMessageId(), true);
+      budget.spend(messageId);
+      return "DELIVERED";
+    }
+    if (status instanceof ProviderStatus.Failed) {
+      set(messageId, "FAILED", null, true);
+      budget.release(messageId);
+      return "FAILED";
+    }
+    Instant since = instant((LocalDateTime) rows.get(0).get("last_attempt_at"));
+    if (since != null && !now.isBefore(since.plus(RECONCILE_WINDOW))) {
+      set(messageId, "FAILED", null, true);
+      jdbc.update(
+          "UPDATE delivery_message SET last_error_code = 'RECONCILE_TIMEOUT' WHERE id = ?",
+          messageId);
+      budget.spend(messageId);
+      jobs.enqueue(
+          JobStore.OPERATOR_ALERT,
+          "message-unresolved:" + messageId,
+          "{\"kind\":\"MESSAGE_UNRESOLVED\",\"messageId\":" + messageId + "}",
+          now);
+      return "FAILED";
+    }
+    return "UNKNOWN";
+  }
+
+  /**
+   * 발송 슬롯 job을 회수할 때 그 회차의 IN_FLIGHT 메시지를 UNKNOWN으로 바꾼다. 다시 호출하지 않고 대조한다(05 8.3절, T27). 비용은 예약 그대로
+   * 둔다.
+   *
+   * @return 바꾼 메시지 수
+   */
+  public int markInFlightUnknown(int roundNo) {
+    return jdbc.update(
+        "UPDATE delivery_message SET state = 'UNKNOWN', version = version + 1 WHERE round_no = ?"
+            + " AND purpose = 'RESULT' AND state = 'IN_FLIGHT'",
+        roundNo);
+  }
+
+  private void set(long messageId, String state, String providerId, boolean finalized) {
+    jdbc.update(
+        "UPDATE delivery_message SET state = ?, provider_message_id = COALESCE(?, provider_message_id),"
+            + " finalized_at = IF(?, ?, finalized_at), version = version + 1 WHERE id = ?",
+        state,
+        providerId,
+        finalized,
+        utc(clock.instant()),
+        messageId);
+  }
+}
