@@ -20,7 +20,9 @@ public final class TestSecrets {
     return new SecretKeys(
         new SecretProperties(
             new SecretProperties.Ring(1, Map.of(1, encode(commandToken))),
-            new SecretProperties.Ring(1, Map.of(1, encode(guestCredential)))));
+            new SecretProperties.Ring(1, Map.of(1, encode(guestCredential))),
+            new SecretProperties.Ring(1, Map.of(1, encode("verification-code-test-key-01234"))),
+            new SecretProperties.Ring(1, Map.of(1, encode("contact-cipher-test-key-012345678")))));
   }
 
   private static String encode(String value) {

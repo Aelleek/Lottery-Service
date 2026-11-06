@@ -25,6 +25,16 @@ public class SecretKeys {
     return ring(properties.guestCredential(), "guest-credential");
   }
 
+  /** 인증 코드 HMAC 키. */
+  public KeyRing verificationCode() {
+    return ring(properties.verificationCode(), "verification-code");
+  }
+
+  /** 연락처 암호화 키. */
+  public KeyRing contact() {
+    return ring(properties.contact(), "contact");
+  }
+
   private static KeyRing ring(SecretProperties.Ring ring, String name) {
     if (ring == null) {
       throw new IllegalStateException("secret key ring is not configured: " + name);
