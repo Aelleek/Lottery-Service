@@ -1,9 +1,12 @@
 package com.lottery.lottery_service.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.auth.OAuthProvider;
+import com.lottery.lottery_service.common.error.BusinessException;
+import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.job.JobProperties;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.number.LottoNumber;
@@ -19,6 +22,8 @@ import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -290,6 +295,43 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
 
     assertThat(result.unknown()).isEqualTo(2);
     assertThat(store.sendable(ROUND)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("수동 다시 보내기는 HALTED 회원에게만 보내고 접수된 회원은 건드리지 않으며, 게시 후 7일이 지나면 거부한다(T37, T43)")
+  void manualResend() {
+    Instant published =
+        jdbc.queryForObject("SELECT published_at FROM draw_result", LocalDateTime.class)
+            .toInstant(ZoneOffset.UTC);
+    clock.set(published.plusSeconds(3600));
+    runner(
+            id ->
+                id == message(fourthMember)
+                    ? new SendOutcome.NotAccepted("E")
+                    : new SendOutcome.Accepted("M"))
+        .run(ROUND, new ResultSlot(clock.instant(), true, true));
+    assertThat(state(fourthMember)).isEqualTo("HALTED");
+    List<Long> called = new ArrayList<>();
+    ManualResendService resend =
+        new ManualResendService(
+            jdbc,
+            runner(
+                id -> {
+                  called.add(id);
+                  return new SendOutcome.Accepted("M2");
+                }),
+            new DataSourceTransactionManager(dataSource),
+            clock);
+
+    assertThat(resend.resend(ROUND).success()).isTrue();
+    assertThat(called).containsExactly(message(fourthMember));
+    assertThat(state(fourthMember)).isEqualTo("ACCEPTED");
+
+    clock.set(published.plus(ResultMessageStore.VALIDITY));
+    assertThatThrownBy(() -> resend.resend(ROUND))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.getCode()).isEqualTo(ErrorCode.DISPATCH_WINDOW_CLOSED));
   }
 
   private ResultSlotRunner runner(MessageSender sender) {
