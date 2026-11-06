@@ -16,6 +16,7 @@ import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.notification.budget.BudgetProperties;
 import com.lottery.lottery_service.notification.budget.MessageBudgetStore;
 import com.lottery.lottery_service.result.domain.WinningNumbers;
+import com.lottery.lottery_service.result.evaluate.EvaluateResultJobHandler;
 import com.lottery.lottery_service.result.evaluate.EvaluationStore;
 import com.lottery.lottery_service.result.publish.PrizeProperties;
 import com.lottery.lottery_service.result.publish.ResultPublisher;
@@ -242,6 +243,83 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
                 String.class))
         .contains("\"count\": 1")
         .contains("MESSAGE_UNKNOWN_LONG");
+  }
+
+  @Test
+  @DisplayName("보낼 때 안내 요약(게시본, 등수, 금액)을 남기고 번호는 담지 않는다")
+  void storesCommunicatedSummary() {
+    tx.execute(s -> store.createMissing(ROUND));
+    long a = message(fourthMember);
+
+    inTx(() -> store.startSending(a, 143));
+
+    CommunicatedSummary summary =
+        CommunicatedSummary.parse(
+            jdbc.queryForObject(
+                "SELECT CAST(communicated_summary AS CHAR) FROM delivery_message WHERE id = ?",
+                String.class,
+                a));
+    long resultId = jdbc.queryForObject("SELECT published_result_id FROM lotto_round", Long.class);
+    assertThat(summary)
+        .isEqualTo(
+            new CommunicatedSummary(resultId, List.of(new CommunicatedSummary.Item(4, 50_000L))));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT CAST(communicated_summary AS CHAR) FROM delivery_message WHERE id = ?",
+                String.class,
+                a))
+        .doesNotContain("numbers");
+  }
+
+  @Test
+  @DisplayName("정정 판정이 끝나면 접수된 안내와 등수가 달라진 회원 수와 새로 대상이 된 회원 수로 운영자 알림 1건(T17)")
+  void correctionImpactAlert() {
+    long newSubject =
+        new AccountStore(jdbc, new DataSourceTransactionManager(dataSource), clock)
+            .login(OAuthProvider.KAKAO, "new")
+            .subjectId();
+    record(newSubject, LottoNumbers.of(1, 2, 3, 8, 10, 30).key(), false, true);
+    long first = jdbc.queryForObject("SELECT published_result_id FROM lotto_round", Long.class);
+    tx.execute(s -> new EvaluationStore(jdbc).evaluateBatch(first, 0, 100));
+    tx.execute(s -> store.createMissing(ROUND));
+    for (long member : List.of(fourthMember, thirdMember)) {
+      long id = message(member);
+      inTx(() -> store.startSending(id, 143));
+      tx.executeWithoutResult(s -> store.recordOutcome(id, new SendOutcome.Accepted("M-" + id)));
+    }
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    JobStore jobs = new JobStore(jdbc, tm, clock, new JobProperties(null, null));
+    ResultPublisher publisher =
+        new ResultPublisher(jdbc, tm, jobs, new PrizeProperties(null, null), clock);
+    publisher.receive(
+        new OfficialDraw(
+            ROUND,
+            new WinningNumbers(LottoNumbers.of(1, 2, 3, 4, 8, 10), LottoNumber.of(11)),
+            null,
+            null,
+            new byte[32]));
+    long corrected =
+        jdbc.queryForObject("SELECT id FROM draw_result WHERE state = 'QUARANTINED'", Long.class);
+    publisher.approve(corrected, 1);
+    jdbc.update("DELETE FROM job WHERE job_type <> 'EVALUATE_RESULT'");
+    jdbc.update("UPDATE job SET state = 'CANCELED' WHERE payload->'$.resultId' = ?", first);
+
+    CorrectionImpact impact =
+        new CorrectionImpact(jdbc, new NotificationTargetQuery(jdbc), jobs, clock);
+    new JobRunner(
+            jobs,
+            List.of(new EvaluateResultJobHandler(new EvaluationStore(jdbc), List.of(impact))),
+            tm,
+            clock)
+        .runOnce();
+
+    assertThat(
+            jdbc.queryForList(
+                "SELECT CAST(payload AS CHAR) FROM job WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .containsExactly(
+            "{\"kind\": \"RESULT_CORRECTED\", \"changed\": 1, \"roundNo\": 1200,"
+                + " \"newlyTargeted\": 1}");
   }
 
   @Test
