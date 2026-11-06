@@ -156,6 +156,37 @@ class EvaluationJobMySqlTest extends MySqlContainerSupport {
     assertThat(evaluations.latest(recordId)).contains(PrizeRank.SECOND);
   }
 
+  @Test
+  @DisplayName("미평가 대조는 판정이 빠진 기록마다 판정 job을 한 번만 등록하고, 판정된 기록과 지운 기록은 건너뛴다")
+  void reconcileMissingEvaluations() {
+    publish();
+    jdbc.update("DELETE FROM job");
+    long first = jdbc.queryForObject("SELECT MIN(id) FROM lotto_record", Long.class);
+    evaluations.evaluateRecord(first);
+    jdbc.update("UPDATE lotto_record SET deleted_at = NOW(6) WHERE id = ?", first + 1);
+    EvaluationReconciler reconciler = new EvaluationReconciler(jdbc, jobs, clock);
+
+    assertThat(reconciler.enqueueMissing(100)).isEqualTo(3);
+    assertThat(reconciler.enqueueMissing(100)).isZero();
+    jdbc.update("UPDATE lotto_record SET version = version + 1 WHERE id = ?", first);
+    assertThat(reconciler.enqueueMissing(100)).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("즉시 확인은 게시 전이면 빈 값, 게시 뒤에는 입력 순서대로 등수를 주고 아무것도 저장하지 않는다")
+  void instantCheck() {
+    InstantCheck check = new InstantCheck(jdbc);
+    List<LottoNumbers> sets =
+        List.of(LottoNumbers.of(1, 2, 3, 4, 5, 6), LottoNumbers.of(1, 2, 3, 40, 41, 42));
+    assertThat(check.check(ROUND, sets)).isEmpty();
+    publish();
+    long records = jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class);
+
+    assertThat(check.check(ROUND, sets)).contains(List.of(PrizeRank.FIRST, PrizeRank.FIFTH));
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class))
+        .isEqualTo(records);
+  }
+
   private void publish() {
     publisher.receive(
         new OfficialDraw(
