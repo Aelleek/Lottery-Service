@@ -64,3 +64,8 @@ server:
         http-only: true
         secure: false         # 로컬 http에서 쿠키 붙게
         same-site: Lax        # 로컬은 Lax로 충분
+
+lottery:
+  # 동행복권 결과 API 주소. 회차 번호를 끝에 붙여 부른다(03 3절).
+  result-api:
+    url: https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=
