@@ -58,21 +58,27 @@ public class ResultMessageStore {
             .toInstant(ZoneOffset.UTC);
     int created = 0;
     for (NotificationTarget target : targets.targets(roundNo)) {
-      try {
-        jdbc.update(
-            "INSERT INTO delivery_message (public_id, purpose, member_id, round_no, state,"
-                + " provider_request_key, expires_at) VALUES (?, 'RESULT', ?, ?, 'PENDING', ?, ?)",
-            bytes(UUID.randomUUID()),
-            target.memberId(),
-            roundNo,
-            bytes(UUID.randomUUID()),
-            utc(published.plus(VALIDITY)));
+      if (insertIfAbsent(target.memberId(), roundNo, published.plus(VALIDITY))) {
         created++;
-      } catch (DuplicateKeyException e) {
-        // 이미 메시지가 있는 회원이다
       }
     }
     return created;
+  }
+
+  private boolean insertIfAbsent(long memberId, int roundNo, Instant expiresAt) {
+    try {
+      jdbc.update(
+          "INSERT INTO delivery_message (public_id, purpose, member_id, round_no, state,"
+              + " provider_request_key, expires_at) VALUES (?, 'RESULT', ?, ?, 'PENDING', ?, ?)",
+          bytes(UUID.randomUUID()),
+          memberId,
+          roundNo,
+          bytes(UUID.randomUUID()),
+          utc(expiresAt));
+      return true;
+    } catch (DuplicateKeyException e) {
+      return false;
+    }
   }
 
   /**
