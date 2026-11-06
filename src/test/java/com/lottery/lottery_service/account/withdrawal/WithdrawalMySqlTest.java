@@ -196,7 +196,9 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
     assertThat(budget.matchesMessages(LocalDate.parse("2026-11-01"))).isTrue();
     assertThat(
             jdbc.queryForObject(
-                "SELECT COUNT(*) FROM usage_event WHERE subject_id IS NULL", Long.class))
+                "SELECT COUNT(*) FROM usage_event WHERE subject_id IS NULL"
+                    + " AND metric = 'RECOMMENDATION_SETS'",
+                Long.class))
         .isEqualTo(2);
 
     MemberLogin again = new AccountStore(jdbc, tm, clock).login(OAuthProvider.KAKAO, "leaver");

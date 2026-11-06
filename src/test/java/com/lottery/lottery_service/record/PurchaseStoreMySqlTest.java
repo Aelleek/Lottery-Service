@@ -104,7 +104,11 @@ class PurchaseStoreMySqlTest extends MySqlContainerSupport {
     assertThat(second.items().get(0).recordPublicId())
         .isEqualTo(first.items().get(0).recordPublicId());
     assertThat(count("lotto_record")).isEqualTo(2);
-    assertThat(jdbc.queryForObject("SELECT SUM(delta) FROM usage_event", Long.class)).isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT SUM(delta) FROM usage_event WHERE metric = 'PURCHASE_REGISTERED'",
+                Long.class))
+        .isEqualTo(2);
     assertThat(first.afterSalesClose()).isFalse();
   }
 

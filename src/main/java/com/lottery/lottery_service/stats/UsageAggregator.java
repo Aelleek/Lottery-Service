@@ -19,8 +19,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class UsageAggregator {
 
-  /** 고유 이용자 지표 이름. */
+  /** 고유 이용자 지표 이름. 회원과 비회원을 합친 주체 수다. */
   public static final String ACTIVE_SUBJECTS = "ACTIVE_SUBJECTS";
+
+  /** 활동한 회원 수. */
+  public static final String ACTIVE_MEMBERS = "ACTIVE_MEMBERS";
+
+  /** 활동한 익명 브라우저(비회원 주체) 수. 실제 사람 수가 아니며 회원 수와 더하지 않는다. */
+  public static final String ACTIVE_GUESTS = "ACTIVE_GUESTS";
 
   /** 지금 계산 버전. */
   public static final long CALCULATION_VERSION = 1;
@@ -144,12 +150,32 @@ public class UsageAggregator {
                 + " GROUP BY metric",
             args)
         .forEach(r -> values.put((String) r.get("metric"), ((Number) r.get("total")).longValue()));
-    Long active =
-        jdbc.queryForObject(
-            "SELECT COUNT(DISTINCT subject_id) FROM usage_event WHERE " + where, Long.class, args);
-    if (active != null && active > 0) {
-      values.put(ACTIVE_SUBJECTS, active);
-    }
+    List<Object> activityArgs = new ArrayList<>(List.of(args));
+    activityArgs.addAll(UsageEventStore.ACTIVITY);
+    String activity =
+        " AND metric IN ("
+            + String.join(",", UsageEventStore.ACTIVITY.stream().map(m -> "?").toList())
+            + ")";
+    Map<String, Object> active =
+        jdbc.queryForMap(
+            "SELECT COUNT(DISTINCT e.subject_id) AS total,"
+                + " COUNT(DISTINCT CASE WHEN s.kind = 'MEMBER' THEN e.subject_id END) AS members,"
+                + " COUNT(DISTINCT CASE WHEN s.kind = 'GUEST' THEN e.subject_id END) AS guests"
+                + " FROM (SELECT subject_id FROM usage_event WHERE "
+                + where
+                + activity
+                + ") e LEFT JOIN actor_subject s ON s.id = e.subject_id",
+            activityArgs.toArray());
+    putPositive(values, ACTIVE_SUBJECTS, active.get("total"));
+    putPositive(values, ACTIVE_MEMBERS, active.get("members"));
+    putPositive(values, ACTIVE_GUESTS, active.get("guests"));
     return values;
+  }
+
+  private static void putPositive(Map<String, Long> values, String metric, Object count) {
+    long n = count == null ? 0 : ((Number) count).longValue();
+    if (n > 0) {
+      values.put(metric, n);
+    }
   }
 }

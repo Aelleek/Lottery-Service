@@ -103,6 +103,14 @@ public class RecommendationService {
           }
         }
       }
+    } catch (BusinessException e) {
+      usage.record(
+          command.subjectId(),
+          command.roundNo(),
+          UsageEventStore.RECOMMENDATION_FAILED,
+          1,
+          rounds.dbNow());
+      throw e;
     } finally {
       leases.finish(lease);
     }

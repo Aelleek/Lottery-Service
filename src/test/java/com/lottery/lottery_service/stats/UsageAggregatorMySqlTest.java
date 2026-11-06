@@ -2,7 +2,9 @@ package com.lottery.lottery_service.stats;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.GuestCredentialStore;
+import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.TestSecrets;
 import java.time.Clock;
@@ -42,7 +44,13 @@ class UsageAggregatorMySqlTest extends MySqlContainerSupport {
   void setUp() {
     jdbc = new JdbcTemplate(dataSource);
     for (String t :
-        List.of("usage_aggregate", "usage_event", "guest_credential", "actor_subject")) {
+        List.of(
+            "usage_aggregate",
+            "usage_event",
+            "guest_credential",
+            "oauth_account",
+            "actor_subject",
+            "member")) {
       jdbc.update("DELETE FROM " + t);
     }
     Clock clock = Clock.fixed(Instant.parse("2026-11-20T00:00:00Z"), ZoneOffset.UTC);
@@ -56,6 +64,9 @@ class UsageAggregatorMySqlTest extends MySqlContainerSupport {
     events.record(a, null, UsageEventStore.RECOMMENDATION_SETS, 5, DAY1);
     events.record(b, null, UsageEventStore.RECOMMENDATION_SETS, 5, DAY1);
     events.record(a, null, UsageEventStore.RECOMMENDATION_SETS, 5, DAY2);
+    events.record(a, null, UsageEventStore.RECOMMENDATION_SUCCEEDED, 1, DAY1);
+    events.record(b, null, UsageEventStore.RECOMMENDATION_SUCCEEDED, 1, DAY1);
+    events.record(a, null, UsageEventStore.RECOMMENDATION_SUCCEEDED, 1, DAY2);
   }
 
   @Test
@@ -74,7 +85,7 @@ class UsageAggregatorMySqlTest extends MySqlContainerSupport {
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM usage_aggregate WHERE period_key = '2026-11-08'", Long.class))
-        .isEqualTo(2);
+        .isEqualTo(4);
   }
 
   @Test
@@ -91,7 +102,7 @@ class UsageAggregatorMySqlTest extends MySqlContainerSupport {
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM usage_aggregate WHERE period_key = '2026-11-08' AND state = 'VERIFIED'",
                 Long.class))
-        .isEqualTo(2);
+        .isEqualTo(4);
   }
 
   @Test
@@ -103,6 +114,28 @@ class UsageAggregatorMySqlTest extends MySqlContainerSupport {
     assertThat(aggregator.verify("DAY", "2026-11-08")).isFalse();
     aggregator.recomputeDay(LocalDate.parse("2026-11-08"));
     assertThat(aggregator.verify("DAY", "2026-11-08")).isTrue();
+  }
+
+  @Test
+  @DisplayName("활동 사건만 고유 이용자로 세고 회원과 익명 브라우저를 나누며, 신규 회원과 추천 실패는 그대로 합한다(02 9)")
+  void membersAndGuests() {
+    long member =
+        new AccountStore(
+                jdbc,
+                new DataSourceTransactionManager(dataSource),
+                Clock.fixed(DAY1, ZoneOffset.UTC))
+            .login(OAuthProvider.KAKAO, "m")
+            .subjectId();
+    events.record(member, null, UsageEventStore.PURCHASE_REGISTERED, 2, DAY1);
+    events.record(b, null, UsageEventStore.RECOMMENDATION_FAILED, 1, DAY1);
+
+    aggregator.recomputeDay(LocalDate.parse("2026-11-08"));
+
+    assertThat(value("DAY", "2026-11-08", UsageAggregator.ACTIVE_MEMBERS)).isEqualTo(1);
+    assertThat(value("DAY", "2026-11-08", UsageAggregator.ACTIVE_GUESTS)).isEqualTo(2);
+    assertThat(value("DAY", "2026-11-08", UsageAggregator.ACTIVE_SUBJECTS)).isEqualTo(3);
+    assertThat(value("DAY", "2026-11-08", UsageEventStore.MEMBER_REGISTERED)).isEqualTo(1);
+    assertThat(value("DAY", "2026-11-08", UsageEventStore.RECOMMENDATION_FAILED)).isEqualTo(1);
   }
 
   private long value(String type, String key, String metric) {

@@ -147,7 +147,7 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("판매 마감이 지났거나 일정 버전이 다르면 ROUND_CHANGED이고 아무것도 저장하지 않으며 권한은 풀린다")
+  @DisplayName("판매 마감이 지났거나 일정 버전이 다르면 ROUND_CHANGED이고 추천은 저장하지 않으며(실패 사건만 남김) 권한은 풀린다")
   void closedRoundSavesNothing() {
     assertThatThrownBy(
             () ->
@@ -169,7 +169,10 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
 
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_request", Long.class))
         .isZero();
-    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM usage_event", Long.class)).isZero();
+    assertThat(
+            jdbc.queryForList(
+                "SELECT metric FROM usage_event ORDER BY occurred_at, metric", String.class))
+        .containsExactly("RECOMMENDATION_FAILED", "RECOMMENDATION_FAILED");
     assertThat(
             jdbc.queryForObject(
                 "SELECT generation_lease_until IS NULL FROM actor_subject WHERE id = ?",
