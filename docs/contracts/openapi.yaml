@@ -970,6 +970,12 @@ components:
           schema:
             type: integer
             minimum: 0
+    '500':
+      description: 예상하지 못한 서버 오류. retryable은 false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   schemas:
     Numbers:
       type: array
@@ -1039,6 +1045,8 @@ components:
             description: 503. 회차 일정을 확인할 수 없음
           - const: TEMPORARILY_UNAVAILABLE
             description: 503. 일시적인 서버·외부 환경 실패
+          - const: INTERNAL_ERROR
+            description: 500. 예상하지 못한 서버 오류. 같은 요청을 자동으로 다시 보내지 않는다
         message:
           type: string
           description: 사용자에게 표시할 설명
