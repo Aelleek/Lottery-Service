@@ -131,7 +131,7 @@ CREATE TABLE lotto_record (
   recommended_at DATETIME(6) NULL,
   purchased BOOLEAN NOT NULL DEFAULT FALSE,
   purchased_at DATETIME(6) NULL,
-  created_at DATETIME(6) NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   deleted_at DATETIME(6) NULL,
   version BIGINT NOT NULL DEFAULT 0,
   expires_at DATETIME(6) NULL,

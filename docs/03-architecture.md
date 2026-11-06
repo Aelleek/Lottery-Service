@@ -36,7 +36,7 @@
 
 | 연동 | 용도 | 실패할 때 | 설정 |
 |---|---|---|---|
-| 동행복권 결과 조회(`common.do?method=getLottoNumber&drwNo={회차}`) | 회차 당첨 번호, 보너스, 등수별 금액 | 수집 실패로 기록하고 일정에 따라 다시 시도. 화면은 "수집 지연" | `application.yml`로 옮긴다. 지금은 `DhlotteryClient`에 주소가 고정돼 있다 |
+| 동행복권 결과 조회(`common.do?method=getLottoNumber&drwNo={회차}`) | 회차 당첨 번호, 보너스, 1등 금액과 당첨자 수. 2·3등 금액은 주지 않는다(공급원 [미확인], D-046) | 수집 실패로 기록하고 일정에 따라 다시 시도. 화면은 "수집 지연" | `application.yml`로 옮긴다. 지금은 `DhlotteryClient`에 주소가 고정돼 있다 |
 | SOLAPI 알림톡 | 기본 알림, 인증 코드, 메시지 상태 조회 | 확정 미접수만 다시 보냄. 접수 여부를 모르면 UNKNOWN으로 두고 메시지 조회 API로 대조한다. 콜백은 받지 않는다(C-27) | `config/integrations.yml` |
 | 카카오·구글·네이버 OAuth2 | 로그인, 재인증 | 로그인 실패 안내. 재인증 실패는 민감 작업만 막음 | `config/oauth-client.yml` |
 | Discord 웹훅 | 운영자 알림 | 실패하면 job으로 다시 보냄. 회원 기능에는 영향 없음 | `config/integrations.yml` |
