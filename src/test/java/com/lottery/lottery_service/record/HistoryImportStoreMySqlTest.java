@@ -7,6 +7,8 @@ import com.lottery.lottery_service.account.GuestCredentialStore;
 import com.lottery.lottery_service.account.SubjectClaimStore;
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.job.JobProperties;
+import com.lottery.lottery_service.common.job.JobRunner;
+import com.lottery.lottery_service.common.job.JobState;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.round.RoundStore;
@@ -171,6 +173,21 @@ class HistoryImportStoreMySqlTest extends MySqlContainerSupport {
     assertThat(again.processed()).isZero();
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class))
         .isEqualTo(records);
+  }
+
+  @Test
+  @DisplayName("가져오기 job은 묶음마다 진행 위치를 남기며 끝까지 가져오고, 같은 귀속은 한 번만 등록된다")
+  void importJob() {
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    Clock clock = Clock.fixed(Instant.parse("2026-11-08T01:00:00Z"), ZoneOffset.UTC);
+    JobStore jobs = new JobStore(jdbc, tm, clock, new JobProperties(null, null));
+    HistoryImportJobHandler handler = new HistoryImportJobHandler(store, jobs, clock);
+
+    assertThat(handler.start(claim)).isTrue();
+    assertThat(handler.start(claim)).isFalse();
+    assertThat(new JobRunner(jobs, List.of(handler), tm, clock).runOnce())
+        .contains(JobState.SUCCEEDED);
+    assertThat(outcomes()).hasSize(5);
   }
 
   private void guestRecord(int round, String key, boolean expired) {
