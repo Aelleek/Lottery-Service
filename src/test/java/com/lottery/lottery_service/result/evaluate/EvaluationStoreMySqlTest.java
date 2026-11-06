@@ -166,6 +166,42 @@ class EvaluationStoreMySqlTest extends MySqlContainerSupport {
     assertThat(store.latest(ids.get(0))).contains(PrizeRank.SECOND);
   }
 
+  @Test
+  @DisplayName("정정으로 1~5등에서 낙첨이 된 구매 표시 없는 기록만 정정 게시 시각+30일까지 보호한다(05 8.5절 2번, T20)")
+  void correctedLossIsProtected() {
+    long first = publish(WIN);
+    tx.execute(s -> store.evaluateBatch(first, 0, 100));
+    jdbc.update(
+        "UPDATE lotto_record SET purchased = TRUE, purchased_at = NOW(6) WHERE id = ?", ids.get(1));
+    publisher.receive(
+        new OfficialDraw(
+            ROUND,
+            new WinningNumbers(LottoNumbers.of(10, 20, 30, 40, 41, 42), LottoNumber.of(43)),
+            null,
+            null,
+            new byte[32]));
+    long corrected =
+        jdbc.queryForObject("SELECT id FROM draw_result WHERE state = 'QUARANTINED'", Long.class);
+    publisher.approve(corrected, 1);
+
+    tx.execute(s -> store.evaluateBatch(corrected, 0, 100));
+    tx.execute(s -> store.evaluateBatch(corrected, 0, 100));
+
+    List<Long> protectedIds =
+        jdbc.queryForList(
+            "SELECT l.id FROM lotto_record l JOIN draw_result d ON d.id = ?"
+                + " WHERE l.correction_protected_until = d.published_at + INTERVAL 30 DAY"
+                + " ORDER BY l.id",
+            Long.class,
+            corrected);
+    assertThat(protectedIds).containsExactly(ids.get(0), ids.get(2), ids.get(3), ids.get(4));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM lotto_record WHERE correction_protected_until IS NULL",
+                Long.class))
+        .isEqualTo(2);
+  }
+
   private long publish(WinningNumbers winning) {
     publisher.receive(new OfficialDraw(ROUND, winning, null, null, new byte[32]));
     return jdbc.queryForObject(
