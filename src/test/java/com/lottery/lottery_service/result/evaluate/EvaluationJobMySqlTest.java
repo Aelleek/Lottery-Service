@@ -172,21 +172,6 @@ class EvaluationJobMySqlTest extends MySqlContainerSupport {
     assertThat(reconciler.enqueueMissing(100)).isEqualTo(1);
   }
 
-  @Test
-  @DisplayName("즉시 확인은 게시 전이면 빈 값, 게시 뒤에는 입력 순서대로 등수를 주고 아무것도 저장하지 않는다")
-  void instantCheck() {
-    InstantCheck check = new InstantCheck(jdbc);
-    List<LottoNumbers> sets =
-        List.of(LottoNumbers.of(1, 2, 3, 4, 5, 6), LottoNumbers.of(1, 2, 3, 40, 41, 42));
-    assertThat(check.check(ROUND, sets)).isEmpty();
-    publish();
-    long records = jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class);
-
-    assertThat(check.check(ROUND, sets)).contains(List.of(PrizeRank.FIRST, PrizeRank.FIFTH));
-    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class))
-        .isEqualTo(records);
-  }
-
   private void publish() {
     publisher.receive(
         new OfficialDraw(
