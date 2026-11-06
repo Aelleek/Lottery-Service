@@ -139,7 +139,7 @@ class MigratedSchemaTransactionMySqlTest extends MySqlContainerSupport {
                   throw new IllegalStateException(e);
                 }
               });
-      Thread.sleep(500);
+      awaitLockWait();
       assertThat(second).isNotDone();
 
       first.rollback();
@@ -164,7 +164,7 @@ class MigratedSchemaTransactionMySqlTest extends MySqlContainerSupport {
                   throw new IllegalStateException(e);
                 }
               });
-      Thread.sleep(500);
+      awaitLockWait();
       assertThat(second).isNotDone();
 
       first.commit();
@@ -239,5 +239,28 @@ class MigratedSchemaTransactionMySqlTest extends MySqlContainerSupport {
       rs.next();
       return rs.getLong(1);
     }
+  }
+
+  private static void awaitLockWait() throws Exception {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+    while (System.nanoTime() < deadline) {
+      try (Connection c = openConnection(null);
+          Statement st = c.createStatement();
+          ResultSet rs =
+              st.executeQuery(
+                  "SELECT COUNT(*) FROM performance_schema.data_lock_waits w"
+                      + " JOIN performance_schema.data_locks l"
+                      + " ON l.engine_lock_id = w.requesting_engine_lock_id"
+                      + " WHERE l.object_schema = '"
+                      + DB
+                      + "' AND l.object_name = 'lotto_record'")) {
+        rs.next();
+        if (rs.getLong(1) > 0) {
+          return;
+        }
+      }
+      Thread.sleep(20);
+    }
+    throw new AssertionError("second insert never waited for the lock");
   }
 }
