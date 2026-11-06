@@ -509,6 +509,90 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
         .isEqualTo(1);
   }
 
+  @Test
+  @DisplayName(
+      "슬롯 사이에 정정되면 접수된 메시지는 그대로, 아직 호출하지 않은 메시지는 새 게시본으로 보내고, 새로 대상이 된 회원은 다음 슬롯에서 1건(T38)")
+  void correctionBetweenSlots() {
+    long newSubject =
+        new AccountStore(jdbc, new DataSourceTransactionManager(dataSource), clock)
+            .login(OAuthProvider.KAKAO, "new")
+            .subjectId();
+    long newMember = memberOf(newSubject);
+    consent(newMember);
+    record(newSubject, LottoNumbers.of(1, 2, 3, 8, 10, 30).key(), false, true);
+    long first = jdbc.queryForObject("SELECT published_result_id FROM lotto_round", Long.class);
+    tx.execute(s -> new EvaluationStore(jdbc).evaluateBatch(first, 0, 100));
+    clock.set(Instant.parse("2026-11-14T13:00:00Z"));
+    runner(
+            id ->
+                id == message(thirdMember)
+                    ? new SendOutcome.NotAccepted("E")
+                    : new SendOutcome.Accepted("M-" + id))
+        .run(ROUND, new ResultSlot(clock.instant(), false, false));
+    assertThat(state(fourthMember)).isEqualTo("ACCEPTED");
+    assertThat(state(thirdMember)).isEqualTo("RETRY_WAIT");
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM delivery_message", Long.class))
+        .isEqualTo(2);
+
+    clock.set(Instant.parse("2026-11-14T13:10:00Z"));
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    ResultPublisher publisher =
+        new ResultPublisher(
+            jdbc,
+            tm,
+            new JobStore(jdbc, tm, clock, new JobProperties(null, null)),
+            new PrizeProperties(null, null),
+            clock);
+    publisher.receive(
+        new OfficialDraw(
+            ROUND,
+            new WinningNumbers(LottoNumbers.of(1, 2, 3, 4, 8, 10), LottoNumber.of(11)),
+            null,
+            null,
+            new byte[32]));
+    long corrected =
+        jdbc.queryForObject("SELECT id FROM draw_result WHERE state = 'QUARANTINED'", Long.class);
+    publisher.approve(corrected, 1);
+    tx.execute(s -> new EvaluationStore(jdbc).evaluateBatch(corrected, 0, 100));
+
+    clock.set(Instant.parse("2026-11-14T13:30:00Z"));
+    List<Long> called = new ArrayList<>();
+    runner(
+            id -> {
+              called.add(id);
+              return new SendOutcome.Accepted("M2-" + id);
+            })
+        .run(ROUND, new ResultSlot(clock.instant(), false, false));
+
+    assertThat(called).containsExactlyInAnyOrder(message(thirdMember), message(newMember));
+    assertThat(state(newMember)).isEqualTo("ACCEPTED");
+    assertThat(state(thirdMember)).isEqualTo("ACCEPTED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE member_id = ?", Long.class, newMember))
+        .isEqualTo(1);
+    for (long member : List.of(thirdMember, newMember)) {
+      assertThat(
+              CommunicatedSummary.parse(
+                      jdbc.queryForObject(
+                          "SELECT CAST(communicated_summary AS CHAR) FROM delivery_message"
+                              + " WHERE member_id = ?",
+                          String.class,
+                          member))
+                  .resultId())
+          .isEqualTo(corrected);
+    }
+    assertThat(
+            CommunicatedSummary.parse(
+                    jdbc.queryForObject(
+                        "SELECT CAST(communicated_summary AS CHAR) FROM delivery_message"
+                            + " WHERE member_id = ?",
+                        String.class,
+                        fourthMember))
+                .resultId())
+        .isEqualTo(first);
+  }
+
   private ResultSlotRunner runner(MessageSender sender) {
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
     return new ResultSlotRunner(
