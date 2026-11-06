@@ -180,6 +180,68 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     assertThat(store.sendable(ROUND)).isEmpty();
   }
 
+  @Test
+  @DisplayName("UNKNOWN은 조회에서 못 찾으면 그대로, 접수가 확인되면 비용 확정, 그 뒤 늦은 결과로 뒤로 가지 않는다")
+  void reconcileUnknown() {
+    UnknownMessageReconciler reconciler = reconciler();
+    long a = unknownMessage(fourthMember);
+
+    assertThat(apply(reconciler, a, new ProviderStatus.NotFound())).isEqualTo("UNKNOWN");
+    assertThat(apply(reconciler, a, new ProviderStatus.Accepted("M-9"))).isEqualTo("ACCEPTED");
+    assertThat(apply(reconciler, a, new ProviderStatus.Failed("LATE"))).isEqualTo("ACCEPTED");
+    assertThat(apply(reconciler, a, new ProviderStatus.Delivered("M-9"))).isEqualTo("DELIVERED");
+    assertThat(budgetRow()).containsEntry("reserved_units", 0L).containsEntry("spent_units", 143L);
+  }
+
+  @Test
+  @DisplayName("7일 동안 풀리지 않은 UNKNOWN은 FAILED와 비용 확정, 운영자 알림 1건이고 그 뒤 접수로 나와도 다시 보내지 않는다(T46)")
+  void unresolvedUnknownFails() {
+    UnknownMessageReconciler reconciler = reconciler();
+    long a = unknownMessage(fourthMember);
+    clock.set(clock.instant().plus(UnknownMessageReconciler.RECONCILE_WINDOW));
+
+    assertThat(apply(reconciler, a, new ProviderStatus.NotFound())).isEqualTo("FAILED");
+    assertThat(apply(reconciler, a, new ProviderStatus.Accepted("M-1"))).isEqualTo("FAILED");
+    assertThat(budgetRow()).containsEntry("reserved_units", 0L).containsEntry("spent_units", 143L);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM job WHERE job_type = 'OPERATOR_ALERT'", Long.class))
+        .isEqualTo(1);
+    assertThat(store.sendable(ROUND)).doesNotContain(a);
+  }
+
+  @Test
+  @DisplayName("발송 job 회수 때 IN_FLIGHT는 다시 호출하지 않고 UNKNOWN으로 바꾸며 예약은 유지한다(T27 일부)")
+  void inFlightBecomesUnknownOnRecovery() {
+    tx.execute(s -> store.createMissing(ROUND));
+    long a = message(fourthMember);
+    inTx(() -> store.startSending(a, 143));
+
+    assertThat(count(() -> reconciler().markInFlightUnknown(ROUND))).isEqualTo(1);
+    assertThat(state(fourthMember)).isEqualTo("UNKNOWN");
+    assertThat(budgetRow()).containsEntry("reserved_units", 143L);
+    assertThat(store.sendable(ROUND)).doesNotContain(a);
+  }
+
+  private String apply(UnknownMessageReconciler reconciler, long id, ProviderStatus status) {
+    return tx.execute(s -> reconciler.apply(id, status));
+  }
+
+  private UnknownMessageReconciler reconciler() {
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    return new UnknownMessageReconciler(
+        jdbc, budget, new JobStore(jdbc, tm, clock, new JobProperties(null, null)), clock);
+  }
+
+  private long unknownMessage(long memberId) {
+    tx.execute(s -> store.createMissing(ROUND));
+    long id = message(memberId);
+    inTx(() -> store.startSending(id, 143));
+    tx.executeWithoutResult(s -> store.recordOutcome(id, new SendOutcome.Unknown()));
+    jdbc.update("DELETE FROM job WHERE job_type = 'OPERATOR_ALERT'");
+    return id;
+  }
+
   private int count(Supplier<Integer> call) {
     Integer n = tx.execute(s -> call.get());
     return n == null ? 0 : n;
