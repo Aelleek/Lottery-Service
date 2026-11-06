@@ -52,6 +52,13 @@ public class OperatorAlertJobHandler implements JobHandler {
         String error = rows.isEmpty() ? "?" : String.valueOf(rows.get(0).get("last_error_code"));
         yield "[작업 실패] 종류 " + type + ", 마지막 오류 " + error + ". 관리자 화면에서 확인해 주세요.";
       }
+      case "RESULT_CORRECTED" -> "[공식 결과 정정 반영] "
+          + payload.path("roundNo").asInt()
+          + "회 정정 게시본의 판정을 마쳤습니다. 등수나 금액이 바뀐 회원 "
+          + payload.path("changed").asLong()
+          + "명, 새로 대상이 된 회원 "
+          + payload.path("newlyTargeted").asLong()
+          + "명. 정정 알림은 보내지 않습니다. 새로 대상이 된 회원은 자동 슬롯 기간이 지났으면 다시 보내기로 보낼 수 있습니다.";
       case "RESULT_QUARANTINED" -> "[결과 격리] "
           + payload.path("roundNo").asInt()
           + "회 결과가 게시본과 달라 격리했습니다. 승인이 필요합니다.";

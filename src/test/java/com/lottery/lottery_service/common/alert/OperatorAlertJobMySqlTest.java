@@ -127,6 +127,15 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
         .contains("남은 6000.0원");
     assertThat(
             handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"RESULT_CORRECTED\",\"roundNo\":1200,\"changed\":1,"
+                        + "\"newlyTargeted\":2}")))
+        .contains("1200회")
+        .contains("바뀐 회원 1명")
+        .contains("새로 대상이 된 회원 2명")
+        .contains("정정 알림은 보내지 않습니다");
+    assertThat(
+            handler.format(
                 mapper.readTree("{\"kind\":\"RESULT_MANUAL_REGISTERED\",\"roundNo\":1200}")))
         .contains("1200회")
         .doesNotContain("[운영자 알림]");
