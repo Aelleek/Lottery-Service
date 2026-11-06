@@ -5,14 +5,17 @@
 -- 세션은 Spring Session JDBC 표준 테이블(SPRING_SESSION, SPRING_SESSION_ATTRIBUTES)을 따로 쓴다.
 
 -- 계정 상태를 먼저 차단하고 개인 자료 삭제는 추적 가능한 작업으로 진행한다.
--- 탈퇴가 끝나도 행은 WITHDRAWN 묘비로 남는다. 개인정보 컬럼은 두지 않는다.
+-- 탈퇴가 끝나도 행은 WITHDRAWN 묘비로 남는다. 이름·이메일 같은 개인정보 컬럼은 두지 않는다.
+-- 마지막 로그인 시각은 로그인 성공 때 갱신하고 탈퇴 차단 때 비운다(D-038).
 CREATE TABLE member (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   public_id BINARY(16) NOT NULL UNIQUE,
   state VARCHAR(20) NOT NULL,
   auth_version BIGINT NOT NULL DEFAULT 0,
   created_at DATETIME(6) NOT NULL,
+  last_login_at DATETIME(6) NULL,
   withdrawn_at DATETIME(6) NULL,
+  KEY ix_member_last_login (last_login_at),
   CONSTRAINT ck_member_0 CHECK (state IN ('ACTIVE','WITHDRAWING','WITHDRAWN'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 

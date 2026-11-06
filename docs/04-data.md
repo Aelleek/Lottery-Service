@@ -32,7 +32,7 @@
 
 | 묶음 | 테이블 | 하는 일 | 꼭 지키는 규칙 |
 |---|---|---|---|
-| 회원과 주체 | `member` | 회원. 개인정보 컬럼이 없다 | 상태: ACTIVE, WITHDRAWING(탈퇴 처리 중), WITHDRAWN(묘비) |
+| 회원과 주체 | `member` | 회원. 이름·이메일 같은 개인정보 컬럼이 없다. 마지막 로그인 시각(`last_login_at`)은 둔다(D-038) | 상태: ACTIVE, WITHDRAWING(탈퇴 처리 중), WITHDRAWN(묘비) |
 | | `oauth_account` | 소셜 계정 연결 | (제공자, 제공자 사용자 ID) 유일. 이메일은 신원 키가 아니다 |
 | | `actor_subject` | 회원과 비회원을 같은 "주체"로 다룬다. 기록 변경의 잠금 기준. `generation_lease_until`은 주체당 동시에 하나만 추천을 생성하게 하는 lease, `generation_fence`는 늦게 끝난 생성의 저장을 거부하는 번호, `next_generation_at`은 다음 추천이 가능한 시각 | 회원 주체는 ACTIVE, WITHDRAWING, WITHDRAWN만, 비회원 주체는 ACTIVE, CLAIMED(귀속됨)만 가진다 |
 | | `guest_credential` | 비회원 자격 | 쿠키 원문은 저장하지 않고 해시만 둔다 |
@@ -127,7 +127,7 @@
 
 | 순서 | 대상 | 처리 |
 |---|---|---|
-| 1 | 차단 | `member`와 회원 주체를 WITHDRAWING으로, `auth_version` 증가, 세션 회수, 대기 중 메시지 SUPPRESSED |
+| 1 | 차단 | `member`와 회원 주체를 WITHDRAWING으로, `auth_version` 증가, `last_login_at`을 NULL로, 세션 회수, 대기 중 메시지 SUPPRESSED |
 | 2 | 삭제 기록 | DB 밖 저장소에 삭제 기록(journal)을 쓰고 저장 확인을 받는다. 실패하면 차단을 유지하고 다시 시도하며 운영자에게 알린다 |
 | 3 | 기록 | 회원 주체와 그가 귀속한 비회원 주체의 기록 전부를 6.1 순서로 삭제 |
 | 4 | 추천 | 두 주체의 `recommendation_seen` → `recommendation_item` → `recommendation_request` |
