@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.auth.CustomOAuth2UserService;
+import com.lottery.lottery_service.common.time.ClockConfig;
 import com.lottery.lottery_service.config.SecurityConfig;
 import com.lottery.lottery_service.lotto.dto.LottoSet;
 import com.lottery.lottery_service.lotto.dto.request.PurchaseLottoRequest;
@@ -51,7 +52,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * </ul>
  */
 @WebMvcTest(controllers = LottoController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, ClockConfig.class})
 class LottoControllerWebTest {
 
   @Autowired private MockMvc mockMvc;

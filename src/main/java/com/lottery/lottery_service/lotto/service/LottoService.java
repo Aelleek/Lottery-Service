@@ -10,7 +10,9 @@ import com.lottery.lottery_service.lotto.validation.pipeline.LottoValidationResu
 import com.lottery.lottery_service.member.entity.Member;
 import com.lottery.lottery_service.member.repository.MemberRepository;
 import jakarta.transaction.Transactional;
+import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,7 @@ public class LottoService {
   private final LottoRecordRepository lottoRecordRepository;
   private final MemberRepository memberRepository;
   private final LottoValidationPipeline validationPipeline;
+  private final Clock clock;
 
   /**
    * 로또 번호 n세트를 생성합니다.
@@ -79,7 +82,7 @@ public class LottoService {
                                 .map(String::valueOf)
                                 .collect(Collectors.joining(" ")))
                         .round(round)
-                        .recommendedAt(LocalDateTime.now())
+                        .recommendedAt(now())
                         .manual(false)
                         .purchased(false)
                         .source(source) // 예: BASIC, AD
@@ -119,7 +122,7 @@ public class LottoService {
                                 .map(String::valueOf)
                                 .collect(Collectors.joining(" ")))
                         .round(round)
-                        .recommendedAt(LocalDateTime.now())
+                        .recommendedAt(now())
                         .manual(false)
                         .purchased(false)
                         .source(source)
@@ -173,7 +176,7 @@ public class LottoService {
                 .member(member) // 연관관계 유지
                 .round(round)
                 .numbers(normalized)
-                .recommendedAt(LocalDateTime.now())
+                .recommendedAt(now())
                 .manual(true)
                 .purchased(true)
                 .source("manual")
@@ -264,7 +267,7 @@ public class LottoService {
     // 쉼표/공백 구분 토큰화
     String[] tokens = raw.trim().split("[,\\s]+");
     if (tokens.length != 6) {
-      throw new IllegalArgumentException("로또 번호는 6개여야 합니다. 입력: " + raw);
+      throw new IllegalArgumentException("로또 번호는 6개여야 합니다.");
     }
 
     // 정수 파싱 + 검증
@@ -274,13 +277,13 @@ public class LottoService {
       try {
         n = Integer.parseInt(t);
       } catch (NumberFormatException e) {
-        throw new IllegalArgumentException("숫자 형식이 올바르지 않습니다: " + raw, e);
+        throw new IllegalArgumentException("숫자 형식이 올바르지 않습니다.", e);
       }
       if (n < 1 || n > 45) {
-        throw new IllegalArgumentException("로또 번호는 1~45 사이여야 합니다. 입력: " + raw);
+        throw new IllegalArgumentException("로또 번호는 1~45 사이여야 합니다.");
       }
       if (!set.add(n)) {
-        throw new IllegalArgumentException("로또 번호에 중복이 있습니다. 입력: " + raw);
+        throw new IllegalArgumentException("로또 번호에 중복이 있습니다.");
       }
     }
 
@@ -288,5 +291,9 @@ public class LottoService {
     java.util.List<Integer> sorted = new java.util.ArrayList<>(set);
     java.util.Collections.sort(sorted);
     return sorted.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(" "));
+  }
+
+  private LocalDateTime now() {
+    return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
   }
 }

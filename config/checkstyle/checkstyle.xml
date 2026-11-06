@@ -22,14 +22,16 @@
     <module name="TreeWalker">
         <!-- import 관련 -->
         <module name="UnusedImports"/>
-        <module name="ImportOrder">
-            <!-- Spotless와 일치 -->
-            <property name="groups" value="java,javax,org,com"/>
-            <property name="separated" value="true"/>
-        </module>
+        <!-- import 순서와 묶음은 Spotless(Google Java Format)가 정하고 spotlessCheck가 검사한다.
+             Google Java Format은 import를 한 묶음으로 정렬하므로 여기서 다시 검사하면 항상 충돌한다. -->
 
-        <!-- 공백/브레이스 기본 -->
-        <module name="WhitespaceAround"/>
+        <!-- 공백/브레이스 기본. Google Java Format이 만드는 빈 본문 {}는 허용 -->
+        <module name="WhitespaceAround">
+            <property name="allowEmptyConstructors" value="true"/>
+            <property name="allowEmptyMethods" value="true"/>
+            <property name="allowEmptyTypes" value="true"/>
+            <property name="allowEmptyLambdas" value="true"/>
+        </module>
         <module name="NoWhitespaceAfter"/>
         <module name="NoWhitespaceBefore"/>
         <module name="NeedBraces"/>
