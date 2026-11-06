@@ -76,7 +76,7 @@ Spring Security OAuth2 기본 경로를 쓴다. `/api/v1` 밖이다.
 | API | 하는 일 | 권한 |
 |---|---|---|
 | `GET /admin/rounds/{round}/notification-status` | 회차 알림 현황. 슬롯별 결과와 원인, 상태별 메시지 수 | OPERATOR 이상 |
-| `POST /admin/rounds/{round}/notification-dispatches` | 수동 다시 보내기. 기본 알림과 정정 알림 모두. 기한은 [02 6.2](02-policies.md#62-발송-시각과-재시도), [02 6.3](02-policies.md#63-정정-알림). 사유 필수, `Idempotency-Key` 필요 | OPERATOR 이상 |
+| `POST /admin/rounds/{round}/notification-dispatches` | 수동 다시 보내기. 못 보낸 기본 알림과, 정정으로 새로 대상이 된 회원의 기본 알림. 기한은 [02 6.2](02-policies.md#62-발송-시각과-재시도). 사유 필수, `Idempotency-Key` 필요 | OPERATOR 이상 |
 | `POST /admin/draw-results/{resultId}/publication` | 격리된 공식 결과를 새 게시본으로 승인. 현재 게시 버전(`lotto_round.publication_version`)과 사유 필수 | ADMIN |
 | `POST /admin/rounds/{round}/draw-results` | 결과 API가 주지 않는 회차의 결과 직접 등록(D-034). 조건은 [02 5](02-policies.md#5-결과와-판정). 사유, 최근 5분 재인증, 현재 게시 버전 필수. 이미 게시됐으면 409 `RESULT_ALREADY_PUBLISHED`, 그 밖에 게시 버전이 다르면 409 `VERSION_CONFLICT` | ADMIN |
 | `GET /admin/stats/daily` | 기간별 기본 지표 | OPERATOR 이상 |
