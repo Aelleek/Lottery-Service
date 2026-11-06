@@ -50,6 +50,7 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
             "verification_rate_bucket",
             "verification_challenge",
             "member_contact",
+            "consent_event",
             "oauth_account",
             "actor_subject",
             "member")) {
@@ -136,6 +137,36 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
 
     clock.set(Instant.parse("2026-11-08T15:00:00Z"));
     assertThat(issue(member)).isNotNull();
+  }
+
+  @Test
+  @DisplayName("인증 전에는 동의할 수 없고, 인증 뒤 동의하면 수신이 켜지며, 철회하거나 번호를 다시 인증하면 꺼진다")
+  void consent() {
+    ConsentStore consents = new ConsentStore(jdbc, clock);
+    assertThatThrownBy(() -> tx.executeWithoutResult(s -> consents.grant(member, "v1", 0)))
+        .isInstanceOf(BusinessException.class);
+    IssuedChallenge c = issue(member);
+    verify(member, c, c.code());
+
+    assertThatThrownBy(() -> tx.executeWithoutResult(s -> consents.grant(member, "v1", 5)))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.getCode()).isEqualTo(ErrorCode.CONTACT_CHANGED));
+    tx.executeWithoutResult(s -> consents.grant(member, "v1", 0));
+    assertThat(jdbc.queryForObject("SELECT notify_enabled FROM member_contact", Boolean.class))
+        .isTrue();
+
+    tx.executeWithoutResult(s -> consents.withdraw(member, "v1"));
+    assertThat(jdbc.queryForObject("SELECT notify_enabled FROM member_contact", Boolean.class))
+        .isFalse();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consent_event", Long.class)).isEqualTo(2);
+
+    tx.executeWithoutResult(s -> consents.grant(member, "v1", 2));
+    clock.set(clock.instant().plusSeconds(60));
+    IssuedChallenge again = tx.execute(s -> store.issue(member, "01099998888", 3));
+    tx.execute(s -> store.verify(member, again.publicId(), again.code(), 3));
+    assertThat(jdbc.queryForObject("SELECT notify_enabled FROM member_contact", Boolean.class))
+        .isFalse();
   }
 
   private IssuedChallenge issue(long memberId) {
