@@ -21,6 +21,7 @@ import com.lottery.lottery_service.result.publish.PrizeProperties;
 import com.lottery.lottery_service.result.publish.ResultPublisher;
 import com.lottery.lottery_service.result.source.OfficialDraw;
 import com.lottery.lottery_service.result.source.ParsedDraw;
+import com.lottery.lottery_service.result.source.ResultCollectJobHandler;
 import com.lottery.lottery_service.result.source.ResultCollector;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MutableClock;
@@ -368,6 +369,30 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'", Long.class))
         .isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("수집 job은 미발표면 다음 시각에 다음 시도를 한 번만 등록하고, 게시되면 더 등록하지 않는다")
+  void collectJobs() {
+    jdbc.update("DELETE FROM job");
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    JobStore jobs = new JobStore(jdbc, tm, clock, new JobProperties(null, null));
+    Instant drawAt = Instant.parse("2026-11-14T11:35:00Z");
+    clock.set(drawAt.plusSeconds(600));
+    jdbc.update("UPDATE lotto_round SET published_result_id = NULL");
+    ResultCollectJobHandler pending =
+        new ResultCollectJobHandler(
+            new ResultCollector(r -> new ParsedDraw.NotAnnounced(), null), jobs, jdbc, tm, clock);
+
+    assertThat(pending.plan(ROUND, drawAt)).isTrue();
+    assertThat(new JobRunner(jobs, List.of(pending), tm, clock).runOnce())
+        .contains(JobState.SUCCEEDED);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM job WHERE job_type = 'RESULT_COLLECT' AND state = 'READY'"
+                    + " AND available_at = '2026-11-14 11:50:00'",
+                Long.class))
+        .isEqualTo(1);
   }
 
   private ResultSlotRunner runner(MessageSender sender) {
