@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
+import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.notification.budget.MessageBudgetStore;
 import java.time.Clock;
 import java.util.ArrayList;
@@ -13,6 +14,9 @@ import java.util.Collections;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 탈퇴 삭제 job(04 6.2절 2~10번). 단계를 차례로 하나씩 처리하고 진행 위치({@code phase})와 귀속 비회원 주체 목록을 job에 남긴다(귀속 행은 중간
@@ -29,20 +33,44 @@ public class WithdrawalJobHandler implements JobHandler {
   private final JdbcTemplate jdbc;
   private final DeletionJournal journal;
   private final MessageBudgetStore budget;
+  private final JobStore jobs;
+  private final TransactionTemplate independent;
   private final Clock clock;
 
   /** 처리기를 만든다. */
   public WithdrawalJobHandler(
-      JdbcTemplate jdbc, DeletionJournal journal, MessageBudgetStore budget, Clock clock) {
+      JdbcTemplate jdbc,
+      DeletionJournal journal,
+      MessageBudgetStore budget,
+      JobStore jobs,
+      PlatformTransactionManager transactionManager,
+      Clock clock) {
     this.jdbc = jdbc;
     this.journal = journal;
     this.budget = budget;
+    this.jobs = jobs;
+    this.independent = new TransactionTemplate(transactionManager);
+    this.independent.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     this.clock = clock;
   }
 
   @Override
   public String type() {
     return WithdrawalService.JOB;
+  }
+
+  private void alertJournalFailure(JobLease lease) {
+    independent.executeWithoutResult(
+        status -> {
+          byte[] requestId =
+              jdbc.queryForObject(
+                  "SELECT public_id FROM job WHERE id = ?", byte[].class, lease.id());
+          jobs.enqueue(
+              JobStore.OPERATOR_ALERT,
+              "deletion-journal-failed:" + lease.id(),
+              "{\"kind\":\"DELETION_JOURNAL_FAILED\",\"requestId\":\"" + uuid(requestId) + "\"}",
+              clock.instant());
+        });
   }
 
   @Override
@@ -62,7 +90,12 @@ public class WithdrawalJobHandler implements JobHandler {
         byte[] publicId =
             jdbc.queryForObject(
                 "SELECT public_id FROM member WHERE id = ?", byte[].class, memberId);
-        journal.append(uuid(publicId), clock.instant());
+        try {
+          journal.append(uuid(publicId), clock.instant());
+        } catch (RuntimeException e) {
+          alertJournalFailure(lease);
+          throw e;
+        }
       }
       case 1 -> {
         if (deleteRecords(in, ids) == RECORD_BATCH) {

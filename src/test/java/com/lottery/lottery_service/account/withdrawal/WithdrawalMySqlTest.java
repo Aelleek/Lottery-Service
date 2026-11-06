@@ -215,6 +215,12 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
 
     assertThat(state("member", member.memberId())).isEqualTo("WITHDRAWING");
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.kind')) FROM job"
+                    + " WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .isEqualTo("DELETION_JOURNAL_FAILED");
     for (int i = 0; i < 4; i++) {
       clock.set(clock.instant().plus(Duration.ofMinutes(2)));
       runner(new UnavailableDeletionJournal()).runOnce();
@@ -226,7 +232,7 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM job WHERE job_type = 'OPERATOR_ALERT'", Long.class))
-        .isEqualTo(1);
+        .isEqualTo(2);
     assertThat(state("member", member.memberId())).isEqualTo("WITHDRAWING");
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isEqualTo(2);
   }
@@ -285,7 +291,7 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
 
   private JobRunner runner(DeletionJournal journal) {
     return new JobRunner(
-        jobs, List.of(new WithdrawalJobHandler(jdbc, journal, budget, clock)), tm, clock);
+        jobs, List.of(new WithdrawalJobHandler(jdbc, journal, budget, jobs, tm, clock)), tm, clock);
   }
 
   private String state(String table, long id) {

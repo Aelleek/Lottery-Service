@@ -145,6 +145,13 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
         .contains("실패 1건");
     assertThat(
             handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"DELETION_JOURNAL_FAILED\","
+                        + "\"requestId\":\"00000000-0000-4000-8000-000000000001\"}")))
+        .contains("삭제 요청 00000000-0000-4000-8000-000000000001")
+        .doesNotContain("[운영자 알림]");
+    assertThat(
+            handler.format(
                 mapper.readTree("{\"kind\":\"RESULT_MANUAL_REGISTERED\",\"roundNo\":1200}")))
         .contains("1200회")
         .doesNotContain("[운영자 알림]");

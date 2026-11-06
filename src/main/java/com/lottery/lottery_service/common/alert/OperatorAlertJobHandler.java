@@ -118,6 +118,9 @@ public class OperatorAlertJobHandler implements JobHandler {
           + "건, 접수 확인 중 "
           + payload.path("unknown").asLong()
           + "건.";
+      case "DELETION_JOURNAL_FAILED" -> "[삭제 기록 저장 실패] 삭제 요청 "
+          + payload.path("requestId").asText()
+          + ". 탈퇴 회원의 접근은 막혀 있고 개인 자료 삭제는 삭제 기록을 남길 때까지 멈춰 있습니다.";
       case "CLEANUP_DELAYED" -> "[정리 지연] "
           + payload.path("roundNo").asInt()
           + "회 기록 "
