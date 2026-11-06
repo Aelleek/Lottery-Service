@@ -11,6 +11,8 @@ import com.lottery.lottery_service.common.job.JobProperties;
 import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobState;
 import com.lottery.lottery_service.common.job.JobStore;
+import com.lottery.lottery_service.notification.ProviderStatus;
+import com.lottery.lottery_service.notification.UnknownMessageReconciler;
 import com.lottery.lottery_service.notification.budget.BudgetProperties;
 import com.lottery.lottery_service.notification.budget.MessageBudgetStore;
 import com.lottery.lottery_service.notification.budget.MessagePurpose;
@@ -203,7 +205,7 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("삭제 기록을 남기지 못하면 차단은 유지하고 아무것도 지우지 않은 채 다시 시도한다")
+  @DisplayName("삭제 기록을 남기지 못하면 차단은 유지하고 아무것도 지우지 않은 채 다시 시도하며, 시도 상한에 닿으면 DEAD와 운영자 알림(T30 일부)")
   void journalFailureKeepsBlock() {
     new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());
 
@@ -211,6 +213,68 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
 
     assertThat(state("member", member.memberId())).isEqualTo("WITHDRAWING");
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isEqualTo(2);
+    for (int i = 0; i < 4; i++) {
+      clock.set(clock.instant().plus(Duration.ofMinutes(2)));
+      runner(new UnavailableDeletionJournal()).runOnce();
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM job WHERE job_type <> 'OPERATOR_ALERT'", String.class))
+        .isEqualTo("DEAD");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM job WHERE job_type = 'OPERATOR_ALERT'", Long.class))
+        .isEqualTo(1);
+    assertThat(state("member", member.memberId())).isEqualTo("WITHDRAWING");
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("결과 알림을 받은 회원이 같은 달에 탈퇴해도 메시지 비용 기록이 남아 예산 카운터와 합계가 맞는다(T54)")
+  void acceptedMessageKeepsBudgetAfterWithdrawal() {
+    jdbc.update("UPDATE delivery_message SET state = 'ACCEPTED', provider_message_id = 'M-1'");
+    new TransactionTemplate(tm).execute(s -> budget.spend(message));
+    assertThat(budget.matchesMessages(LocalDate.parse("2026-11-01"))).isTrue();
+
+    new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());
+    assertThat(runner(journal()).runOnce()).contains(JobState.SUCCEEDED);
+
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT state, cost_state, cost_units, payload_ciphertext FROM delivery_message"))
+        .containsEntry("state", "ACCEPTED")
+        .containsEntry("cost_state", "SPENT")
+        .containsEntry("cost_units", 143L)
+        .containsEntry("payload_ciphertext", null);
+    assertThat(budget.matchesMessages(LocalDate.parse("2026-11-01"))).isTrue();
+    assertThat(jdbc.queryForMap("SELECT reserved_units, spent_units FROM message_budget"))
+        .containsEntry("reserved_units", 0L)
+        .containsEntry("spent_units", 143L);
+  }
+
+  @Test
+  @DisplayName("탈퇴 뒤 늦게 온 제공자 조회 결과는 끝난 메시지를 되돌리지 않고 개인 자료를 되살리지 않는다(T22 일부)")
+  void lateProviderResultAfterWithdrawal() {
+    new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());
+    assertThat(runner(journal()).runOnce()).contains(JobState.SUCCEEDED);
+
+    UnknownMessageReconciler reconciler = new UnknownMessageReconciler(jdbc, budget, jobs, clock);
+    String after =
+        new TransactionTemplate(tm)
+            .execute(s -> reconciler.apply(message, new ProviderStatus.Accepted("M-late")));
+
+    assertThat(after).isEqualTo("FAILED");
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT state, provider_message_id, payload_ciphertext, recipient_ciphertext,"
+                    + " communicated_summary FROM delivery_message"))
+        .containsEntry("state", "FAILED")
+        .containsEntry("provider_message_id", null)
+        .containsEntry("payload_ciphertext", null)
+        .containsEntry("recipient_ciphertext", null)
+        .containsEntry("communicated_summary", null);
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isZero();
+    assertThat(budget.matchesMessages(LocalDate.parse("2026-11-01"))).isTrue();
   }
 
   private DeletionJournal journal() {
