@@ -14,6 +14,7 @@ import java.util.UUID;
  * @param purchased 구매 등록됐는지
  * @param version 기록 버전. 취소할 때 함께 보낸다
  * @param expiresAt 보관 기한. 없으면 {@code null}
+ * @param evaluation 현재 게시본과 현재 기록 버전의 판정
  */
 public record RecordView(
     UUID recordId,
@@ -22,4 +23,5 @@ public record RecordView(
     boolean recommended,
     boolean purchased,
     long version,
-    Instant expiresAt) {}
+    Instant expiresAt,
+    RecordEvaluation evaluation) {}
