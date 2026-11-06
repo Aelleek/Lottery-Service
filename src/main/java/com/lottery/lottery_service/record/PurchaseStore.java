@@ -124,6 +124,15 @@ public class PurchaseStore {
    *     VERSION_CONFLICT}(현재 버전 포함)
    */
   public long cancel(long subjectId, UUID recordPublicId, long expectedVersion) {
+    return cancelPurchase(subjectId, recordPublicId, expectedVersion).version();
+  }
+
+  /**
+   * {@link #cancel}과 같고, 추천 기록으로 남았는지 숨겼는지를 함께 돌려준다.
+   *
+   * @return 취소 뒤 버전과 결과
+   */
+  public CancelOutcome cancelPurchase(long subjectId, UUID recordPublicId, long expectedVersion) {
     lockMemberSubject(subjectId);
     List<Map<String, Object>> rows =
         jdbc.queryForList(
@@ -141,7 +150,8 @@ public class PurchaseStore {
       throw new BusinessException(
           ErrorCode.VERSION_CONFLICT, "기록을 다시 확인해 주세요.", ErrorDetails.currentVersion(version));
     }
-    if (row.get("recommended_at") != null) {
+    boolean retained = row.get("recommended_at") != null;
+    if (retained) {
       jdbc.update(
           "UPDATE lotto_record SET purchased = FALSE, purchased_at = NULL, version = version + 1"
               + " WHERE id = ?",
@@ -152,8 +162,16 @@ public class PurchaseStore {
               + " version = version + 1 WHERE id = ?",
           id);
     }
-    return version + 1;
+    return new CancelOutcome(version + 1, !retained);
   }
+
+  /**
+   * 구매 등록 취소 결과.
+   *
+   * @param version 취소 뒤 기록 버전
+   * @param recordDeleted 직접 등록 기록이라 숨겼으면 {@code true}, 추천 기록으로 남았으면 {@code false}
+   */
+  public record CancelOutcome(long version, boolean recordDeleted) {}
 
   private void lockMemberSubject(long subjectId) {
     List<String> kinds =
