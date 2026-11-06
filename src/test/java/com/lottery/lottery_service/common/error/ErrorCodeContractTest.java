@@ -8,11 +8,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
 
 class ErrorCodeContractTest {
 
@@ -43,5 +46,31 @@ class ErrorCodeContractTest {
           .as(code.name())
           .isEqualTo(HttpStatus.valueOf(statuses.get(code.ordinal())));
     }
+  }
+
+  @Test
+  @DisplayName("모든 operation이 500 공통 응답을 가리킨다")
+  @SuppressWarnings("unchecked")
+  void everyOperationDeclaresInternalError() throws IOException {
+    LoaderOptions options = new LoaderOptions();
+    options.setMaxAliasesForCollections(1_000);
+    Map<String, Object> spec = new Yaml(options).load(Files.readString(OPENAPI));
+    Map<String, Map<String, Object>> paths = (Map<String, Map<String, Object>>) spec.get("paths");
+    List<String> operations = new ArrayList<>();
+    paths.forEach(
+        (path, methods) ->
+            methods.forEach(
+                (method, operation) -> {
+                  if (!List.of("get", "post", "put", "patch", "delete").contains(method)) {
+                    return;
+                  }
+                  Map<String, Object> responses =
+                      (Map<String, Object>) ((Map<String, Object>) operation).get("responses");
+                  operations.add(method + " " + path);
+                  assertThat((Map<String, Object>) responses.get("500"))
+                      .as(method + " " + path)
+                      .containsEntry("$ref", "#/components/responses/500");
+                }));
+    assertThat(operations).isNotEmpty();
   }
 }

@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -240,8 +242,65 @@ class ApiExceptionHandlerTest {
         .hasCauseInstanceOf(AccessDeniedException.class);
   }
 
+  @Test
+  @DisplayName("401·403으로 정한 예외는 UNAUTHENTICATED·FORBIDDEN과 그 메시지로 답한다")
+  void declaredUnauthorizedAndForbidden() throws Exception {
+    mockMvc
+        .perform(get("/probe/unauthorized"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
+        .andExpect(jsonPath("$.message").value(ApiExceptionHandler.UNAUTHENTICATED_MESSAGE));
+    mockMvc
+        .perform(get("/probe/annotated-forbidden"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"))
+        .andExpect(jsonPath("$.message").value(ApiExceptionHandler.FORBIDDEN_MESSAGE));
+  }
+
+  @Test
+  @DisplayName("@ResponseStatus만 붙은 예외도 그 상태로 답한다")
+  void responseStatusAnnotationFallback() throws Exception {
+    mockMvc
+        .perform(get("/probe/annotated-conflict"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+  }
+
+  @Test
+  @DisplayName("인증 예외도 형식을 바꾸지 않고 Spring Security에 넘긴다")
+  void authenticationExceptionIsRethrown() {
+    assertThatThrownBy(() -> mockMvc.perform(get("/probe/bad-credentials")))
+        .hasCauseInstanceOf(BadCredentialsException.class);
+  }
+
+  @ResponseStatus(HttpStatus.FORBIDDEN)
+  static class AnnotatedForbiddenException extends RuntimeException {}
+
+  @ResponseStatus(HttpStatus.CONFLICT)
+  static class AnnotatedConflictException extends RuntimeException {}
+
   @RestController
   static class ProbeController {
+
+    @GetMapping("/probe/unauthorized")
+    String unauthorized() {
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+    }
+
+    @GetMapping("/probe/annotated-forbidden")
+    String annotatedForbidden() {
+      throw new AnnotatedForbiddenException();
+    }
+
+    @GetMapping("/probe/annotated-conflict")
+    String annotatedConflict() {
+      throw new AnnotatedConflictException();
+    }
+
+    @GetMapping("/probe/bad-credentials")
+    String badCredentials() {
+      throw new BadCredentialsException("bad");
+    }
 
     @GetMapping("/probe/boom")
     String boom() {
