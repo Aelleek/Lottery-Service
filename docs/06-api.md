@@ -67,7 +67,7 @@ Spring Security OAuth2 기본 경로를 쓴다. `/api/v1` 밖이다.
 | `GET /login/oauth2/code/{provider}` | 제공자 콜백. 로그인 후 비회원 귀속 확인 화면으로 보낸다 |
 | `POST /logout` | 로그아웃. 서버 세션 회수 |
 
-재인증 증명(`X-Reauthentication-Proof`) 발급 방식, 제공자별 재인증 실패 처리, 관리자 다중 요소 인증 방식은 아직 정하지 않았다([08 6](08-delivery.md#6-남은-설계-작업)).
+재인증과 관리자 다중 요소 인증 방식은 [03 6.3](03-architecture.md#63-인증과-관리자)에 있다. 재인증은 서버 세션에 적은 재인증 시각으로 확인하므로, openapi의 `X-Reauthentication-Proof` 헤더는 재인증을 구현하는 단위에서 뺀다(C-31).
 
 ## 4. 관리자 API
 
@@ -82,7 +82,7 @@ Spring Security OAuth2 기본 경로를 쓴다. `/api/v1` 밖이다.
 | `GET /admin/stats/daily` | 기간별 기본 지표 | OPERATOR 이상 |
 | `GET /admin/stats/rounds/{round}` | 회차별 기본 지표 | OPERATOR 이상 |
 
-관리자 화면 구성과 권한 부여 절차는 아직 정하지 않았다.
+관리자 권한 부여 절차는 [03 6.3](03-architecture.md#63-인증과-관리자)에 있다(C-33). 관리자 화면 구성은 아직 정하지 않았다.
 
 ## 5. 기존 API 전환
 
