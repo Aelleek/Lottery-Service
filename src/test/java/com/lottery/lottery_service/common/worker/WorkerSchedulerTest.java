@@ -13,6 +13,7 @@ import com.lottery.lottery_service.common.job.JobState;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.notification.RoundJobPlanner;
 import com.lottery.lottery_service.notification.UnknownMessageReconciler;
+import com.lottery.lottery_service.notification.UnknownMessageSweep;
 import com.lottery.lottery_service.notification.budget.BudgetReconciler;
 import com.lottery.lottery_service.record.HousekeepingCleaner;
 import com.lottery.lottery_service.record.RoundMaintenance;
@@ -47,6 +48,7 @@ class WorkerSchedulerTest {
   private final RoundMaintenance maintenance = mock(RoundMaintenance.class);
   private final BudgetReconciler budget = mock(BudgetReconciler.class);
   private final UnknownMessageReconciler unknown = mock(UnknownMessageReconciler.class);
+  private final UnknownMessageSweep sweep = mock(UnknownMessageSweep.class);
   private final ExpiryWatch expiry = mock(ExpiryWatch.class);
   private final Clock clock = Clock.fixed(Instant.parse("2026-11-14T12:00:00Z"), ZoneOffset.UTC);
 
@@ -65,6 +67,7 @@ class WorkerSchedulerTest {
         maintenance,
         budget,
         unknown,
+        sweep,
         expiry,
         clock,
         tm);
@@ -136,5 +139,13 @@ class WorkerSchedulerTest {
     verify(planner).planSlots(near);
     verify(planner, never()).planSlots(far);
     verify(collect).plan(1200, near.drawAt());
+  }
+
+  @Test
+  @DisplayName("접수 대조는 제공자 조회 제한 안의 건수로 UNKNOWN 메시지를 조회한다")
+  void reconcilesUnknownMessages() {
+    scheduler().reconcileUnknownMessages();
+
+    verify(sweep).run(UnknownMessageSweep.MAX_LOOKUPS);
   }
 }

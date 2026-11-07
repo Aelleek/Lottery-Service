@@ -6,6 +6,7 @@ import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.job.RecoveredJob;
 import com.lottery.lottery_service.notification.RoundJobPlanner;
 import com.lottery.lottery_service.notification.UnknownMessageReconciler;
+import com.lottery.lottery_service.notification.UnknownMessageSweep;
 import com.lottery.lottery_service.notification.budget.BudgetReconciler;
 import com.lottery.lottery_service.record.HousekeepingCleaner;
 import com.lottery.lottery_service.record.RoundMaintenance;
@@ -37,6 +38,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li>회차 계획: 10분마다 추첨이 하루 안팎인 회차의 발송 슬롯 job과 첫 결과 수집 job을 등록한다(중복 키로 한 번만).
  *   <li>미평가 대조: 매시간 판정이 빠진 기록에 판정 job을 등록한다.
  *   <li>집계: 매시간 최근 기간을 다시 계산하고 보정 기간이 끝난 기간을 확정한다.
+ *   <li>접수 대조: 1분마다 접수 여부를 모르는 메시지를 최대 20건 제공자에 조회해 반영한다.
  *   <li>발송 감시: 매시간 예산 80% 도달과 24시간 넘은 접수 확인을 운영자에게 알린다.
  *   <li>예산 월 전환: 매월 1일 00:00(서울) 그 달 예산 행을 만든다.
  *   <li>보관 정리: 매일 04:00(서울) 끝난 job, 만료된 비회원 자격, 빈 비회원 주체를 정리하고, 알림 계획 완료를 확인하고, 보관 기간이 지난 기록을 지우고,
@@ -64,6 +66,7 @@ public class WorkerScheduler {
   private final RoundMaintenance maintenance;
   private final BudgetReconciler budget;
   private final UnknownMessageReconciler unknown;
+  private final UnknownMessageSweep sweep;
   private final ExpiryWatch expiry;
   private final Clock clock;
   private final TransactionTemplate tx;
@@ -81,6 +84,7 @@ public class WorkerScheduler {
       RoundMaintenance maintenance,
       BudgetReconciler budget,
       UnknownMessageReconciler unknown,
+      UnknownMessageSweep sweep,
       ExpiryWatch expiry,
       Clock clock,
       PlatformTransactionManager transactionManager) {
@@ -95,6 +99,7 @@ public class WorkerScheduler {
     this.maintenance = maintenance;
     this.budget = budget;
     this.unknown = unknown;
+    this.sweep = sweep;
     this.expiry = expiry;
     this.clock = clock;
     this.tx = new TransactionTemplate(transactionManager);
@@ -152,6 +157,15 @@ public class WorkerScheduler {
     Integer verified = tx.execute(status -> aggregation.run());
     if (verified != null && verified > 0) {
       log.info("verified usage aggregates periods={}", verified);
+    }
+  }
+
+  /** 접수 여부를 모르는 메시지를 제공자에 조회해 반영한다. */
+  @Scheduled(fixedDelay = 60_000)
+  public void reconcileUnknownMessages() {
+    int resolved = sweep.run(UnknownMessageSweep.MAX_LOOKUPS);
+    if (resolved > 0) {
+      log.info("resolved unknown messages count={}", resolved);
     }
   }
 
