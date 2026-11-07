@@ -25,6 +25,8 @@ paths:
           $ref: '#/components/responses/503'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
   /guest-credentials:
     post:
       operationId: createGuestCredential
@@ -54,6 +56,8 @@ paths:
           $ref: '#/components/responses/403'
         '429':
           $ref: '#/components/responses/429'
+        '500':
+          $ref: '#/components/responses/500'
   /command-tokens:
     post:
       operationId: issueCommandToken
@@ -79,6 +83,8 @@ paths:
           $ref: '#/components/responses/403'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/CsrfToken'
       requestBody:
@@ -122,6 +128,8 @@ paths:
           $ref: '#/components/responses/409'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CommandToken'
@@ -154,6 +162,8 @@ paths:
           $ref: '#/components/responses/403'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/round'
       - $ref: '#/components/parameters/cursor'
@@ -187,6 +197,8 @@ paths:
           $ref: '#/components/responses/410'
         '422':
           $ref: '#/components/responses/422'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/operationId'
   /me/lotto/records:
@@ -211,6 +223,8 @@ paths:
           $ref: '#/components/responses/403'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/round'
       - $ref: '#/components/parameters/purchased'
@@ -251,6 +265,8 @@ paths:
           $ref: '#/components/responses/409'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CommandToken'
@@ -298,6 +314,8 @@ paths:
           $ref: '#/components/responses/409'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/recordId'
       - $ref: '#/components/parameters/IdempotencyKey'
@@ -328,6 +346,8 @@ paths:
           $ref: '#/components/responses/404'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/roundPath'
   /lotto/check:
@@ -349,6 +369,8 @@ paths:
           $ref: '#/components/responses/400'
         '422':
           $ref: '#/components/responses/422'
+        '500':
+          $ref: '#/components/responses/500'
       requestBody:
         required: true
         content:
@@ -386,6 +408,8 @@ paths:
           $ref: '#/components/responses/409'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/claimId'
       - $ref: '#/components/parameters/IdempotencyKey'
@@ -433,6 +457,8 @@ paths:
           $ref: '#/components/responses/409'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CommandToken'
@@ -481,6 +507,8 @@ paths:
           $ref: '#/components/responses/409'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/challengeId'
       - $ref: '#/components/parameters/IdempotencyKey'
@@ -513,6 +541,8 @@ paths:
           $ref: '#/components/responses/403'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
     put:
       operationId: changeNotificationPreference
       summary: 알림 수신 동의 또는 철회
@@ -547,6 +577,8 @@ paths:
           $ref: '#/components/responses/409'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CommandToken'
@@ -586,6 +618,8 @@ paths:
           $ref: '#/components/responses/409'
         '400':
           $ref: '#/components/responses/400'
+        '500':
+          $ref: '#/components/responses/500'
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CommandToken'
@@ -619,6 +653,8 @@ paths:
           $ref: '#/components/responses/403'
         '404':
           $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'
   /admin/rounds/{round}/notification-dispatches:
     post:
       operationId: dispatchRoundNotifications
@@ -654,6 +690,8 @@ paths:
           $ref: '#/components/responses/404'
         '409':
           $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
   /admin/draw-results/{resultId}/publication:
     post:
       operationId: publishQuarantinedResult
@@ -689,6 +727,8 @@ paths:
           $ref: '#/components/responses/404'
         '409':
           $ref: '#/components/responses/409'
+        '500':
+          $ref: '#/components/responses/500'
   /admin/rounds/{round}/draw-results:
     post:
       operationId: registerManualResult
@@ -727,6 +767,8 @@ paths:
           $ref: '#/components/responses/409'
         '422':
           $ref: '#/components/responses/422'
+        '500':
+          $ref: '#/components/responses/500'
   /admin/stats/daily:
     get:
       operationId: getDailyStats
@@ -750,6 +792,8 @@ paths:
           $ref: '#/components/responses/401'
         '403':
           $ref: '#/components/responses/403'
+        '500':
+          $ref: '#/components/responses/500'
   /admin/stats/rounds/{round}:
     get:
       operationId: getRoundStats
@@ -772,6 +816,8 @@ paths:
           $ref: '#/components/responses/403'
         '404':
           $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'
 components:
   securitySchemes:
     MemberSession:
@@ -970,6 +1016,12 @@ components:
           schema:
             type: integer
             minimum: 0
+    '500':
+      description: 예상하지 못한 서버 오류. retryable은 false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   schemas:
     Numbers:
       type: array
@@ -1039,6 +1091,8 @@ components:
             description: 503. 회차 일정을 확인할 수 없음
           - const: TEMPORARILY_UNAVAILABLE
             description: 503. 일시적인 서버·외부 환경 실패
+          - const: INTERNAL_ERROR
+            description: 500. 예상하지 못한 서버 오류. 같은 요청을 자동으로 다시 보내지 않는다
         message:
           type: string
           description: 사용자에게 표시할 설명

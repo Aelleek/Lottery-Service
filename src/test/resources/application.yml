@@ -15,6 +15,10 @@ spring:
     init:
       mode: always
 
+  # 제품 migration은 MySQL용이다. H2 테스트는 엔티티로 스키마를 만든다.
+  flyway:
+    enabled: false
+
   h2:
     console:
       enabled: true

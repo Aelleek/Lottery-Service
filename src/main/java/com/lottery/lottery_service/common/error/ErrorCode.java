@@ -56,7 +56,9 @@ public enum ErrorCode {
   /** 503. 회차 일정을 확인할 수 없음. */
   SCHEDULE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, true),
   /** 503. 일시적인 서버·외부 환경 실패. */
-  TEMPORARILY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, true);
+  TEMPORARILY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, true),
+  /** 500. 예상하지 못한 서버 오류. 자동으로 다시 보내지 않는다. */
+  INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, false);
 
   private final HttpStatus status;
   private final boolean retryable;

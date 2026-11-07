@@ -65,6 +65,10 @@ jobs:
       - name: Build and test
         run: ./gradlew --no-daemon build
 
+      # 실제 MySQL 8.4 컨테이너 테스트 (mysql 태그)
+      - name: MySQL tests
+        run: ./gradlew --no-daemon mysqlTest
+
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
