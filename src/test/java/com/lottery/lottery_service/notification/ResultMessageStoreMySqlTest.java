@@ -32,6 +32,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -204,6 +205,76 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     assertThat(apply(reconciler, a, new ProviderStatus.Failed("LATE"))).isEqualTo("ACCEPTED");
     assertThat(apply(reconciler, a, new ProviderStatus.Delivered("M-9"))).isEqualTo("DELIVERED");
     assertThat(budgetRow()).containsEntry("reserved_units", 0L).containsEntry("spent_units", 143L);
+  }
+
+  @Test
+  @DisplayName("대조 순회는 UNKNOWN을 조회해 반영하고, 조회가 예외로 끝난 메시지는 UNKNOWN으로 남기며 다른 메시지를 막지 않는다")
+  void sweepUnknown() {
+    long a = unknownMessage(fourthMember);
+    long b = unknownMessage(thirdMember);
+    List<MessageLookup.UnknownMessage> seen = new ArrayList<>();
+    Map<Long, ProviderStatus> answers = new HashMap<>();
+    answers.put(a, new ProviderStatus.Accepted("M-1"));
+    MessageLookup lookup =
+        m -> {
+          seen.add(m);
+          ProviderStatus status = answers.get(m.id());
+          if (status == null) {
+            throw new IllegalStateException("lookup down");
+          }
+          return status;
+        };
+    UnknownMessageSweep sweep = sweep(lookup);
+
+    assertThat(sweep.run(10)).isEqualTo(1);
+    assertThat(state(fourthMember)).isEqualTo("ACCEPTED");
+    assertThat(state(thirdMember)).isEqualTo("UNKNOWN");
+    assertThat(seen).extracting(MessageLookup.UnknownMessage::id).containsExactly(a, b);
+    assertThat(seen.get(1).providerRequestKey()).hasSize(16);
+    assertThat(seen.get(1).providerMessageId()).isNull();
+    assertThat(seen.get(1).lastAttemptAt()).isEqualTo(clock.instant());
+
+    answers.put(b, new ProviderStatus.Failed("REJECTED"));
+    assertThat(sweep.run(10)).isEqualTo(1);
+    assertThat(state(thirdMember)).isEqualTo("FAILED");
+    assertThat(sweep.run(10)).isZero();
+    assertThat(seen).hasSize(3);
+    assertThat(budgetRow()).containsEntry("reserved_units", 0L).containsEntry("spent_units", 143L);
+  }
+
+  @Test
+  @DisplayName("대조 순회는 한 번에 정한 건수만 조회하고 다음 번에는 이어서, 끝에 닿으면 처음부터 다시 돈다")
+  void sweepRotates() {
+    long a = unknownMessage(fourthMember);
+    long b = unknownMessage(thirdMember);
+    List<Long> seen = new ArrayList<>();
+    UnknownMessageSweep sweep =
+        sweep(
+            m -> {
+              seen.add(m.id());
+              return new ProviderStatus.NotFound();
+            });
+
+    sweep.run(1);
+    sweep.run(1);
+    sweep.run(1);
+    sweep.run(2);
+
+    assertThat(seen).containsExactly(a, b, a, b, a);
+    assertThat(state(fourthMember)).isEqualTo("UNKNOWN");
+  }
+
+  @Test
+  @DisplayName("기본 조회 구현은 찾지 못했다고 답해 대조 기간 안에는 UNKNOWN으로 두고, 기간이 지나면 종결 규칙으로 끝낸다")
+  void unavailableLookup() {
+    unknownMessage(fourthMember);
+    UnknownMessageSweep sweep = sweep(new UnavailableMessageLookup());
+
+    assertThat(sweep.run(UnknownMessageSweep.MAX_LOOKUPS)).isZero();
+    assertThat(state(fourthMember)).isEqualTo("UNKNOWN");
+    clock.set(clock.instant().plus(UnknownMessageReconciler.RECONCILE_WINDOW));
+    assertThat(sweep.run(UnknownMessageSweep.MAX_LOOKUPS)).isEqualTo(1);
+    assertThat(state(fourthMember)).isEqualTo("FAILED");
   }
 
   @Test
@@ -579,6 +650,11 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
 
   private String apply(UnknownMessageReconciler reconciler, long id, ProviderStatus status) {
     return tx.execute(s -> reconciler.apply(id, status));
+  }
+
+  private UnknownMessageSweep sweep(MessageLookup lookup) {
+    return new UnknownMessageSweep(
+        jdbc, lookup, reconciler(), new DataSourceTransactionManager(dataSource));
   }
 
   private UnknownMessageReconciler reconciler() {
