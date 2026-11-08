@@ -14,6 +14,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.PessimisticLockingFailureException;
@@ -167,6 +169,40 @@ public class CommandOperationStore {
     if (changed != 1) {
       throw new IllegalStateException("command lease lost: " + started.publicId());
     }
+  }
+
+  /**
+   * 업무 트랜잭션 안에서 명령을 성공으로 끝내고 처음 결과를 다시 만들 응답 요약을 남긴다(D-057). 요약에는 번호 조합 같은 원문을 넣지 않는다.
+   *
+   * @throws IllegalStateException 처리 권한을 다른 재시도가 넘겨받았을 때. 업무 트랜잭션을 rollback해야 한다
+   */
+  public void succeedWithSummary(
+      CommandStart.Started started, String completionCode, String summaryJson) {
+    int changed =
+        jdbc.update(
+            "UPDATE command_operation SET state = 'SUCCEEDED', completion_code = ?,"
+                + " completed_at = ?, response_summary = ?, lease_token = NULL, lease_until = NULL"
+                + " WHERE id = ? AND state = 'PROCESSING' AND lease_token = ?",
+            completionCode,
+            utc(clock.instant()),
+            summaryJson,
+            started.operationId(),
+            bytes(started.leaseToken()));
+    if (changed != 1) {
+      throw new IllegalStateException("command lease lost: " + started.publicId());
+    }
+  }
+
+  /** 끝난 명령의 응답 요약. 없으면 빈 값. */
+  public Optional<String> summary(UUID operationPublicId) {
+    return jdbc
+        .queryForList(
+            "SELECT response_summary FROM command_operation WHERE public_id = ?",
+            String.class,
+            (Object) bytes(operationPublicId))
+        .stream()
+        .filter(Objects::nonNull)
+        .findFirst();
   }
 
   /** 다시 시도하면 될 실패로 남긴다. 같은 요청이 다시 오면 처리를 다시 맡는다. 자기 트랜잭션에서 커밋한다. */
