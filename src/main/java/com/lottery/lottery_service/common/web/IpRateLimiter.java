@@ -10,7 +10,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /** 키(IP 등)별 고정 창 속도 제한. 창은 그 키의 첫 요청부터 센다. 인스턴스 1개 운영을 가정해 메모리에 둔다(03 6.5). */
 public class IpRateLimiter {
 
-  private static final int PURGE_THRESHOLD = 10_000;
+  /** 기억하는 키가 이 수를 넘으면 창이 끝난 키를 지운다. */
+  static final int PURGE_THRESHOLD = 10_000;
 
   private final int limit;
   private final Duration window;
@@ -42,6 +43,11 @@ public class IpRateLimiter {
                     ? new Window(now.plus(window), 1)
                     : new Window(current.end(), current.count() + 1));
     return next.count() <= limit ? Optional.empty() : Optional.of(next.end());
+  }
+
+  /** 지금 기억하는 키 수. 정리가 도는지 확인할 때 쓴다. */
+  public int trackedKeys() {
+    return windows.size();
   }
 
   private record Window(Instant end, int count) {}

@@ -1,11 +1,10 @@
 package com.lottery.lottery_service.account;
 
+import com.lottery.lottery_service.common.web.IpRateLimiter;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 
 /**
@@ -22,14 +21,11 @@ public class GuestIssueRateLimiter {
   /** 창 길이. */
   public static final Duration WINDOW = Duration.ofMinutes(10);
 
-  private static final int PURGE_THRESHOLD = 10_000;
-
-  private final Clock clock;
-  private final Map<String, Window> windows = new ConcurrentHashMap<>();
+  private final IpRateLimiter limiter;
 
   /** 제한기를 만든다. */
   public GuestIssueRateLimiter(Clock clock) {
-    this.clock = clock;
+    this.limiter = new IpRateLimiter(LIMIT, WINDOW, clock);
   }
 
   /**
@@ -38,19 +34,6 @@ public class GuestIssueRateLimiter {
    * @return 허용하면 빈 값, 한도를 넘었으면 다시 시도할 수 있는 시각
    */
   public Optional<Instant> tryAcquire(String ip) {
-    Instant now = clock.instant();
-    if (windows.size() > PURGE_THRESHOLD) {
-      windows.values().removeIf(w -> !now.isBefore(w.end()));
-    }
-    Window next =
-        windows.compute(
-            ip,
-            (key, current) ->
-                current == null || !now.isBefore(current.end())
-                    ? new Window(now.plus(WINDOW), 1)
-                    : new Window(current.end(), current.count() + 1));
-    return next.count() <= LIMIT ? Optional.empty() : Optional.of(next.end());
+    return limiter.tryAcquire(ip);
   }
-
-  private record Window(Instant end, int count) {}
 }
