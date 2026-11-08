@@ -24,9 +24,12 @@ import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -36,6 +39,7 @@ import org.springframework.test.web.servlet.MvcResult;
 /** 보안 수용 시나리오(08 5절 T58~T61)를 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
 @AutoConfigureMockMvc
+@ExtendWith(OutputCaptureExtension.class)
 class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
 
   private static final String DB = "security_acceptance";
@@ -159,6 +163,22 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
     mvc.perform(
             get("/api/v1/lotto/rounds/" + ROUND + "/result").with(r -> remote(r, "198.51.100.8")))
         .andExpect(status().is2xxSuccessful());
+  }
+
+  @Test
+  @DisplayName("T65: 번호가 틀린 요청의 오류 응답과 로그에 보낸 번호 원문이 없다")
+  void noRawNumbersInErrors(CapturedOutput output) throws Exception {
+    registerRound();
+    MvcResult result =
+        mvc.perform(
+                post("/api/v1/lotto/check")
+                    .contentType("application/json")
+                    .content("{\"round\":" + ROUND + ",\"sets\":[[13,13,27,38,41,44]]}"))
+            .andExpect(status().is4xxClientError())
+            .andReturn();
+    String body = result.getResponse().getContentAsString();
+    assertThat(body).doesNotContain("13,13").doesNotContain("27, 38").doesNotContain("38,41");
+    assertThat(output.getAll()).doesNotContain("13,13,27").doesNotContain("13, 13, 27");
   }
 
   private static org.springframework.mock.web.MockHttpServletRequest remote(
