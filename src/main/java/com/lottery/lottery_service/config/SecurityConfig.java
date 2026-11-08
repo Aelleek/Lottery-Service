@@ -7,18 +7,22 @@ import com.lottery.lottery_service.account.SubjectClaimStore;
 import com.lottery.lottery_service.auth.CsrfFilter;
 import com.lottery.lottery_service.auth.CsrfTokens;
 import com.lottery.lottery_service.auth.GuestAuthenticationFilter;
+import com.lottery.lottery_service.auth.LoginFailureHandler;
 import com.lottery.lottery_service.auth.LoginSuccessHandler;
 import com.lottery.lottery_service.auth.MemberOAuth2UserService;
 import com.lottery.lottery_service.auth.MemberPrincipal;
+import com.lottery.lottery_service.auth.ReauthAuthorizationRequestResolver;
 import com.lottery.lottery_service.auth.SessionRevocationFilter;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.web.OriginGuard;
+import java.time.Clock;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.logout.LogoutFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
@@ -48,6 +52,8 @@ public class SecurityConfig {
   private final OriginGuard originGuard;
   private final HandlerExceptionResolver errors;
   private final SubjectClaimStore claims;
+  private final ClientRegistrationRepository registrations;
+  private final Clock clock;
 
   /** 보안 설정에 쓰는 구성 요소로 만든다. */
   public SecurityConfig(
@@ -58,7 +64,9 @@ public class SecurityConfig {
       CsrfTokens csrfTokens,
       OriginGuard originGuard,
       @Qualifier("handlerExceptionResolver") HandlerExceptionResolver errors,
-      SubjectClaimStore claims) {
+      SubjectClaimStore claims,
+      ClientRegistrationRepository registrations,
+      Clock clock) {
     this.memberOAuth2UserService = memberOAuth2UserService;
     this.accounts = accounts;
     this.guestCredentials = guestCredentials;
@@ -67,6 +75,8 @@ public class SecurityConfig {
     this.originGuard = originGuard;
     this.errors = errors;
     this.claims = claims;
+    this.registrations = registrations;
+    this.clock = clock;
   }
 
   /** 요청 보안 규칙. */
@@ -126,8 +136,14 @@ public class SecurityConfig {
         .oauth2Login(
             oauth2 ->
                 oauth2
+                    .authorizationEndpoint(
+                        a ->
+                            a.authorizationRequestResolver(
+                                new ReauthAuthorizationRequestResolver(registrations)))
                     .userInfoEndpoint(u -> u.userService(memberOAuth2UserService))
-                    .successHandler(new LoginSuccessHandler(guestCredentials, guestIssuer, claims)))
+                    .successHandler(
+                        new LoginSuccessHandler(guestCredentials, guestIssuer, claims, clock))
+                    .failureHandler(new LoginFailureHandler()))
         .logout(
             logout ->
                 logout

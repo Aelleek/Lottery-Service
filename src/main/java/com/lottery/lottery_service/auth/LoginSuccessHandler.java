@@ -7,7 +7,9 @@ import com.lottery.lottery_service.account.SubjectClaimStore;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
+import java.time.Clock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -26,13 +28,18 @@ public class LoginSuccessHandler extends SavedRequestAwareAuthenticationSuccessH
   private final GuestCredentialStore credentials;
   private final GuestIssueService issuer;
   private final SubjectClaimStore claims;
+  private final Clock clock;
 
   /** 처리기를 만든다. 다른 곳에서 오지 않은 로그인은 첫 화면으로 보낸다. */
   public LoginSuccessHandler(
-      GuestCredentialStore credentials, GuestIssueService issuer, SubjectClaimStore claims) {
+      GuestCredentialStore credentials,
+      GuestIssueService issuer,
+      SubjectClaimStore claims,
+      Clock clock) {
     this.credentials = credentials;
     this.issuer = issuer;
     this.claims = claims;
+    this.clock = clock;
     setDefaultTargetUrl("/");
   }
 
@@ -40,7 +47,10 @@ public class LoginSuccessHandler extends SavedRequestAwareAuthenticationSuccessH
   public void onAuthenticationSuccess(
       HttpServletRequest request, HttpServletResponse response, Authentication authentication)
       throws ServletException, IOException {
-    if (authentication.getPrincipal() instanceof MemberPrincipal member) {
+    HttpSession session = request.getSession(false);
+    if (Reauthentication.pending(session).isPresent()) {
+      Reauthentication.complete(session, clock.instant());
+    } else if (authentication.getPrincipal() instanceof MemberPrincipal member) {
       String token = GuestAuthenticationFilter.cookieValue(request, issuer.cookieName());
       if (token != null) {
         claimQuietly(token, member);

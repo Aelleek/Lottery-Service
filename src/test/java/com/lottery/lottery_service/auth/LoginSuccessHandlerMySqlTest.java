@@ -57,7 +57,8 @@ class LoginSuccessHandlerMySqlTest extends MySqlContainerSupport {
     GuestIssueService issuer =
         new GuestIssueService(
             credentials, new GuestIssueRateLimiter(clock), clock, GuestCookieProperties.defaults());
-    handler = new LoginSuccessHandler(credentials, issuer, new SubjectClaimStore(jdbc, tm, clock));
+    handler =
+        new LoginSuccessHandler(credentials, issuer, new SubjectClaimStore(jdbc, tm, clock), clock);
   }
 
   @Test

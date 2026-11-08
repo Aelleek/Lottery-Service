@@ -2,7 +2,9 @@ package com.lottery.lottery_service.auth;
 
 import com.lottery.lottery_service.account.AccountBlockedException;
 import com.lottery.lottery_service.account.AccountStore;
+import jakarta.servlet.http.HttpSession;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
@@ -11,10 +13,15 @@ import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 /** 소셜 로그인 사용자 정보를 회원으로 잇는다. (제공자, 제공자 사용자 ID)로만 회원을 찾고 이메일은 읽지 않는다(D-007, D-038). */
 @Service
 public class MemberOAuth2UserService implements OAuth2UserService<OAuth2UserRequest, OAuth2User> {
+
+  /** 재인증에서 세션 회원과 다른 소셜 계정이 돌아왔을 때의 오류 코드. */
+  public static final String REAUTH_MISMATCH = "reauth_mismatch";
 
   private final OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate;
   private final List<OAuth2UserInfoExtractor> extractors;
@@ -51,13 +58,28 @@ public class MemberOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
     if (providerUserId == null || providerUserId.isBlank()) {
       throw failure("missing_provider_user_id");
     }
+    Optional<Long> reauthFor = Reauthentication.pending(currentSession());
     try {
+      if (reauthFor.isPresent()) {
+        return accounts
+            .find(provider, providerUserId)
+            .filter(found -> found.memberId() == reauthFor.get())
+            .map(found -> MemberPrincipal.of(found, provider))
+            .orElseThrow(() -> failure(REAUTH_MISMATCH));
+      }
       return MemberPrincipal.of(accounts.login(provider, providerUserId), provider);
     } catch (AccountBlockedException e) {
       throw failure("account_blocked");
     } catch (IllegalArgumentException e) {
       throw failure("invalid_provider_user_id");
     }
+  }
+
+  private static HttpSession currentSession() {
+    if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
+      return attrs.getRequest().getSession(false);
+    }
+    return null;
   }
 
   private static OAuth2AuthenticationException failure(String code) {

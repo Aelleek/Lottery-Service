@@ -479,7 +479,6 @@ paths:
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CommandToken'
       - $ref: '#/components/parameters/CsrfToken'
-      - $ref: '#/components/parameters/Reauth'
       requestBody:
         required: true
         content:
@@ -640,7 +639,6 @@ paths:
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CommandToken'
       - $ref: '#/components/parameters/CsrfToken'
-      - $ref: '#/components/parameters/Reauth'
       requestBody:
         required: true
         content:
@@ -757,7 +755,6 @@ paths:
       - $ref: '#/components/parameters/roundPath'
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CsrfToken'
-      - $ref: '#/components/parameters/Reauth'
       requestBody:
         required: true
         content:
@@ -835,6 +832,9 @@ paths:
         '500':
           $ref: '#/components/responses/500'
 components:
+  # 재인증은 헤더 증명 없이 서버 세션의 재인증 시각으로 확인한다(03 6.3, C-31). 로그인 시작
+  # /oauth2/authorization/{provider}?reauth=true로 다시 인증하고, 민감한 API는 그 시각이 5분 안인지 본다.
+  # 없거나 지났으면 403 REAUTH_REQUIRED.
   securitySchemes:
     MemberSession:
       type: apiKey
@@ -880,15 +880,6 @@ components:
       description: 쿠키 인증 변경 요청의 CSRF 방어(D-051). 회원은 GET /session, 비회원은 POST /guest-credentials 응답 본문으로 받는다.
         회원 토큰은 그 세션과 auth_version에, 비회원 토큰은 그 자격에 묶이며 발급 뒤 24시간 유효하다. 다시 로그인하거나 자격이 회전되면 새로 받는다.
         서버에 저장하지 않고 로그에 남기지 않는다.
-    Reauth:
-      name: X-Reauthentication-Proof
-      in: header
-      required: true
-      schema:
-        type: string
-        description: ''
-        maxLength: 4096
-      description: 현재 회원/세션/행동에 묶인 최근 재인증 증거. 유효 시간은 ../02-policies.md 5, 7.2, 발급 방식은 ../08-delivery.md 6에서 정한다.
     recordId:
       name: recordId
       in: path

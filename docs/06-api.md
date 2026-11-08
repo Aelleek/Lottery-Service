@@ -68,7 +68,7 @@ Spring Security OAuth2 기본 경로를 쓴다. `/api/v1` 밖이다.
 | `GET /login/oauth2/code/{provider}` | 제공자 콜백. 로그인 후 비회원 귀속 확인 화면으로 보낸다 |
 | `POST /logout` | 로그아웃. 서버 세션 회수 |
 
-재인증과 관리자 다중 요소 인증 방식은 [03 6.3](03-architecture.md#63-인증과-관리자)에 있다. 재인증은 서버 세션에 적은 재인증 시각으로 확인하므로, openapi의 `X-Reauthentication-Proof` 헤더는 재인증을 구현하는 단위에서 뺀다(C-31).
+재인증과 관리자 다중 요소 인증 방식은 [03 6.3](03-architecture.md#63-인증과-관리자)에 있다. 재인증은 서버 세션에 적은 재인증 시각으로 확인한다(C-31). 화면은 로그인 시작 주소에 `reauth=true`를 붙여(예: `/oauth2/authorization/kakao?reauth=true`) 다시 인증하고 돌아온다. 다른 소셜 계정으로 돌아오거나 취소하면 `/?reauth=failed`로 돌아오고 세션은 그대로다. openapi의 `X-Reauthentication-Proof` 헤더는 뺐다.
 
 ## 4. 관리자 API
 

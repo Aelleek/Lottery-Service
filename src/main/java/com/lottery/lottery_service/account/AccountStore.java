@@ -62,6 +62,16 @@ public class AccountStore {
   }
 
   /**
+   * 재인증용으로 연결된 회원을 찾는다. 가입시키거나 마지막 로그인 시각을 바꾸지 않는다.
+   *
+   * @return 연결된 ACTIVE 회원. 연결이 없으면 빈 값
+   * @throws AccountBlockedException 연결된 회원이 탈퇴 처리 중일 때
+   */
+  public Optional<MemberLogin> find(OAuthProvider provider, String providerUserId) {
+    return existingWithoutTouch(provider, providerKey(providerUserId));
+  }
+
+  /**
    * 세션이 아직 유효한지 본다. 회원이 ACTIVE이고 {@code auth_version}이 세션을 만들 때와 같아야 한다(03 6.3).
    *
    * @param memberId 세션의 회원 ID
@@ -87,6 +97,23 @@ public class AccountStore {
   }
 
   private Optional<MemberLogin> existing(OAuthProvider provider, byte[] key) {
+    Optional<MemberLogin> found = existingWithoutTouch(provider, key);
+    if (found.isEmpty()) {
+      return found;
+    }
+    MemberLogin login = found.get();
+    int changed =
+        jdbc.update(
+            "UPDATE member SET last_login_at = ? WHERE id = ? AND state = 'ACTIVE'",
+            utc(clock.instant()),
+            login.memberId());
+    if (changed != 1) {
+      throw new AccountBlockedException(login.memberId());
+    }
+    return Optional.of(login);
+  }
+
+  private Optional<MemberLogin> existingWithoutTouch(OAuthProvider provider, byte[] key) {
     List<MemberLogin> found =
         jdbc.query(
             "SELECT m.id, m.public_id, m.state, m.auth_version, s.id, s.public_id"
@@ -107,19 +134,7 @@ public class AccountStore {
             },
             provider.name(),
             key);
-    if (found.isEmpty()) {
-      return Optional.empty();
-    }
-    MemberLogin login = found.get(0);
-    int changed =
-        jdbc.update(
-            "UPDATE member SET last_login_at = ? WHERE id = ? AND state = 'ACTIVE'",
-            utc(clock.instant()),
-            login.memberId());
-    if (changed != 1) {
-      throw new AccountBlockedException(login.memberId());
-    }
-    return Optional.of(login);
+    return found.stream().findFirst();
   }
 
   private MemberLogin register(OAuthProvider provider, byte[] key) {
