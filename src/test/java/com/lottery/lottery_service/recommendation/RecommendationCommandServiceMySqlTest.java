@@ -29,9 +29,16 @@ import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.TestSecrets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.SplittableRandom;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -146,6 +153,93 @@ class RecommendationCommandServiceMySqlTest extends MySqlContainerSupport {
 
     assertThat(new OperationQuery(jdbc, List.of(commands)).find(subject, operation))
         .isEqualTo(new OperationQuery.Outcome.Done(operation, first));
+  }
+
+  @Test
+  @DisplayName("같은 토큰·키·본문을 동시에 두 번 보내도 추천은 1건이고, 받은 결과는 모두 같다(T03·T04)")
+  void concurrentSameRequest() throws Exception {
+    String token = codec.issue(subjectPublicId, "RECOMMEND", ROUND, 1L);
+    UUID key = UUID.randomUUID();
+    List<Object> outcomes = race(() -> recommend(token, key, RecommendationCondition.none(), 1));
+
+    assertThat(count("recommendation_request")).isEqualTo(1);
+    assertThat(count("recommendation_item")).isEqualTo(5);
+    List<RecommendationView> views =
+        outcomes.stream()
+            .filter(RecommendationView.class::isInstance)
+            .map(RecommendationView.class::cast)
+            .toList();
+    assertThat(views).isNotEmpty().allMatch(v -> v.equals(views.get(0)));
+    assertThat(outcomes)
+        .allMatch(
+            o ->
+                o instanceof RecommendationView
+                    || o instanceof CommandInProgressException
+                    || (o instanceof BusinessException b
+                        && b.getCode() == ErrorCode.GENERATION_BUSY));
+  }
+
+  @Test
+  @DisplayName("같은 주체가 다른 키로 동시에 추천하면 하나만 만들고 다른 하나는 GENERATION_BUSY, 저장된 조합 중복은 0이다(T03)")
+  void concurrentDifferentKeys() throws Exception {
+    String token = codec.issue(subjectPublicId, "RECOMMEND", ROUND, 1L);
+    List<Object> outcomes =
+        race(() -> recommend(token, UUID.randomUUID(), RecommendationCondition.none(), 1));
+
+    assertThat(outcomes.stream().filter(RecommendationView.class::isInstance).count())
+        .isEqualTo(count("recommendation_request"));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) - COUNT(DISTINCT numbers_key) FROM recommendation_seen"
+                    + " WHERE subject_id = ?",
+                Long.class,
+                subject))
+        .isZero();
+  }
+
+  @Test
+  @DisplayName("같은 요청이 처리 중이면 CommandInProgressException(202와 조회 주소)이다")
+  void inProgressRequest() {
+    String token = codec.issue(subjectPublicId, "RECOMMEND", ROUND, 1L);
+    UUID key = UUID.randomUUID();
+    new CommandOperationStore(jdbc, new DataSourceTransactionManager(dataSource), clock)
+        .begin(
+            subject,
+            codec.verify(token, subjectPublicId, "RECOMMEND"),
+            key,
+            RecommendationCommandService.requestHash(ROUND, 1, RecommendationCondition.none()));
+
+    assertThatThrownBy(() -> recommend(token, key, RecommendationCondition.none(), 1))
+        .isInstanceOf(CommandInProgressException.class);
+    assertThat(count("recommendation_request")).isZero();
+  }
+
+  private List<Object> race(Callable<Object> call) throws Exception {
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    CountDownLatch start = new CountDownLatch(1);
+    try {
+      List<Future<Object>> futures = new ArrayList<>();
+      for (int i = 0; i < 2; i++) {
+        futures.add(
+            pool.submit(
+                () -> {
+                  start.await();
+                  try {
+                    return call.call();
+                  } catch (RuntimeException e) {
+                    return e;
+                  }
+                }));
+      }
+      start.countDown();
+      List<Object> results = new ArrayList<>();
+      for (Future<Object> f : futures) {
+        results.add(f.get(30, TimeUnit.SECONDS));
+      }
+      return results;
+    } finally {
+      pool.shutdownNow();
+    }
   }
 
   @Test

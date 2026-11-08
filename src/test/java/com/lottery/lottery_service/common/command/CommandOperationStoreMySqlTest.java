@@ -67,6 +67,23 @@ class CommandOperationStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("다른 주체가 같은 토큰 ID·키를 보내도 앞 주체의 기록을 돌려주지 않고 자기 기록을 새로 만든다")
+  void scopedToSubject() {
+    CommandStart.Started first = started(store.begin(guest.subjectId(), token, key, hash));
+    store.succeed(first, UUID.randomUUID(), "CREATED");
+    long other =
+        new GuestCredentialStore(
+                jdbc, new DataSourceTransactionManager(dataSource), clock, TestSecrets.keys())
+            .issue()
+            .subjectId();
+
+    CommandStart start = store.begin(other, token, key, hash);
+
+    assertThat(start).isInstanceOf(CommandStart.Started.class);
+    assertThat(((CommandStart.Started) start).publicId()).isNotEqualTo(first.publicId());
+  }
+
+  @Test
   @DisplayName("처음 요청은 처리를 맡고, 처리 중 같은 요청은 PROCESSING, 끝난 뒤에는 처음 결과를 돌려준다(T04)")
   void sameRequestHandledOnce() {
     CommandStart.Started started = started(store.begin(guest.subjectId(), token, key, hash));
