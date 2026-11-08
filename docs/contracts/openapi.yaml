@@ -1660,7 +1660,8 @@ components:
       - expectedVersion
       - verifiedContactVersion
       - policyVersion
-      description: 활성화는 현재 번호 인증이 필수. 철회는 연락처 재인증 없이 즉시 가능하되 CSRF/본인 버전 검사는 수행한다.
+      description: 활성화는 현재 번호 인증이 필수. 철회는 연락처 재인증 없이 즉시 가능하되 CSRF/본인 버전 검사는 수행한다. expectedVersion과 verifiedContactVersion은
+        같은 member_contact.version과 대조하므로 같은 값을 보낸다(D-059).
     Preference:
       type: object
       additionalProperties: false
@@ -1674,7 +1675,7 @@ components:
         maskedPhoneNumber:
           anyOf:
           - type: string
-            description: ''
+            description: 가운데 4자리를 가린 번호. 예 010-****-1234(D-059)
           - type: 'null'
         policyVersion:
           anyOf:
@@ -1688,6 +1689,7 @@ components:
       - verified
       - maskedPhoneNumber
       - policyVersion
+      description: version과 contactVersion은 모두 member_contact.version이라 늘 같은 값이다(D-059). 번호 재인증과 수신 켜고 끄기가 함께 올린다.
     Accepted:
       type: object
       additionalProperties: false
