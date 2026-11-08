@@ -24,7 +24,7 @@ public record RecommendationCondition(Set<Integer> include, Set<Integer> exclude
   private static final RecommendationCondition NONE =
       new RecommendationCondition(Set.of(), Set.of());
 
-  /** 범위와 개수, 겹침을 확인하고 정렬한 사본으로 둔다. */
+  /** 정렬하고 중복을 없앤 사본으로 둔다. 범위·개수·겹침 검사는 {@link #of}가 한다. 외부 입력은 반드시 {@link #of}로 만든다. */
   public RecommendationCondition {
     include = Set.copyOf(new TreeSet<>(include));
     exclude = Set.copyOf(new TreeSet<>(exclude));
