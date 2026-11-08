@@ -80,6 +80,10 @@ public class RecommendationService {
   /** 5세트를 추천하고 저장한다. {@code inTransaction}은 저장과 같은 트랜잭션에서 불린다. 멱등 기록 완료처럼 저장과 함께 커밋해야 하는 일에 쓴다. */
   public SavedRecommendation recommend(
       RecommendCommand command, Consumer<SavedRecommendation> inTransaction) {
+    if (!command.condition().isDefault()
+        && command.condition().candidateCount() < RecommendationGenerator.SETS) {
+      throw new BusinessException(ErrorCode.CANDIDATES_EXHAUSTED, "조건에 맞는 새 조합이 5개보다 적습니다.");
+    }
     GenerationLease lease = leases.acquire(command.subjectId());
     try {
       CandidateFilter filter =
