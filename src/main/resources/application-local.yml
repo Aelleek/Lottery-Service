@@ -8,12 +8,10 @@ spring:
     hikari:
       transaction-isolation: TRANSACTION_READ_COMMITTED
 
-  jpa:
-    defer-datasource-initialization: true
-    hibernate:
-      ddl-auto: update
-    show-sql: true
 
-  sql:
-    init:
-      mode: always
+# 로컬 http에서 세션 쿠키가 붙도록 local 프로필에서만 secure를 끈다.
+server:
+  servlet:
+    session:
+      cookie:
+        secure: false
