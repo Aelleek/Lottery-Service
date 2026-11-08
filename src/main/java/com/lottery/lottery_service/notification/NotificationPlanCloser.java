@@ -18,7 +18,8 @@ import org.springframework.stereotype.Component;
  * <ol>
  *   <li>마지막 자동 슬롯(추첨 다음 날 12:00)이 지났다.
  *   <li>기본 알림의 수동 다시 보내기 기한(현재 게시본 게시 후 7일)이 지났다.
- *   <li>결과 알림 메시지에 PENDING, IN_FLIGHT, RETRY_WAIT, UNKNOWN이 없다.
+ *   <li>결과 알림 메시지에 PENDING, IN_FLIGHT, RETRY_WAIT, UNKNOWN이 없다. 기한이 지나도록 못 보낸 PENDING, RETRY_WAIT,
+ *       HALTED는 먼저 EXPIRED로 바꾼다(02 6.2 "미발송·기간 만료"). 접수 여부를 모르는 IN_FLIGHT, UNKNOWN은 대조가 끝낼 때까지 둔다.
  *   <li>알림 후보 기록(마감 전 회원 기록)의 판정이 현재 게시본과 현재 기록 버전으로 끝났다.
  * </ol>
  */
@@ -65,6 +66,7 @@ public class NotificationPlanCloser {
     if (now.isBefore(lastSlot) || now.isBefore(resendDeadline)) {
       return false;
     }
+    expireUnsent(roundNo);
     Long open =
         jdbc.queryForObject(
             "SELECT COUNT(*) FROM delivery_message WHERE round_no = ? AND purpose = 'RESULT'"
@@ -89,5 +91,14 @@ public class NotificationPlanCloser {
         utc(now),
         roundNo);
     return true;
+  }
+
+  /** 다시 보내기 기한이 지나도록 못 보낸 결과 알림을 EXPIRED로 바꾼다. */
+  private int expireUnsent(int roundNo) {
+    return jdbc.update(
+        "UPDATE delivery_message SET state = 'EXPIRED', next_attempt_at = NULL,"
+            + " version = version + 1 WHERE round_no = ? AND purpose = 'RESULT'"
+            + " AND state IN ('PENDING','RETRY_WAIT','HALTED')",
+        roundNo);
   }
 }
