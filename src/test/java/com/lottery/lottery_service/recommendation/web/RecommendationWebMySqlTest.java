@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.recommendation.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -105,6 +106,14 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
             .andReturn();
     assertThat(body(again).get("data")).isEqualTo(body(first).get("data"));
     assertThat(body(again).get("operationId")).isEqualTo(body(first).get("operationId"));
+
+    mvc.perform(
+            get("/api/v1/guest/lotto/records")
+                .cookie(guest)
+                .param("round", Integer.toString(ROUND)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(5))
+        .andExpect(jsonPath("$.items[0].recommended").value(true));
 
     mvc.perform(
             post("/api/v1/lotto/recommendations")
