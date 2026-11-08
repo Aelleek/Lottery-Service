@@ -81,6 +81,17 @@ public class GuestIssueService {
         .build();
   }
 
+  /** 비회원 쿠키를 지우는 쿠키(Max-Age=0). 로그인해 귀속을 시도한 뒤에 쓴다. */
+  public ResponseCookie expiredCookie() {
+    return ResponseCookie.from(cookieProperties.name(), "")
+        .secure(cookieProperties.secure())
+        .httpOnly(true)
+        .sameSite("Lax")
+        .path("/")
+        .maxAge(0)
+        .build();
+  }
+
   /** 발급 결과. */
   public sealed interface Outcome {
 

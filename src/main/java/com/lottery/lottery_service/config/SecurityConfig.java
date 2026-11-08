@@ -3,9 +3,11 @@ package com.lottery.lottery_service.config;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.GuestCredentialStore;
 import com.lottery.lottery_service.account.GuestIssueService;
+import com.lottery.lottery_service.account.SubjectClaimStore;
 import com.lottery.lottery_service.auth.CsrfFilter;
 import com.lottery.lottery_service.auth.CsrfTokens;
 import com.lottery.lottery_service.auth.GuestAuthenticationFilter;
+import com.lottery.lottery_service.auth.LoginSuccessHandler;
 import com.lottery.lottery_service.auth.MemberOAuth2UserService;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.SessionRevocationFilter;
@@ -38,6 +40,7 @@ public class SecurityConfig {
   private final CsrfTokens csrfTokens;
   private final OriginGuard originGuard;
   private final HandlerExceptionResolver errors;
+  private final SubjectClaimStore claims;
 
   /** 보안 설정에 쓰는 구성 요소로 만든다. */
   public SecurityConfig(
@@ -47,7 +50,8 @@ public class SecurityConfig {
       GuestIssueService guestIssuer,
       CsrfTokens csrfTokens,
       OriginGuard originGuard,
-      @Qualifier("handlerExceptionResolver") HandlerExceptionResolver errors) {
+      @Qualifier("handlerExceptionResolver") HandlerExceptionResolver errors,
+      SubjectClaimStore claims) {
     this.memberOAuth2UserService = memberOAuth2UserService;
     this.accounts = accounts;
     this.guestCredentials = guestCredentials;
@@ -55,6 +59,7 @@ public class SecurityConfig {
     this.csrfTokens = csrfTokens;
     this.originGuard = originGuard;
     this.errors = errors;
+    this.claims = claims;
   }
 
   /** 요청 보안 규칙. */
@@ -105,7 +110,7 @@ public class SecurityConfig {
             oauth2 ->
                 oauth2
                     .userInfoEndpoint(u -> u.userService(memberOAuth2UserService))
-                    .defaultSuccessUrl("/", false))
+                    .successHandler(new LoginSuccessHandler(guestCredentials, guestIssuer, claims)))
         .logout(
             logout ->
                 logout
