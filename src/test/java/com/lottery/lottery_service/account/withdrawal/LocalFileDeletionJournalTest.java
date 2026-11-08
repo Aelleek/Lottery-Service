@@ -34,6 +34,21 @@ class LocalFileDeletionJournalTest {
   }
 
   @Test
+  @DisplayName("남은 기록을 순서대로 읽고, 파일이 없으면 빈 목록, 깨진 줄은 예외로 멈춘다")
+  void readsBack() throws Exception {
+    Path file = dir.resolve("journal.jsonl");
+    LocalFileDeletionJournal journal = new LocalFileDeletionJournal(file);
+    assertThat(journal.readAll()).isEmpty();
+    UUID a = UUID.randomUUID();
+    journal.append(a, Instant.parse("2026-11-08T15:00:00Z"));
+
+    assertThat(journal.readAll())
+        .containsExactly(new DeletionJournalReader.Entry(a, Instant.parse("2026-11-08T15:00:00Z")));
+    Files.writeString(file, "garbage\n", java.nio.file.StandardOpenOption.APPEND);
+    assertThatThrownBy(journal::readAll).isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
   @DisplayName("저장하지 못하면 예외라 삭제 job이 다음으로 넘어가지 않는다")
   void failsWhenUnwritable() throws Exception {
     Path blocker = dir.resolve("file");

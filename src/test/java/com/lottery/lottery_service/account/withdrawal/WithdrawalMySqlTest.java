@@ -190,6 +190,28 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("복원 뒤 삭제 기록을 다시 적용하면 되살아난 탈퇴 회원을 다시 막고 지우며, 모든 세션을 회수한다(07 4절)")
+  void replayAfterRestore(@TempDir Path dir) throws Exception {
+    LocalFileDeletionJournal journal = new LocalFileDeletionJournal(dir.resolve("journal.jsonl"));
+    journal.append(member.memberPublicId(), clock.instant());
+    journal.append(UUID.randomUUID(), clock.instant());
+    RestoreReplay replay = new RestoreReplay(jdbc, new WithdrawalService(jdbc, tm, jobs, clock));
+
+    RestoreReplay.Result result = replay.replay(journal);
+
+    assertThat(result).isEqualTo(new RestoreReplay.Result(1, 0, 1));
+    assertThat(state("member", member.memberId())).isEqualTo("WITHDRAWING");
+    assertThat(runner(journal).runOnce()).contains(JobState.SUCCEEDED);
+    assertThat(state("member", member.memberId())).isEqualTo("WITHDRAWN");
+    assertThat(replay.replay(journal)).isEqualTo(new RestoreReplay.Result(0, 2, 1));
+
+    long before = jdbc.queryForObject("SELECT SUM(auth_version) FROM member", Long.class);
+    assertThat(replay.revokeAllSessions()).isPositive();
+    assertThat(jdbc.queryForObject("SELECT SUM(auth_version) FROM member", Long.class))
+        .isGreaterThan(before);
+  }
+
+  @Test
   @DisplayName("탈퇴하면 즉시 차단되고, 삭제 job이 개인 자료를 순서대로 지우며 통계와 메시지 비용 기록은 남긴다(T39, T56)")
   void withdrawalDeletesPersonalData() {
     new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());

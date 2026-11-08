@@ -9,7 +9,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -22,7 +26,11 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Profile({"local", "test"})
-public class LocalFileDeletionJournal implements DeletionJournal {
+public class LocalFileDeletionJournal implements DeletionJournal, DeletionJournalReader {
+
+  private static final Pattern LINE =
+      Pattern.compile(
+          "^\\{\"memberPublicId\":\"([0-9a-f-]{36})\",\"requestedAt\":\"([^\"]+)\"\\}$");
 
   private final Path file;
 
@@ -55,6 +63,29 @@ public class LocalFileDeletionJournal implements DeletionJournal {
       }
     } catch (IOException e) {
       throw new UncheckedIOException("deletion journal append failed", e);
+    }
+  }
+
+  @Override
+  public synchronized List<Entry> readAll() {
+    if (!Files.exists(file)) {
+      return List.of();
+    }
+    try {
+      List<Entry> entries = new ArrayList<>();
+      for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+        if (line.isBlank()) {
+          continue;
+        }
+        Matcher m = LINE.matcher(line);
+        if (!m.matches()) {
+          throw new IllegalStateException("deletion journal line is invalid");
+        }
+        entries.add(new Entry(UUID.fromString(m.group(1)), Instant.parse(m.group(2))));
+      }
+      return entries;
+    } catch (IOException e) {
+      throw new UncheckedIOException("deletion journal read failed", e);
     }
   }
 }
