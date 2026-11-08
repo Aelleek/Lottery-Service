@@ -161,12 +161,16 @@ public class AdminMfaStore {
         });
   }
 
-  /** 등록을 지운다. 기기를 잃었거나 복구 코드를 다 썼을 때 ADMIN이 사유와 감사 기록을 남기며 부른다(C-33). */
-  public void reset(long memberId) {
-    jdbc.update(
+  /**
+   * 등록을 지운다. 기기를 잃었거나 복구 코드를 다 썼을 때 ADMIN이 사유와 감사 기록을 남기며 부른다(C-33).
+   *
+   * @return 바꾼 행 수. 회수되지 않은 관리자 권한이 없으면 0
+   */
+  public int reset(long memberId) {
+    return jdbc.update(
         "UPDATE admin_grant SET mfa_secret = NULL, mfa_key_version = NULL, mfa_enrolled_at = NULL,"
             + " mfa_last_step = NULL, mfa_failed_count = 0, mfa_locked_until = NULL,"
-            + " mfa_recovery_hashes = NULL WHERE member_id = ?",
+            + " mfa_recovery_hashes = NULL WHERE member_id = ? AND revoked_at IS NULL",
         memberId);
   }
 

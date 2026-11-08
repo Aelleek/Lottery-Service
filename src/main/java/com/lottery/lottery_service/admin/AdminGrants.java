@@ -85,16 +85,24 @@ public class AdminGrants {
         "ADMIN_REVOKE",
         true,
         target ->
-            jdbc.update(
-                "UPDATE admin_grant SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL",
-                utc(clock.instant()),
-                target),
+            requireChanged(
+                jdbc.update(
+                    "UPDATE admin_grant SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL",
+                    utc(clock.instant()),
+                    target)),
         null);
   }
 
   /** ADMIN이 다른 관리자의 다중 요소 인증을 초기화한다(기기 분실, 복구 코드 소진). 자기 자신은 할 수 없다. */
   public void resetMfa(long actorMemberId, UUID memberPublicId, String reason) {
-    change(actorMemberId, memberPublicId, reason, "ADMIN_MFA_RESET", true, mfa::reset, null);
+    change(
+        actorMemberId,
+        memberPublicId,
+        reason,
+        "ADMIN_MFA_RESET",
+        true,
+        target -> requireChanged(mfa.reset(target)),
+        null);
   }
 
   private void change(
@@ -129,6 +137,12 @@ public class AdminGrants {
               null,
               AdminAuditOutcome.REJECTED));
       throw e;
+    }
+  }
+
+  private static void requireChanged(int rows) {
+    if (rows != 1) {
+      throw new BusinessException(ErrorCode.NOT_FOUND, "관리자 권한이 있는 회원이 아닙니다.");
     }
   }
 
