@@ -1592,15 +1592,14 @@ components:
       type: object
       additionalProperties: false
       properties:
-        sourceRecordIds:
-          type: array
-          items: *id005
-          minItems: 1
-          maxItems: 100
-          uniqueItems: true
+        confirm:
+          type: boolean
+          const: true
+          description: 사용자가 가져오기를 확인했다는 표시. 귀속된 비회원 기록 전체를 가져온다(D-058).
       required:
-      - sourceRecordIds
-      description: 한 명령 최대100건씩 가져온다. 전체 가져오기 횟수 제한은 아니다. 다른 계정의 claim은404.
+      - confirm
+      description: 고른 기록만 가져오지 않는다. job이 귀속 전체를 묶음으로 옮기고, 진행과 건수는 GET /operations/{id}로 본다. 이미 가져온 기록은 다시 해도 늘지
+        않는다. 다른 계정의 claim은 404.
     VerificationInput:
       type: object
       additionalProperties: false
@@ -1746,6 +1745,7 @@ components:
     ImportResult:
       type: object
       additionalProperties: false
+      description: 가져오기 명령의 결과. 명령 조회(GET /operations/{id})의 data로 준다. 항목별 결과는 주지 않는다(D-058).
       properties:
         outcome:
           type: string
@@ -1753,43 +1753,28 @@ components:
           - COMPLETE
           - PARTIAL
           - FAILED
-        processedCount:
+        createdCount:
+          type: integer
+          minimum: 0
+        mergedCount:
           type: integer
           minimum: 0
         skippedCount:
           type: integer
           minimum: 0
+          description: 회원이 지운 기록이거나 비회원 보관 기한이 지나 건너뛴 수
         lateImportRounds:
           type: array
           items: *id006
           minItems: 0
           uniqueItems: true
           description: 판매 마감 뒤에 가져와 그 회차 알림톡 대상이 아닌 회차. 화면은 이 회차를 알린다.
-        items:
-          type: array
-          items:
-            type: object
-            additionalProperties: false
-            properties:
-              sourceRecordId: *id005
-              outcome:
-                type: string
-                enum:
-                - CREATED
-                - MERGED
-                - SKIPPED_TARGET_DELETED
-                - SKIPPED_SOURCE_EXPIRED
-            required:
-            - sourceRecordId
-            - outcome
-          minItems: 0
-          maxItems: 100
       required:
       - outcome
-      - processedCount
+      - createdCount
+      - mergedCount
       - skippedCount
       - lateImportRounds
-      - items
     RecommendationSuccess:
       type: object
       additionalProperties: false
