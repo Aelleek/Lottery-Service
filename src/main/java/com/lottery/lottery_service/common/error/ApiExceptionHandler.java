@@ -2,12 +2,14 @@ package com.lottery.lottery_service.common.error;
 
 import com.lottery.lottery_service.common.number.InvalidLottoNumberException;
 import com.lottery.lottery_service.common.web.RequestIdFilter;
+import com.lottery.lottery_service.recommendation.CommandInProgressException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.annotation.AnnotatedElementUtils;
@@ -59,6 +61,23 @@ public class ApiExceptionHandler {
   }
 
   /** 요청 본문 검증 실패. 위치와 제약 이름만 돌려준다. */
+  /** 같은 요청이 처리 중이면 202와 본인 작업 조회 주소를 준다(06 1.1절, openapi {@code Accepted}). */
+  @ExceptionHandler(CommandInProgressException.class)
+  public ResponseEntity<Map<String, Object>> handleInProgress(CommandInProgressException e) {
+    String id = e.operationPublicId().toString();
+    return ResponseEntity.status(HttpStatus.ACCEPTED)
+        .body(
+            Map.of(
+                "operationId",
+                id,
+                "status",
+                "PROCESSING",
+                "data",
+                Map.of("pollUrl", "/api/v1/operations/" + id),
+                "serverTime",
+                clock.instant().toString()));
+  }
+
   @ExceptionHandler(MethodArgumentNotValidException.class)
   public ResponseEntity<ErrorResponse> handleInvalidBody(
       MethodArgumentNotValidException e, HttpServletRequest request) {
