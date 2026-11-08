@@ -24,6 +24,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -217,7 +218,7 @@ public class AdminMfaStore {
           memberId);
       jobs.enqueue(
           "OPERATOR_ALERT",
-          "admin-mfa-locked:" + memberId + ":" + now.getEpochSecond(),
+          "admin-mfa-locked:" + UUID.randomUUID(),
           "{\"kind\":\"ADMIN_MFA_LOCKED\",\"lockMinutes\":" + LOCK.toMinutes() + "}",
           now);
       return Outcome.LOCKED;

@@ -17,8 +17,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 관리자 권한 부여·회수와 다중 요소 인증 초기화(C-33). 첫 ADMIN은 서버 관리 명령({@link #grantByCommand})으로, 그 뒤에는 ADMIN이 사유와
- * 함께 한다. 성공은 같은 트랜잭션에, 거부는 따로 감사 기록에 남긴다. 자기 자신의 권한 회수와 인증 초기화는 받지 않는다(마지막 ADMIN이 스스로 잠기는 것을 막는다).
- * 그럴 때는 관리 명령을 쓴다.
+ * 함께 한다. 성공은 같은 트랜잭션에, 거부는 따로 감사 기록에 남긴다. 자기 자신의 역할 변경·권한 회수·인증 초기화는 받지 않는다(마지막 ADMIN이 스스로 잠기는 것을
+ * 막는다). 그럴 때는 관리 명령을 쓴다.
  */
 @Component
 public class AdminGrants {
@@ -55,6 +55,7 @@ public class AdminGrants {
    * @throws BusinessException 대상 회원이 없거나 ACTIVE가 아니면 {@code NOT_FOUND}
    */
   public void grantByCommand(UUID memberPublicId, AdminRole role, String reason) {
+    requireReason(reason);
     tx.executeWithoutResult(
         status -> {
           long target = activeMember(memberPublicId);
@@ -63,14 +64,14 @@ public class AdminGrants {
         });
   }
 
-  /** ADMIN이 다른 회원에게 권한을 주거나 역할을 바꾼다. */
+  /** ADMIN이 다른 회원에게 권한을 주거나 역할을 바꾼다. 자기 역할은 바꿀 수 없다. */
   public void grant(long actorMemberId, UUID memberPublicId, AdminRole role, String reason) {
     change(
         actorMemberId,
         memberPublicId,
         reason,
         "ADMIN_GRANT",
-        false,
+        true,
         target -> upsertGrant(target, role, actorMemberId),
         role);
   }
@@ -104,6 +105,7 @@ public class AdminGrants {
       boolean notSelf,
       LongConsumer apply,
       AdminRole role) {
+    requireReason(reason);
     try {
       tx.executeWithoutResult(
           status -> {
@@ -127,6 +129,12 @@ public class AdminGrants {
               null,
               AdminAuditOutcome.REJECTED));
       throw e;
+    }
+  }
+
+  private static void requireReason(String reason) {
+    if (reason == null || reason.isBlank() || reason.length() > 500) {
+      throw new BusinessException(ErrorCode.VALIDATION_FAILED, "사유를 1~500자로 적어 주세요.");
     }
   }
 

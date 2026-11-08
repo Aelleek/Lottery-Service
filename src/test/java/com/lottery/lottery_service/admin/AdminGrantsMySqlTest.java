@@ -110,12 +110,18 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
         () -> grants.grant(operator, UUID.randomUUID(), AdminRole.ADMIN, "권한 올리기"),
         ErrorCode.FORBIDDEN);
     assertCode(() -> grants.revoke(admin, self, "실수"), ErrorCode.FORBIDDEN);
+    assertCode(() -> grants.grant(admin, self, AdminRole.OPERATOR, "실수"), ErrorCode.FORBIDDEN);
+    assertCode(
+        () -> grants.grant(admin, operatorId, AdminRole.ADMIN, " "), ErrorCode.VALIDATION_FAILED);
+    assertCode(
+        () -> grants.revoke(admin, operatorId, "x".repeat(501)), ErrorCode.VALIDATION_FAILED);
+    assertThat(access.roleOf(operator)).contains(AdminRole.OPERATOR);
     assertCode(() -> grants.resetMfa(admin, self, "실수"), ErrorCode.FORBIDDEN);
     assertCode(
         () -> grants.grant(admin, UUID.randomUUID(), AdminRole.ADMIN, "없는 회원"),
         ErrorCode.NOT_FOUND);
     assertThat(access.roleOf(admin)).contains(AdminRole.ADMIN);
-    assertThat(audits("ADMIN_GRANT", "REJECTED")).isEqualTo(2);
+    assertThat(audits("ADMIN_GRANT", "REJECTED")).isEqualTo(3);
     assertThat(audits("ADMIN_REVOKE", "REJECTED")).isEqualTo(1);
     assertThat(audits("ADMIN_MFA_RESET", "REJECTED")).isEqualTo(1);
   }
