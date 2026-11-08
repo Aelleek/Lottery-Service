@@ -175,7 +175,7 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("90일이 지났고 그날·그달·그 회차 집계가 확정된 사건만 지우고, 확정 집계 값은 그대로다(T21 원천 정리)")
+  @DisplayName("90일이 지났고 그날·그달·그 회차 집계가 확정된 사건만 지우고, 하나라도 미확정이면 남기며, 확정 집계 값은 그대로다(T21 원천 정리)")
   void usageEvents() {
     jdbc.update(
         "INSERT INTO lotto_round (round_no, sales_open_at, sales_close_at, draw_at, schedule_version)"
@@ -194,7 +194,17 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
     clock.set(T0.plus(Duration.ofDays(90)).minusSeconds(1));
     assertThat(cleaner.deleteAggregatedUsageEvents(100)).isZero();
     clock.set(T0.plus(Duration.ofDays(91)));
-    assertThat(cleaner.deleteAggregatedUsageEvents(100)).isEqualTo(2);
+    jdbc.update("UPDATE usage_aggregate SET state = 'BUILDING' WHERE period_type = 'ROUND'");
+    assertThat(cleaner.deleteAggregatedUsageEvents(100)).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM usage_event WHERE round_no = 1200", Long.class))
+        .isEqualTo(1);
+    jdbc.update("UPDATE usage_aggregate SET state = 'VERIFIED' WHERE period_type = 'ROUND'");
+    jdbc.update("UPDATE usage_aggregate SET state = 'BUILDING' WHERE period_type = 'DAY'");
+    assertThat(cleaner.deleteAggregatedUsageEvents(100)).isZero();
+    jdbc.update("UPDATE usage_aggregate SET state = 'VERIFIED' WHERE period_type = 'DAY'");
+    assertThat(cleaner.deleteAggregatedUsageEvents(100)).isEqualTo(1);
 
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM usage_event", Long.class)).isEqualTo(1);
     assertThat(
