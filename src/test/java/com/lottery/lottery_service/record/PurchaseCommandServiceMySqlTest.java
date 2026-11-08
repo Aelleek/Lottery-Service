@@ -151,6 +151,38 @@ class PurchaseCommandServiceMySqlTest extends MySqlContainerSupport {
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM command_operation", Long.class)).isZero();
   }
 
+  @Test
+  @DisplayName("없는 회차는 ROUND_CHANGED로 확정 실패해 다시 보내도 같고, 0 이하 회차는 멱등 기록 전에 VALIDATION_FAILED")
+  void unknownRound() {
+    String token = token();
+    UUID key = UUID.randomUUID();
+    List<PurchaseCommandService.Entry> entries = List.of(new PurchaseCommandService.Entry("a", A));
+
+    for (int i = 0; i < 2; i++) {
+      assertThatThrownBy(
+              () ->
+                  commands.register(
+                      member.subjectId(), member.subjectPublicId(), token, key, 9999, entries))
+          .isInstanceOfSatisfying(
+              BusinessException.class,
+              e -> assertThat(e.getCode()).isEqualTo(ErrorCode.ROUND_CHANGED));
+    }
+    assertThat(jdbc.queryForObject("SELECT state FROM command_operation", String.class))
+        .isEqualTo("FAILED");
+    assertThatThrownBy(
+            () ->
+                commands.register(
+                    member.subjectId(),
+                    member.subjectPublicId(),
+                    token,
+                    UUID.randomUUID(),
+                    0,
+                    entries))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+  }
+
   private String token() {
     return codec.issue(member.subjectPublicId(), PurchaseCommandService.OPERATION, null, null);
   }
