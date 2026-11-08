@@ -41,7 +41,8 @@ public class ExpiryWatch {
     for (Map.Entry<String, LocalDate> item : new TreeMap<>(properties.items()).entrySet()) {
       long left = ChronoUnit.DAYS.between(today, item.getValue());
       Integer stage = THRESHOLDS.stream().filter(t -> left <= t).reduce((a, b) -> b).orElse(null);
-      if (stage == null || left < 0) {
+      // 만료일이 지났으면 마지막 단계(1일 전)로 본다. 같은 중복 키라 그 단계를 이미 알렸으면 다시 알리지 않는다.
+      if (stage == null) {
         continue;
       }
       boolean added =

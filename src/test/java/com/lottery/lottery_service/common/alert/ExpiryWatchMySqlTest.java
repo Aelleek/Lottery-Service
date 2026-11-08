@@ -64,11 +64,34 @@ class ExpiryWatchMySqlTest extends MySqlContainerSupport {
             jdbc.queryForList(
                 "SELECT JSON_EXTRACT(payload, '$.daysLeft') FROM job ORDER BY id", Integer.class))
         .containsExactly(30, 10, 0);
+    clock.set(Instant.parse("2027-01-04T15:00:00Z"));
+    assertThat(watch.check()).isZero();
     assertThat(
             jdbc.queryForObject(
                 "SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.name')) FROM job LIMIT 1",
                 String.class))
         .isEqualTo("solapi-api-key");
+  }
+
+  @Test
+  @DisplayName("이미 만료된 날짜가 설정에 들어오면 한 번 알린다")
+  void alreadyExpired() {
+    ExpiryWatch expired =
+        new ExpiryWatch(
+            new ExpiryProperties(Map.of("old-cert", LocalDate.parse("2026-01-01"))),
+            new JobStore(
+                jdbc,
+                new DataSourceTransactionManager(dataSource),
+                clock,
+                new JobProperties(null, null)),
+            clock);
+
+    assertThat(expired.check()).isEqualTo(1);
+    assertThat(expired.check()).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT JSON_EXTRACT(payload, '$.daysLeft') FROM job", Integer.class))
+        .isNegative();
   }
 
   @Test
