@@ -44,7 +44,8 @@ class GuestIssueServiceMySqlTest extends MySqlContainerSupport {
             new GuestCredentialStore(
                 jdbc, new DataSourceTransactionManager(dataSource), clock, TestSecrets.keys()),
             new GuestIssueRateLimiter(clock),
-            clock);
+            clock,
+            GuestCookieProperties.defaults());
   }
 
   @Test
@@ -54,7 +55,7 @@ class GuestIssueServiceMySqlTest extends MySqlContainerSupport {
         (GuestIssueService.Outcome.Issued) service.issue(null, false, "10.0.0.1");
     ResponseCookie cookie = issued.cookie();
 
-    assertThat(cookie.getName()).isEqualTo(GuestIssueService.COOKIE);
+    assertThat(cookie.getName()).isEqualTo("__Host-lottery_guest");
     assertThat(cookie.getValue()).isEqualTo(issued.credential().token());
     assertThat(cookie.isSecure()).isTrue();
     assertThat(cookie.isHttpOnly()).isTrue();

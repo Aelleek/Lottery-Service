@@ -50,6 +50,15 @@ public final class KeyRing {
     return current;
   }
 
+  /** 주어진 버전의 키 원본 사본. 그 버전이 없으면 예외. 암호화 키를 만들 때만 쓴다. */
+  public byte[] key(int version) {
+    byte[] key = keys.get(version);
+    if (key == null) {
+      throw new IllegalArgumentException("unknown key version");
+    }
+    return key.clone();
+  }
+
   /** 주어진 버전 키로 계산한 HMAC. 그 버전이 없으면 예외. */
   public byte[] sign(int version, byte[] message) {
     byte[] key = keys.get(version);

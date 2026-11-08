@@ -5,24 +5,10 @@ spring:
     username: sa
     password:
 
-  jpa:
-    defer-datasource-initialization: true
-    hibernate:
-      ddl-auto: create
-    show-sql: true
-
-  sql:
-    init:
-      mode: always
-
-  # 제품 migration은 MySQL용이다. H2 테스트는 엔티티로 스키마를 만든다.
+  # 제품 migration은 MySQL용이다. H2 단위 테스트는 스키마 없이 컨텍스트만 띄운다.
+  # 스키마가 필요한 테스트는 mysqlTest(Testcontainers)로 돈다.
   flyway:
     enabled: false
-
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
 
   security:
     oauth2:
@@ -54,3 +40,11 @@ lottery:
       current: 1
       keys:
         1: dGVzdC1ndWVzdC1jcmVkZW50aWFsLWtleS0wMTIzNDU2Nzg=
+    csrf-token:
+      current: 1
+      keys:
+        1: dGVzdC1jc3JmLXRva2VuLWtleS0wMTIzNDU2Nzg5YWJjZGVm
+    admin-mfa:
+      current: 1
+      keys:
+        1: dGVzdC1hZG1pbi1tZmEta2V5LTAxMjM0NTY3ODlhYmNkZWY=

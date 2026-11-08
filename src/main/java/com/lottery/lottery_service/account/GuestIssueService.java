@@ -7,30 +7,38 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 
 /**
  * 비회원 자격 발급 절차(05 1절, 06 2절 {@code POST /guest-credentials}). 출처 검사는 호출한 쪽에서 먼저 한다. 회원 세션이면 발급하지
- * 않고, 유효한 자격이 이미 있으면 새로 만들지 않고 같은 주체를 돌려주며, 새로 만들 때만 IP별 발급 한도를 센다. 자격 원문은 쿠키로만 내려준다(본문 CSRF 토큰은
- * Q6이 정해지면 붙인다).
+ * 않고, 유효한 자격이 이미 있으면 새로 만들지 않고 같은 주체를 돌려주며, 새로 만들 때만 IP별 발급 한도를 센다. 자격 원문은 쿠키로만 내려준다.
  */
 @Component
+@EnableConfigurationProperties(GuestCookieProperties.class)
 public class GuestIssueService {
-
-  /** 비회원 자격 쿠키 이름. */
-  public static final String COOKIE = "lotto_guest";
 
   private final GuestCredentialStore credentials;
   private final GuestIssueRateLimiter limiter;
   private final Clock clock;
+  private final GuestCookieProperties cookieProperties;
 
   /** 서비스를 만든다. */
   public GuestIssueService(
-      GuestCredentialStore credentials, GuestIssueRateLimiter limiter, Clock clock) {
+      GuestCredentialStore credentials,
+      GuestIssueRateLimiter limiter,
+      Clock clock,
+      GuestCookieProperties cookieProperties) {
     this.credentials = credentials;
     this.limiter = limiter;
     this.clock = clock;
+    this.cookieProperties = cookieProperties;
+  }
+
+  /** 자격 쿠키 이름. */
+  public String cookieName() {
+    return cookieProperties.name();
   }
 
   /**
@@ -64,12 +72,23 @@ public class GuestIssueService {
   public ResponseCookie cookie(GuestCredential credential) {
     long seconds =
         Math.max(0, Duration.between(clock.instant(), credential.expiresAt()).getSeconds());
-    return ResponseCookie.from(COOKIE, credential.token())
-        .secure(true)
+    return ResponseCookie.from(cookieProperties.name(), credential.token())
+        .secure(cookieProperties.secure())
         .httpOnly(true)
         .sameSite("Lax")
         .path("/")
         .maxAge(seconds)
+        .build();
+  }
+
+  /** 비회원 쿠키를 지우는 쿠키(Max-Age=0). 로그인해 귀속을 시도한 뒤에 쓴다. */
+  public ResponseCookie expiredCookie() {
+    return ResponseCookie.from(cookieProperties.name(), "")
+        .secure(cookieProperties.secure())
+        .httpOnly(true)
+        .sameSite("Lax")
+        .path("/")
+        .maxAge(0)
         .build();
   }
 
