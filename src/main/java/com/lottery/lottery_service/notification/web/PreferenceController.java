@@ -59,7 +59,7 @@ public class PreferenceController {
               version,
               version,
               row.get("verified_at") != null,
-              address == null ? null : PhoneMask.mask(cipher.decrypt(address)),
+              address == null ? null : PhoneMask.mask(cipher.decrypt(member.memberId(), address)),
               (String) row.get("policy_version"));
     }
     return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);

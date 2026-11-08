@@ -90,7 +90,7 @@ public class VerificationStore {
         bytes(publicId),
         memberId,
         target,
-        cipher.encrypt(phone),
+        cipher.encrypt(memberId, phone),
         codeHmac(ring, ring.currentVersion(), publicId, target, code),
         ring.currentVersion(),
         contactVersion,

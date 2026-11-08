@@ -84,7 +84,7 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
             "SELECT address_ciphertext FROM member_contact WHERE member_id = ?",
             byte[].class,
             member);
-    assertThat(cipher.decrypt(stored)).isEqualTo(PHONE);
+    assertThat(cipher.decrypt(member, stored)).isEqualTo(PHONE);
     assertThat(jdbc.queryForObject("SELECT notify_enabled FROM member_contact", Boolean.class))
         .isFalse();
     assertThat(
@@ -226,6 +226,19 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
                 "SELECT version FROM member_contact WHERE member_id = ?",
                 Long.class,
                 login.memberId()));
+  }
+
+  @Test
+  @DisplayName("다른 회원의 요청 ID로는 확인할 수 없고, 원래 회원의 요청은 그대로 남는다")
+  void otherMemberCannotVerify() {
+    IssuedChallenge c = issue(member);
+
+    assertThat(verify(other, c, c.code())).isEqualTo(VerificationResult.EXPIRED);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM member_contact WHERE member_id = ?", Long.class, other))
+        .isZero();
+    assertThat(verify(member, c, c.code())).isEqualTo(VerificationResult.VERIFIED);
   }
 
   private IssuedChallenge issue(long memberId) {

@@ -20,10 +20,10 @@ class ContactCipherTest {
   @Test
   @DisplayName("암호화한 번호는 그대로 복호화되고, 같은 번호도 매번 다른 암호문이 된다")
   void roundTrip() {
-    byte[] a = cipher.encrypt("01012345678");
-    byte[] b = cipher.encrypt("01012345678");
+    byte[] a = cipher.encrypt(7L, "01012345678");
+    byte[] b = cipher.encrypt(7L, "01012345678");
 
-    assertThat(cipher.decrypt(a)).isEqualTo("01012345678");
+    assertThat(cipher.decrypt(7L, a)).isEqualTo("01012345678");
     assertThat(a).isNotEqualTo(b);
     assertThat(new String(a)).doesNotContain("01012345678");
   }
@@ -31,20 +31,28 @@ class ContactCipherTest {
   @Test
   @DisplayName("암호문이 한 바이트라도 바뀌면 복호화를 거부한다")
   void tamperRejected() {
-    byte[] sealed = cipher.encrypt("01012345678");
+    byte[] sealed = cipher.encrypt(7L, "01012345678");
     sealed[sealed.length - 1] ^= 1;
 
-    assertThatThrownBy(() -> cipher.decrypt(sealed)).isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(() -> cipher.decrypt(7L, sealed)).isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  @DisplayName("다른 회원의 행으로 옮긴 암호문은 풀리지 않는다")
+  void boundToMember() {
+    byte[] sealed = cipher.encrypt(7L, "01012345678");
+
+    assertThatThrownBy(() -> cipher.decrypt(8L, sealed)).isInstanceOf(IllegalStateException.class);
   }
 
   @Test
   @DisplayName("키를 바꾼 뒤에도 예전 버전 암호문을 읽고, 새 암호문은 새 버전으로 쓴다")
   void rotation() {
-    byte[] old = cipher.encrypt("01012345678");
+    byte[] old = cipher.encrypt(7L, "01012345678");
     ContactCipher rotated = new ContactCipher(contactKeys(2));
 
-    assertThat(rotated.decrypt(old)).isEqualTo("01012345678");
-    assertThat(ByteBuffer.wrap(rotated.encrypt("01099998888")).getInt()).isEqualTo(2);
+    assertThat(rotated.decrypt(7L, old)).isEqualTo("01012345678");
+    assertThat(ByteBuffer.wrap(rotated.encrypt(7L, "01099998888")).getInt()).isEqualTo(2);
   }
 
   private static SecretKeys contactKeys(int current) {

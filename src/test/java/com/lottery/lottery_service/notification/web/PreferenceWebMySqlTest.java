@@ -59,7 +59,7 @@ class PreferenceWebMySqlTest extends MySqlContainerSupport {
         "INSERT INTO member_contact (member_id, address_ciphertext, key_version, verified_at, version)"
             + " VALUES (?, ?, 1, NOW(6), 3)",
         member.memberId(),
-        cipher.encrypt("+821012345678"));
+        cipher.encrypt(member.memberId(), "+821012345678"));
     mvc.perform(get("/api/v1/me/notification-preference").with(oauth2Login().oauth2User(member)))
         .andExpect(jsonPath("$.maskedPhoneNumber").value("010-****-5678"))
         .andExpect(jsonPath("$.version").value("3"))

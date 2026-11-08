@@ -586,6 +586,39 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("이미 게시된 회차의 수집 job은 수집하지 않고 다음 시도도 등록하지 않는다")
+  void collectJobSkipsPublishedRound() {
+    jdbc.update("DELETE FROM job");
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    JobStore jobs = new JobStore(jdbc, tm, clock, new JobProperties(null, null));
+    Instant drawAt = Instant.parse("2026-11-14T11:35:00Z");
+    clock.set(drawAt.plusSeconds(600));
+    List<Integer> fetched = new ArrayList<>();
+    ResultCollectJobHandler handler =
+        new ResultCollectJobHandler(
+            new ResultCollector(
+                r -> {
+                  fetched.add(r);
+                  return new ParsedDraw.NotAnnounced();
+                },
+                null),
+            jobs,
+            jdbc,
+            tm,
+            clock);
+
+    assertThat(handler.plan(ROUND, drawAt)).isTrue();
+    assertThat(new JobRunner(jobs, List.of(handler), tm, clock).runOnce())
+        .contains(JobState.SUCCEEDED);
+    assertThat(fetched).isEmpty();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM job WHERE job_type = 'RESULT_COLLECT' AND state = 'READY'",
+                Long.class))
+        .isZero();
+  }
+
+  @Test
   @DisplayName(
       "슬롯 사이에 정정되면 접수된 메시지는 그대로, 아직 호출하지 않은 메시지는 새 게시본으로 보내고, 새로 대상이 된 회원은 다음 슬롯에서 1건(T38)")
   void correctionBetweenSlots() {
