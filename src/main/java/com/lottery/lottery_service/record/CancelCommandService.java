@@ -10,6 +10,7 @@ import com.lottery.lottery_service.common.command.CommandTokenCodec;
 import com.lottery.lottery_service.common.db.DbValues;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.error.ErrorDetails;
 import com.lottery.lottery_service.recommendation.CommandInProgressException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -17,6 +18,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -93,7 +95,16 @@ public class CancelCommandService implements CommandResultLoader {
       throw new CommandInProgressException(progress.publicId());
     }
     if (start instanceof CommandStart.Failed failed) {
-      throw new BusinessException(ErrorCode.valueOf(failed.completionCode()), "요청을 처리하지 못했습니다.");
+      ErrorCode code = ErrorCode.valueOf(failed.completionCode());
+      if (code == ErrorCode.VERSION_CONFLICT) {
+        throw new BusinessException(
+            code,
+            "기록을 다시 확인해 주세요.",
+            currentVersion(subjectId, recordPublicId)
+                .map(ErrorDetails::currentVersion)
+                .orElse(ErrorDetails.empty()));
+      }
+      throw new BusinessException(code, "요청을 처리하지 못했습니다.");
     }
     CommandStart.Started started = (CommandStart.Started) start;
     try {
@@ -130,6 +141,17 @@ public class CancelCommandService implements CommandResultLoader {
   public CancelProof load(
       long subjectId, UUID operationPublicId, UUID resourcePublicId, String completionCode) {
     return new CancelProof(operationPublicId, completionCode, completedAt(operationPublicId));
+  }
+
+  private Optional<Long> currentVersion(long subjectId, UUID recordPublicId) {
+    return jdbc
+        .queryForList(
+            "SELECT version FROM lotto_record WHERE public_id = ? AND owner_subject_id = ?",
+            Long.class,
+            bytes(recordPublicId),
+            subjectId)
+        .stream()
+        .findFirst();
   }
 
   private Instant completedAt(UUID operationPublicId) {
