@@ -25,6 +25,8 @@ import com.lottery.lottery_service.stats.UsageEventStore;
 import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.TestSecrets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -36,6 +38,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -172,6 +175,18 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
     message = jdbc.queryForObject("SELECT id FROM delivery_message", Long.class);
     new TransactionTemplate(tm)
         .execute(s -> budget.reserve(message, MessagePurpose.RESULT, 143, clock.instant()));
+  }
+
+  @Test
+  @DisplayName("local·test용 파일 삭제 기록으로 탈퇴 흐름이 끝까지 돌고 파일에 회원 외부 ID가 남는다(D-052)")
+  void withdrawalWithLocalFileJournal(@TempDir Path dir) throws Exception {
+    Path file = dir.resolve("journal.jsonl");
+    new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());
+
+    assertThat(runner(new LocalFileDeletionJournal(file)).runOnce()).contains(JobState.SUCCEEDED);
+
+    assertThat(state("member", member.memberId())).isEqualTo("WITHDRAWN");
+    assertThat(Files.readString(file)).contains(member.memberPublicId().toString());
   }
 
   @Test
