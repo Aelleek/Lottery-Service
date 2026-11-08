@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.record;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
@@ -35,12 +36,16 @@ public class HistoryImportJobHandler implements JobHandler {
   }
 
   /**
-   * 가져오기를 시작한다. 같은 귀속의 job은 한 번만 등록된다.
+   * 가져오기를 시작한다. 같은 귀속의 job은 한 번만 등록된다. 요청한 회원 주체를 함께 남겨 실행 때 귀속의 당사자인지 다시 본다.
    *
    * @return 새로 등록했으면 {@code true}
    */
-  public boolean start(long claimId) {
-    return jobs.enqueue(JOB, "claim:" + claimId, "{\"claimId\":" + claimId + "}", clock.instant());
+  public boolean start(long memberSubjectId, long claimId) {
+    return jobs.enqueue(
+        JOB,
+        "claim:" + claimId,
+        "{\"claimId\":" + claimId + ",\"memberSubjectId\":" + memberSubjectId + "}",
+        clock.instant());
   }
 
   @Override
@@ -51,10 +56,12 @@ public class HistoryImportJobHandler implements JobHandler {
   @Override
   public JobStep step(JobLease lease, String cursorJson) {
     try {
-      long claimId = MAPPER.readTree(lease.payload()).path("claimId").asLong();
+      JsonNode payload = MAPPER.readTree(lease.payload());
+      long claimId = payload.path("claimId").asLong();
+      long memberSubjectId = payload.path("memberSubjectId").asLong();
       long after =
           cursorJson == null ? 0 : MAPPER.readTree(cursorJson).path("lastSourceId").asLong();
-      ImportBatch batch = imports.importBatch(claimId, after, BATCH);
+      ImportBatch batch = imports.importBatch(memberSubjectId, claimId, after, BATCH);
       if (batch.finished()) {
         return new JobStep.Done();
       }

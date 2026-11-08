@@ -150,7 +150,13 @@ class CancelCommandServiceMySqlTest extends MySqlContainerSupport {
     UUID key = UUID.randomUUID();
 
     assertCode(() -> cancel(token, key, record, 7), ErrorCode.VERSION_CONFLICT);
-    assertCode(() -> cancel(token, key, record, 7), ErrorCode.VERSION_CONFLICT);
+    assertThatThrownBy(() -> cancel(token, key, record, 7))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> {
+              assertThat(e.getCode()).isEqualTo(ErrorCode.VERSION_CONFLICT);
+              assertThat(e.getDetails().currentVersion()).isEqualTo("0");
+            });
     assertCode(() -> cancel(token, key, record, 0), ErrorCode.IDEMPOTENCY_CONFLICT);
     String other = codec.issue(member.subjectPublicId(), "RECOMMEND", ROUND, 1L);
     assertCode(() -> cancel(other, UUID.randomUUID(), record, 0), ErrorCode.FORBIDDEN);

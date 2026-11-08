@@ -84,7 +84,7 @@ public class ImportCommandService implements CommandResultLoader {
       tx.executeWithoutResult(
           status -> {
             long claimId = ownClaim(subjectId, claimPublicId);
-            jobs.start(claimId);
+            jobs.start(subjectId, claimId);
             operations.succeed(started, claimPublicId, STARTED);
           });
       return started.publicId();

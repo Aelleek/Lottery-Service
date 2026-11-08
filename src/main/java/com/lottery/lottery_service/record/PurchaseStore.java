@@ -11,6 +11,7 @@ import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.round.LockedRound;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.stats.UsageEventStore;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -112,7 +113,8 @@ public class PurchaseStore {
         }
       }
     }
-    boolean afterClose = !round.dbNow().isBefore(round.schedule().salesCloseAt());
+    Instant closeAt = round.sealed() ? round.cutoffCloseAt() : round.schedule().salesCloseAt();
+    boolean afterClose = !round.dbNow().isBefore(closeAt);
     return new PurchaseResult(roundNo, items, afterClose);
   }
 

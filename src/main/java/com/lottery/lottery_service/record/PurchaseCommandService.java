@@ -43,7 +43,11 @@ public class PurchaseCommandService implements CommandResultLoader {
 
   private static final int MAX_CLIENT_ITEM_ID = 64;
   private static final Set<ErrorCode> FINAL_FAILURES =
-      EnumSet.of(ErrorCode.FORBIDDEN, ErrorCode.NOT_FOUND, ErrorCode.VALIDATION_FAILED);
+      EnumSet.of(
+          ErrorCode.FORBIDDEN,
+          ErrorCode.NOT_FOUND,
+          ErrorCode.VALIDATION_FAILED,
+          ErrorCode.ROUND_CHANGED);
 
   private final CommandTokenCodec tokens;
   private final CommandOperationStore operations;
@@ -85,7 +89,7 @@ public class PurchaseCommandService implements CommandResultLoader {
       UUID idempotencyKey,
       int roundNo,
       List<Entry> entries) {
-    validate(entries);
+    validate(roundNo, entries);
     CommandToken token = tokens.verify(commandToken, subjectPublicId, OPERATION);
     CommandStart start =
         operations.begin(subjectId, token, idempotencyKey, requestHash(roundNo, entries));
@@ -180,7 +184,10 @@ public class PurchaseCommandService implements CommandResultLoader {
     }
   }
 
-  private static void validate(List<Entry> entries) {
+  private static void validate(int roundNo, List<Entry> entries) {
+    if (roundNo < 1) {
+      throw new BusinessException(ErrorCode.VALIDATION_FAILED, "회차를 확인해 주세요.");
+    }
     if (entries == null || entries.isEmpty() || entries.size() > PurchaseStore.MAX_SETS) {
       throw new BusinessException(ErrorCode.VALIDATION_FAILED, "한 번에 1~100세트까지 등록할 수 있습니다.");
     }

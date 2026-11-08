@@ -67,6 +67,26 @@ class CommandOperationStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("응답 요약과 함께 끝내면 요약을 다시 읽을 수 있고, 처리 권한을 넘겨받은 뒤의 옛 처리는 요약을 남기지 못한다")
+  void summaryAndLeaseLoss() {
+    CommandStart.Started first = started(store.begin(guest.subjectId(), token, key, hash));
+    clock.set(T0.plus(CommandOperationStore.LEASE));
+    CommandStart.Started second = started(store.begin(guest.subjectId(), token, key, hash));
+
+    assertThatThrownBy(
+            () ->
+                tx.executeWithoutResult(
+                    s -> store.succeedWithSummary(first, "PURCHASE_REGISTERED", "{\"a\":1}")))
+        .isInstanceOf(IllegalStateException.class);
+    assertThat(store.summary(second.publicId())).isEmpty();
+    tx.executeWithoutResult(
+        s -> store.succeedWithSummary(second, "PURCHASE_REGISTERED", "{\"b\":2}"));
+    assertThat(store.summary(second.publicId()))
+        .hasValueSatisfying(v -> assertThat(v).contains("\"b\""));
+    assertThat(store.summary(UUID.randomUUID())).isEmpty();
+  }
+
+  @Test
   @DisplayName("다른 주체가 같은 토큰 ID·키를 보내도 앞 주체의 기록을 돌려주지 않고 자기 기록을 새로 만든다")
   void scopedToSubject() {
     CommandStart.Started first = started(store.begin(guest.subjectId(), token, key, hash));
