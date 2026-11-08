@@ -144,6 +144,24 @@ class SchemaContractMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("정리 보류와 취소 요청 표시는 0·1만 받는다")
+  void booleanFlagsCheck() throws SQLException {
+    insertRound(1200);
+
+    assertThatThrownBy(() -> execute("UPDATE lotto_round SET cleanup_held = 2"))
+        .isInstanceOf(SQLException.class)
+        .hasMessageContaining("ck_lotto_round_4");
+    assertThatThrownBy(
+            () ->
+                execute(
+                    "INSERT INTO job (public_id, job_type, dedupe_key, state, payload,"
+                        + " available_at, cancel_requested) VALUES (UUID_TO_BIN(UUID()), 'T',"
+                        + " 'k', 'READY', JSON_OBJECT(), NOW(6), 2)"))
+        .isInstanceOf(SQLException.class)
+        .hasMessageContaining("ck_job_1");
+  }
+
+  @Test
   @DisplayName("비회원 주체에 회원 ID를 붙이면 CHECK가 거부한다")
   void subjectKindCheck() {
     assertThatThrownBy(

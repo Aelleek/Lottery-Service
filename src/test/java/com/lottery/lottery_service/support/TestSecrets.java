@@ -22,7 +22,9 @@ public final class TestSecrets {
             new SecretProperties.Ring(1, Map.of(1, encode(commandToken))),
             new SecretProperties.Ring(1, Map.of(1, encode(guestCredential))),
             new SecretProperties.Ring(1, Map.of(1, encode("verification-code-test-key-01234"))),
-            new SecretProperties.Ring(1, Map.of(1, encode("contact-cipher-test-key-012345678")))));
+            new SecretProperties.Ring(1, Map.of(1, encode("contact-cipher-test-key-012345678"))),
+            new SecretProperties.Ring(1, Map.of(1, encode("csrf-token-test-key-0123456789ab"))),
+            new SecretProperties.Ring(1, Map.of(1, encode("admin-mfa-test-key-0123456789abc")))));
   }
 
   private static String encode(String value) {
