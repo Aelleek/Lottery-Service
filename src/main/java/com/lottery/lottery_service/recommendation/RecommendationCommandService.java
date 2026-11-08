@@ -6,6 +6,7 @@ import com.lottery.lottery_service.common.command.CommandOperationStore;
 import com.lottery.lottery_service.common.command.CommandStart;
 import com.lottery.lottery_service.common.command.CommandToken;
 import com.lottery.lottery_service.common.command.CommandTokenCodec;
+import com.lottery.lottery_service.common.db.DbValues;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.number.LottoNumbers;
@@ -14,6 +15,8 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -82,7 +85,7 @@ public class RecommendationCommandService {
     byte[] requestHash = requestHash(requestedRound, requestedScheduleVersion, condition);
     CommandStart start = operations.begin(subjectId, token, idempotencyKey, requestHash);
     if (start instanceof CommandStart.Completed completed) {
-      return load(subjectId, completed.resourcePublicId());
+      return load(completed.publicId(), subjectId, completed.resourcePublicId());
     }
     if (start instanceof CommandStart.InProgress progress) {
       throw new CommandInProgressException(progress.publicId());
@@ -102,7 +105,7 @@ public class RecommendationCommandService {
                   keyDigest(token.tokenId(), idempotencyKey),
                   requestHash),
               s -> operations.succeed(started, s.publicId(), "CREATED"));
-      return load(subjectId, saved.publicId());
+      return load(started.publicId(), subjectId, saved.publicId());
     } catch (BusinessException e) {
       if (RETRYABLE.contains(e.getCode())) {
         operations.markRetryable(started, e.getCode().name());
@@ -116,23 +119,36 @@ public class RecommendationCommandService {
     }
   }
 
-  private RecommendationView load(long subjectId, UUID requestPublicId) {
+  private RecommendationView load(UUID operationId, long subjectId, UUID requestPublicId) {
     List<Map<String, Object>> rows =
         jdbc.queryForList(
-            "SELECT r.subject_id, r.round_no, i.numbers_key FROM recommendation_request r"
-                + " JOIN recommendation_item i ON i.request_id = r.id WHERE r.public_id = ?"
-                + " ORDER BY i.ordinal",
+            "SELECT r.subject_id, r.round_no, r.generation_mode, r.filter_version,"
+                + " r.response_expires_at, i.numbers_key, l.public_id AS record_public_id"
+                + " FROM recommendation_request r"
+                + " JOIN recommendation_item i ON i.request_id = r.id"
+                + " LEFT JOIN lotto_record l ON l.id = i.record_id AND l.deleted_at IS NULL"
+                + " WHERE r.public_id = ? ORDER BY i.ordinal",
             bytes(requestPublicId));
     if (rows.size() != 5) {
       throw new BusinessException(ErrorCode.RESPONSE_EXPIRED, "추천 원본 보관 기간이 지났습니다.");
     }
-    if (((Number) rows.get(0).get("subject_id")).longValue() != subjectId) {
+    Map<String, Object> first = rows.get(0);
+    if (((Number) first.get("subject_id")).longValue() != subjectId) {
       throw new BusinessException(ErrorCode.NOT_FOUND, "요청한 내용을 찾을 수 없습니다.");
     }
+    List<UUID> recordIds = new ArrayList<>();
+    for (Map<String, Object> row : rows) {
+      recordIds.add(DbValues.uuid((byte[]) row.get("record_public_id")));
+    }
     return new RecommendationView(
+        operationId,
         requestPublicId,
-        ((Number) rows.get(0).get("round_no")).intValue(),
-        rows.stream().map(r -> LottoNumbers.fromKey((String) r.get("numbers_key"))).toList());
+        ((Number) first.get("round_no")).intValue(),
+        rows.stream().map(r -> LottoNumbers.fromKey((String) r.get("numbers_key"))).toList(),
+        recordIds,
+        (String) first.get("generation_mode"),
+        (String) first.get("filter_version"),
+        DbValues.instant((LocalDateTime) first.get("response_expires_at")));
   }
 
   static byte[] requestHash(int round, long scheduleVersion, RecommendationCondition condition) {
