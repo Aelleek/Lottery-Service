@@ -399,6 +399,35 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("한 메시지의 준비 단계 오류가 다른 회원의 발송을 막지 않는다")
+  void slotIsolatesPrepareFailure() {
+    tx.execute(s -> store.createMissing(ROUND));
+    long broken = message(fourthMember);
+    ResultMessageStore spied = org.mockito.Mockito.spy(store);
+    org.mockito.Mockito.doThrow(new IllegalStateException("boom")).when(spied).recheck(broken);
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    SlotResult result =
+        new ResultSlotRunner(
+                jdbc,
+                spied,
+                id -> new SendOutcome.Accepted("M-" + id),
+                new JobStore(jdbc, tm, clock, new JobProperties(null, null)),
+                tm,
+                clock)
+            .run(ROUND, slot(true, false));
+
+    assertThat(result.failed()).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'", Long.class))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery_message WHERE id = ?", String.class, broken))
+        .isNotEqualTo("ACCEPTED");
+  }
+
+  @Test
   @DisplayName("결과가 없으면 RESULT_NOT_PUBLISHED로 실패하고, 운영자 알림 슬롯에서만 알린다(T36)")
   void slotWithoutResult() {
     jdbc.update("UPDATE lotto_round SET published_result_id = NULL");
