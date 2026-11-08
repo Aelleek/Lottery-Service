@@ -149,7 +149,21 @@ public class ResultMessageStore {
     if (changed != 1) {
       throw new IllegalStateException("message is not ready to send: " + messageId);
     }
+    pinRecipient(messageId);
     return true;
+  }
+
+  /**
+   * 첫 시도 때 연락처 버전, 동의 이벤트, 수신 번호 암호문 사본을 메시지에 고정한다(05 8.2절 5번). 다시 시도할 때는 바꾸지 않는다. 본문과 템플릿 버전은 발송기를
+   * 연결할 때 함께 고정한다.
+   */
+  private void pinRecipient(long messageId) {
+    jdbc.update(
+        "UPDATE delivery_message m JOIN member_contact c ON c.member_id = m.member_id"
+            + " SET m.recipient_version = c.version, m.consent_event_id = c.consent_event_id,"
+            + " m.recipient_ciphertext = c.address_ciphertext, m.key_version = c.key_version"
+            + " WHERE m.id = ? AND m.recipient_version IS NULL",
+        messageId);
   }
 
   /** 제공자 호출 결과를 남긴다. IN_FLIGHT일 때만 바꾸고, 비용은 결과에 따라 확정·반환·유지한다. */

@@ -167,7 +167,17 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     assertThat(budget.matchesMessages(LocalDate.parse("2026-11-01"))).isTrue();
     assertThat(budgetRow()).containsEntry("reserved_units", 0L).containsEntry("spent_units", 143L);
 
+    Map<String, Object> pinned = recipient(b);
+    assertThat(pinned.get("recipient_version")).isNotNull();
+    assertThat(pinned.get("consent_event_id")).isNotNull();
+    assertThat((byte[]) pinned.get("recipient_ciphertext")).containsExactly(1);
+    jdbc.update(
+        "UPDATE member_contact SET address_ciphertext = ?, version = version + 1 WHERE member_id = ?",
+        new byte[] {2},
+        thirdMember);
     assertThat(inTx(() -> store.startSending(b, 143))).isTrue();
+    assertThat(recipient(b).get("recipient_version")).isEqualTo(pinned.get("recipient_version"));
+    assertThat((byte[]) recipient(b).get("recipient_ciphertext")).containsExactly(1);
     tx.executeWithoutResult(s -> store.recordOutcome(b, new SendOutcome.Unknown()));
     assertThat(state(thirdMember)).isEqualTo("UNKNOWN");
     assertThat(budgetRow()).containsEntry("reserved_units", 143L);
@@ -758,6 +768,13 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   private long message(long memberId) {
     return jdbc.queryForObject(
         "SELECT id FROM delivery_message WHERE member_id = ?", Long.class, memberId);
+  }
+
+  private Map<String, Object> recipient(long messageId) {
+    return jdbc.queryForMap(
+        "SELECT recipient_version, consent_event_id, recipient_ciphertext FROM delivery_message"
+            + " WHERE id = ?",
+        messageId);
   }
 
   private String state(long memberId) {
