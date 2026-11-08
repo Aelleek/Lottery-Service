@@ -44,3 +44,7 @@ lottery:
       current: 1
       keys:
         1: dGVzdC1jc3JmLXRva2VuLWtleS0wMTIzNDU2Nzg5YWJjZGVm
+    admin-mfa:
+      current: 1
+      keys:
+        1: dGVzdC1hZG1pbi1tZmEta2V5LTAxMjM0NTY3ODlhYmNkZWY=

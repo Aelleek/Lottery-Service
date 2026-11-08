@@ -11,9 +11,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param commandToken 명령 토큰 서명 키
  * @param guestCredential 비회원 자격 해시 키
  * @param csrfToken CSRF 토큰 서명 키
+ * @param adminMfa 관리자 인증 앱 비밀값 암호화 키
  */
 @ConfigurationProperties(prefix = "lottery.secrets")
-public record SecretProperties(Ring commandToken, Ring guestCredential, Ring csrfToken) {
+public record SecretProperties(
+    Ring commandToken, Ring guestCredential, Ring csrfToken, Ring adminMfa) {
 
   /**
    * 한 용도의 키 설정.

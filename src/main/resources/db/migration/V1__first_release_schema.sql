@@ -446,15 +446,25 @@ CREATE TABLE usage_aggregate (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 관리자 권한. 역할마다 할 수 있는 일은 ../06-api.md 4절.
+-- 관리자 다중 요소 인증(D-047)은 mfa_* 컬럼에 둔다. 앱 비밀값은 키 버전과 함께 암호화하고, 복구 코드는 해시만 남긴다.
 CREATE TABLE admin_grant (
   member_id BIGINT NOT NULL PRIMARY KEY,
   role VARCHAR(16) NOT NULL,
   granted_at DATETIME(6) NOT NULL,
   granted_by_member_id BIGINT NULL,
   revoked_at DATETIME(6) NULL,
+  mfa_secret VARBINARY(256) NULL,
+  mfa_key_version INT NULL,
+  mfa_enrolled_at DATETIME(6) NULL,
+  mfa_last_step BIGINT NULL,
+  mfa_failed_count INT NOT NULL DEFAULT 0,
+  mfa_locked_until DATETIME(6) NULL,
+  mfa_recovery_hashes JSON NULL,
   CONSTRAINT fk_admin_grant_0 FOREIGN KEY (member_id) REFERENCES member (id),
   CONSTRAINT fk_admin_grant_1 FOREIGN KEY (granted_by_member_id) REFERENCES member (id),
-  CONSTRAINT ck_admin_grant_0 CHECK (role IN ('OPERATOR','ADMIN'))
+  CONSTRAINT ck_admin_grant_0 CHECK (role IN ('OPERATOR','ADMIN')),
+  CONSTRAINT ck_admin_grant_1 CHECK (mfa_failed_count >= 0),
+  CONSTRAINT ck_admin_grant_2 CHECK ((mfa_secret IS NULL) = (mfa_key_version IS NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 관리자 변경 감사. 1년 보관. 비밀값과 개인정보 원문은 넣지 않는다.

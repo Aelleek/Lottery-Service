@@ -37,7 +37,7 @@ class KeyRingTest {
   @Test
   @DisplayName("설정이 없으면 그 키를 쓸 때 실패한다")
   void missingConfigurationFailsOnUse() {
-    SecretKeys keys = new SecretKeys(new SecretProperties(null, null, null));
+    SecretKeys keys = new SecretKeys(new SecretProperties(null, null, null, null));
 
     assertThatThrownBy(keys::guestCredential).isInstanceOf(IllegalStateException.class);
   }
