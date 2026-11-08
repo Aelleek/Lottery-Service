@@ -53,6 +53,9 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
   private RoundSchedule schedule;
   private long subject;
 
+  private DataSourceTransactionManager tm;
+  private GenerationFilterPipeline filters;
+
   @BeforeAll
   static void migrate() throws Exception {
     dataSource = migratedDatabase("recommendation_service");
@@ -76,6 +79,7 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
     jdbc.update("DELETE FROM draw_result");
     jdbc.update("DELETE FROM lotto_round");
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    this.tm = tm;
     rounds = new RoundStore(jdbc, tm);
     Instant dbNow = rounds.dbNow();
     schedule =
@@ -87,7 +91,7 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
             1);
     rounds.register(schedule);
     subject = new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys()).issue().subjectId();
-    GenerationFilterPipeline filters =
+    filters =
         new GenerationFilterPipeline(
             List.of(
                 new PastFirstPrizeFilter(),
@@ -170,6 +174,40 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_request", Long.class))
         .isZero();
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM usage_event", Long.class)).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT generation_lease_until IS NULL FROM actor_subject WHERE id = ?",
+                Boolean.class,
+                subject))
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("시간 안에 못 만들면 후보 부족과 다른 GENERATION_TIMEOUT(503, 다시 시도 가능)이고 권한을 풀며 아무것도 저장하지 않는다")
+  void generationTimeout() {
+    long[] ticks = {0};
+    RecommendationService slow =
+        new RecommendationService(
+            new GenerationLeaseStore(jdbc, tm, clock),
+            new RecommendationStore(jdbc),
+            rounds,
+            new PublishedFirstPrizes(jdbc),
+            filters,
+            new RecommendationGenerator(
+                new SplittableRandom(5), () -> ticks[0] += Duration.ofSeconds(10).toNanos()),
+            new UsageEventStore(jdbc),
+            tm);
+
+    assertThatThrownBy(() -> slow.recommend(basic(1)))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> {
+              assertThat(e.getCode()).isEqualTo(ErrorCode.GENERATION_TIMEOUT);
+              assertThat(e.getCode().status().value()).isEqualTo(503);
+              assertThat(e.isRetryable()).isTrue();
+            });
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_request", Long.class))
+        .isZero();
     assertThat(
             jdbc.queryForObject(
                 "SELECT generation_lease_until IS NULL FROM actor_subject WHERE id = ?",

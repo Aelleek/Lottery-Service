@@ -113,6 +113,9 @@ public class RecommendationCommandService {
         operations.markFailed(started, e.getCode().name());
       }
       throw e;
+    } catch (GenerationSupersededException e) {
+      operations.markRetryable(started, ErrorCode.TEMPORARILY_UNAVAILABLE.name());
+      throw new BusinessException(ErrorCode.TEMPORARILY_UNAVAILABLE, "잠시 뒤 다시 시도해 주세요.");
     } catch (RuntimeException e) {
       operations.markRetryable(started, ErrorCode.TEMPORARILY_UNAVAILABLE.name());
       throw e;
