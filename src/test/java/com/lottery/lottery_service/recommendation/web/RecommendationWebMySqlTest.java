@@ -12,6 +12,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
+import com.lottery.lottery_service.common.command.CommandOperationStore;
+import com.lottery.lottery_service.common.command.CommandStart;
+import com.lottery.lottery_service.common.command.CommandTokenCodec;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
@@ -42,6 +45,8 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
 
   @Autowired private MockMvc mvc;
   @Autowired private RoundStore rounds;
+  @Autowired private CommandOperationStore operations;
+  @Autowired private CommandTokenCodec codec;
   @Autowired private AccountStore accounts;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private ObjectMapper json;
@@ -115,6 +120,37 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
             .andReturn();
     assertThat(body(again).get("data")).isEqualTo(body(first).get("data"));
     assertThat(body(again).get("operationId")).isEqualTo(body(first).get("operationId"));
+
+    String operationId = body(first).get("operationId").asText();
+    MvcResult found =
+        mvc.perform(get("/api/v1/operations/" + operationId).cookie(guest))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("SUCCEEDED"))
+            .andReturn();
+    assertThat(body(found).get("data")).isEqualTo(body(first).get("data"));
+
+    long guestSubject =
+        jdbc.queryForObject(
+            "SELECT owner_subject_id FROM lotto_record WHERE public_id = UUID_TO_BIN(?)",
+            Long.class,
+            body(first).get("data").get("sets").get(0).get("recordId").asText());
+    UUID guestPublicId =
+        jdbc.queryForObject(
+            "SELECT BIN_TO_UUID(public_id) FROM actor_subject WHERE id = ?",
+            UUID.class,
+            guestSubject);
+    CommandStart started =
+        operations.begin(
+            guestSubject,
+            codec.verify(
+                codec.issue(guestPublicId, "RECOMMEND", ROUND, 1L), guestPublicId, "RECOMMEND"),
+            UUID.randomUUID(),
+            new byte[32]);
+    mvc.perform(
+            get("/api/v1/operations/" + ((CommandStart.Started) started).publicId()).cookie(guest))
+        .andExpect(status().isAccepted())
+        .andExpect(jsonPath("$.status").value("PROCESSING"))
+        .andExpect(jsonPath("$.data.pollUrl").isString());
 
     mvc.perform(
             post("/api/v1/lotto/recommendations")
