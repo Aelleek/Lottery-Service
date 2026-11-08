@@ -140,6 +140,24 @@ class ImportCommandServiceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("가져오기 job이 DEAD로 끝나면 결과는 FAILED다")
+  void deadJobIsFailed() {
+    String token =
+        codec.issue(member.subjectPublicId(), ImportCommandService.OPERATION, null, null);
+    UUID operation =
+        imports.start(
+            member.subjectId(), member.subjectPublicId(), token, UUID.randomUUID(), claimPublicId);
+    jdbc.update("UPDATE job SET state = 'DEAD' WHERE job_type = 'HISTORY_IMPORT'");
+
+    OperationQuery.Outcome done =
+        new OperationQuery(jdbc, List.of(imports)).find(member.subjectId(), operation);
+    assertThat(
+            ((ImportCommandService.ImportResult) ((OperationQuery.Outcome.Done) done).data())
+                .outcome())
+        .isEqualTo("FAILED");
+  }
+
+  @Test
   @DisplayName("다른 회원의 귀속이나 없는 귀속은 NOT_FOUND이고 job을 만들지 않는다")
   void otherClaimNotFound() {
     MemberLogin other = new AccountStore(jdbc, tm, clock).login(OAuthProvider.KAKAO, "other");
