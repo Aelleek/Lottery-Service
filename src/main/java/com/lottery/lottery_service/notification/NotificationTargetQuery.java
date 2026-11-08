@@ -30,6 +30,16 @@ public class NotificationTargetQuery {
 
   /** 회원별 대상. 봉인 전이거나 게시본이 없으면 빈 목록이다. */
   public List<NotificationTarget> targets(int roundNo) {
+    return query(roundNo, null);
+  }
+
+  /** 한 회원의 대상. 대상이 아니면 {@code null}. 메시지 하나를 보낼 때 회차 전체를 다시 읽지 않으려고 쓴다. */
+  public NotificationTarget target(int roundNo, long memberId) {
+    List<NotificationTarget> found = query(roundNo, memberId);
+    return found.isEmpty() ? null : found.get(0);
+  }
+
+  private List<NotificationTarget> query(int roundNo, Long memberId) {
     List<Map<String, Object>> rows =
         jdbc.queryForList(
             "SELECT s.member_id, l.id, e.rank_no,"
@@ -44,8 +54,9 @@ public class NotificationTargetQuery {
                 + " AND l.created_at < r.cutoff_close_at AND e.rank_no IS NOT NULL"
                 + " AND ((l.purchased = 1 AND l.purchased_at < r.cutoff_close_at AND e.rank_no <= 5)"
                 + " OR (l.recommended_at IS NOT NULL AND e.rank_no <= 3))"
+                + (memberId == null ? "" : " AND s.member_id = ?")
                 + " ORDER BY s.member_id, l.id",
-            roundNo);
+            memberId == null ? new Object[] {roundNo} : new Object[] {roundNo, memberId});
     Map<Long, List<NotificationTarget.Item>> byMember = new LinkedHashMap<>();
     for (Map<String, Object> r : rows) {
       long member = ((Number) r.get("member_id")).longValue();

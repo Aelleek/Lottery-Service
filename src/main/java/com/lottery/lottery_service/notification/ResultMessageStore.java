@@ -12,9 +12,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -103,11 +101,7 @@ public class ResultMessageStore {
                 + " FROM member m LEFT JOIN member_contact c ON c.member_id = m.id WHERE m.id = ?",
             Boolean.class,
             member);
-    Set<Long> stillTargets =
-        targets.targets(round).stream()
-            .map(NotificationTarget::memberId)
-            .collect(Collectors.toSet());
-    if (Boolean.TRUE.equals(eligible) && stillTargets.contains(member)) {
+    if (Boolean.TRUE.equals(eligible) && targets.target(round, member) != null) {
       return true;
     }
     jdbc.update(
@@ -133,11 +127,7 @@ public class ResultMessageStore {
             "SELECT member_id, round_no FROM delivery_message WHERE id = ?", messageId);
     long member = ((Number) message.get("member_id")).longValue();
     int round = ((Number) message.get("round_no")).intValue();
-    NotificationTarget target =
-        targets.targets(round).stream()
-            .filter(t -> t.memberId() == member)
-            .findFirst()
-            .orElse(null);
+    NotificationTarget target = targets.target(round, member);
     int changed =
         jdbc.update(
             "UPDATE delivery_message SET state = 'IN_FLIGHT', attempt_count = attempt_count + 1,"
