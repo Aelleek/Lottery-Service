@@ -9,9 +9,16 @@ spring:
       transaction-isolation: TRANSACTION_READ_COMMITTED
 
 
-# 로컬 http에서 세션 쿠키가 붙도록 local 프로필에서만 secure를 끈다.
+# 로컬 http에서 쿠키가 붙도록 local 프로필에서만 secure를 끈다.
+# __Host- 접두어 쿠키는 Secure가 있어야 해서 접두어 없는 이름을 쓴다.
 server:
   servlet:
     session:
       cookie:
+        name: lottery_session
         secure: false
+
+lottery:
+  guest-cookie:
+    name: lottery_guest
+    secure: false

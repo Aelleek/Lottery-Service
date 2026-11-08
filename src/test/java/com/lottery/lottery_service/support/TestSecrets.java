@@ -20,7 +20,8 @@ public final class TestSecrets {
     return new SecretKeys(
         new SecretProperties(
             new SecretProperties.Ring(1, Map.of(1, encode(commandToken))),
-            new SecretProperties.Ring(1, Map.of(1, encode(guestCredential)))));
+            new SecretProperties.Ring(1, Map.of(1, encode(guestCredential))),
+            new SecretProperties.Ring(1, Map.of(1, encode("csrf-token-test-key-0123456789ab")))));
   }
 
   private static String encode(String value) {

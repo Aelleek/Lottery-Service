@@ -130,7 +130,8 @@ class GuestCredentialStoreMySqlTest extends MySqlContainerSupport {
         Base64.getEncoder().encodeToString("guest-credential-next-key-678901".getBytes());
     SecretKeys rotated =
         new SecretKeys(
-            new SecretProperties(null, new SecretProperties.Ring(2, Map.of(1, oldKey, 2, newKey))));
+            new SecretProperties(
+                null, new SecretProperties.Ring(2, Map.of(1, oldKey, 2, newKey)), null));
     SecretKeys unrelated = TestSecrets.keys("x".repeat(32), "another-guest-key-00000000000000");
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
 

@@ -2,7 +2,7 @@
 -- 설계 계약이며 제품 migration이 아니다. 기존 DB에 그대로 실행하지 않는다.
 -- 시각은 UTC DATETIME(6). FK는 모두 기본값(RESTRICT)이고 삭제는 애플리케이션이 정한 순서로 한다.
 -- 테이블 책임, 불변조건, 삭제 순서: ../04-data.md
--- 세션은 Spring Session JDBC 표준 테이블(SPRING_SESSION, SPRING_SESSION_ATTRIBUTES)을 따로 쓴다.
+-- 세션은 Spring Session JDBC 표준 테이블(SPRING_SESSION, SPRING_SESSION_ATTRIBUTES)을 쓴다. 파일 끝에 있다.
 
 -- 계정 상태를 먼저 차단하고 개인 자료 삭제는 추적 가능한 job으로 진행한다.
 -- 탈퇴가 끝나도 행은 WITHDRAWN 묘비로 남는다. 이름·이메일 같은 개인정보 컬럼은 두지 않는다.
@@ -476,8 +476,8 @@ CREATE TABLE admin_audit_event (
   CONSTRAINT ck_admin_audit_event_0 CHECK (outcome IN ('SUCCEEDED','REJECTED','FAILED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
--- 회원 세션 저장소. Spring Session JDBC 표준 테이블 2개다(C-10). 이 두 개는 설계 테이블 26개에 세지 않는다.
-CREATE TABLE spring_session (
+-- 회원 세션 저장소. Spring Session JDBC 표준 테이블 2개다(C-10). 표준 이름 그대로 대문자다. 이 두 개는 설계 테이블 26개에 세지 않는다.
+CREATE TABLE SPRING_SESSION (
   primary_id CHAR(36) NOT NULL,
   session_id CHAR(36) NOT NULL,
   creation_time BIGINT NOT NULL,
@@ -491,10 +491,10 @@ CREATE TABLE spring_session (
   KEY spring_session_ix3 (principal_name)
 ) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
-CREATE TABLE spring_session_attributes (
+CREATE TABLE SPRING_SESSION_ATTRIBUTES (
   session_primary_id CHAR(36) NOT NULL,
   attribute_name VARCHAR(200) NOT NULL,
   attribute_bytes BLOB NOT NULL,
   CONSTRAINT spring_session_attributes_pk PRIMARY KEY (session_primary_id, attribute_name),
-  CONSTRAINT spring_session_attributes_fk FOREIGN KEY (session_primary_id) REFERENCES spring_session (primary_id) ON DELETE CASCADE
+  CONSTRAINT spring_session_attributes_fk FOREIGN KEY (session_primary_id) REFERENCES SPRING_SESSION (primary_id) ON DELETE CASCADE
 ) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;

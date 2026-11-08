@@ -25,6 +25,11 @@ public class SecretKeys {
     return ring(properties.guestCredential(), "guest-credential");
   }
 
+  /** CSRF 토큰 서명 키. */
+  public KeyRing csrfToken() {
+    return ring(properties.csrfToken(), "csrf-token");
+  }
+
   private static KeyRing ring(SecretProperties.Ring ring, String name) {
     if (ring == null) {
       throw new IllegalStateException("secret key ring is not configured: " + name);

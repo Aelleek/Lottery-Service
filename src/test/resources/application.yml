@@ -40,3 +40,7 @@ lottery:
       current: 1
       keys:
         1: dGVzdC1ndWVzdC1jcmVkZW50aWFsLWtleS0wMTIzNDU2Nzg=
+    csrf-token:
+      current: 1
+      keys:
+        1: dGVzdC1jc3JmLXRva2VuLWtleS0wMTIzNDU2Nzg5YWJjZGVm
