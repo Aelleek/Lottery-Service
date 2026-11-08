@@ -8,19 +8,19 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.number.LottoNumbers;
+import com.lottery.lottery_service.result.query.RoundResultQuery;
 import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 class InstantCheckTest {
 
   @Test
-  @DisplayName("0세트나 6세트 이상은 DB를 읽지 않고 VALIDATION_FAILED")
+  @DisplayName("0세트나 6세트 이상은 결과를 읽지 않고 VALIDATION_FAILED")
   void setCountLimits() {
-    JdbcTemplate jdbc = mock(JdbcTemplate.class);
-    InstantCheck check = new InstantCheck(jdbc);
+    RoundResultQuery results = mock(RoundResultQuery.class);
+    InstantCheck check = new InstantCheck(results);
     LottoNumbers set = LottoNumbers.of(1, 2, 3, 4, 5, 6);
 
     for (List<LottoNumbers> sets : List.of(List.<LottoNumbers>of(), Collections.nCopies(6, set))) {
@@ -29,6 +29,6 @@ class InstantCheckTest {
               BusinessException.class,
               e -> assertThat(e.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
     }
-    verifyNoInteractions(jdbc);
+    verifyNoInteractions(results);
   }
 }
