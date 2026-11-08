@@ -119,6 +119,31 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
     mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(other)))
         .andExpect(status().isNotFound());
 
+    String recordId = body(registered).get("data").get("items").get(0).get("recordId").asText();
+    String cancelToken =
+        body(mvc.perform(
+                    post("/api/v1/command-tokens")
+                        .cookie(session)
+                        .with(oauth2Login().oauth2User(member))
+                        .header("X-CSRF-TOKEN", csrf)
+                        .contentType("application/json")
+                        .content("{\"operation\":\"CANCEL_PURCHASE\"}"))
+                .andReturn())
+            .get("token")
+            .asText();
+    mvc.perform(
+            post("/api/v1/me/lotto/records/" + recordId + "/cancel-purchase")
+                .cookie(session)
+                .with(oauth2Login().oauth2User(member))
+                .header("X-CSRF-TOKEN", csrf)
+                .header("X-Command-Token", cancelToken)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content("{\"expectedVersion\":\"0\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.outcome").value("RECORD_DELETED"))
+        .andExpect(jsonPath("$.data.completedAt").isString());
+
     MvcResult guest = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
     mvc.perform(
             post("/api/v1/me/lotto/purchases")
