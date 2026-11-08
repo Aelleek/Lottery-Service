@@ -7,6 +7,7 @@ import com.lottery.lottery_service.record.RecordEvaluation;
 import com.lottery.lottery_service.record.RecordHistoryQuery;
 import com.lottery.lottery_service.record.RecordPage;
 import com.lottery.lottery_service.record.RecordView;
+import com.lottery.lottery_service.stats.UsageEventStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -32,10 +33,12 @@ public class RecordController {
   private static final int MAX_CURSOR = 4096;
 
   private final RecordHistoryQuery records;
+  private final UsageEventStore usage;
   private final Clock clock;
 
   /** 컨트롤러를 만든다. */
-  public RecordController(RecordHistoryQuery records, Clock clock) {
+  public RecordController(RecordHistoryQuery records, UsageEventStore usage, Clock clock) {
+    this.usage = usage;
     this.records = records;
     this.clock = clock;
   }
@@ -72,6 +75,7 @@ public class RecordController {
       throw new BusinessException(ErrorCode.VALIDATION_FAILED, "조회 조건을 확인해 주세요.");
     }
     RecordPage page = records.list(subject.subjectId(), round, purchased, rank, cursor);
+    usage.recordOncePerDay(subject.subjectId(), UsageEventStore.RECORDS_VIEWED, clock.instant());
     List<Item> items = page.items().stream().map(RecordController::item).toList();
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())

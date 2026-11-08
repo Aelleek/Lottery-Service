@@ -89,6 +89,28 @@ class UsageAggregatorMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("기록 조회는 주체마다 하루 1건만 남고, 고유 이용자에 들어간다(02 9절)")
+  void recordViewsCountAsActivityOncePerDay() {
+    long c =
+        new GuestCredentialStore(
+                jdbc,
+                new DataSourceTransactionManager(dataSource),
+                Clock.fixed(DAY2, ZoneOffset.UTC),
+                TestSecrets.keys())
+            .issue()
+            .subjectId();
+    events.recordOncePerDay(c, UsageEventStore.RECORDS_VIEWED, DAY2);
+    events.recordOncePerDay(c, UsageEventStore.RECORDS_VIEWED, DAY2.plusSeconds(60));
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM usage_event WHERE metric = 'RECORDS_VIEWED'", Long.class))
+        .isEqualTo(1);
+    aggregator.recomputeDay(LocalDate.parse("2026-11-09"));
+    assertThat(value("DAY", "2026-11-09", UsageAggregator.ACTIVE_SUBJECTS)).isEqualTo(2);
+  }
+
+  @Test
   @DisplayName("원천과 같으면 VERIFIED로 확정하고, 그 뒤 정기 계산은 확정 값을 덮어쓰지 않는다")
   void verifiedIsNotOverwritten() {
     aggregator.recomputeDay(LocalDate.parse("2026-11-08"));
