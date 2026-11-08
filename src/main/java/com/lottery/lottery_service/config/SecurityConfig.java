@@ -21,6 +21,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.logout.LogoutFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
+import org.springframework.security.web.header.writers.StaticHeadersWriter;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
@@ -32,6 +34,11 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
  */
 @Configuration
 public class SecurityConfig {
+
+  /** 응답에 붙이는 CSP(03 6.2, C-29). 인라인 스크립트·스타일을 쓰지 않는 것을 전제로 한다. */
+  public static final String CONTENT_SECURITY_POLICY =
+      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;"
+          + " connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 
   private final MemberOAuth2UserService memberOAuth2UserService;
   private final AccountStore accounts;
@@ -66,6 +73,16 @@ public class SecurityConfig {
   @Bean
   public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
     http.csrf(AbstractHttpConfigurer::disable)
+        .headers(
+            h ->
+                h.contentSecurityPolicy(csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY))
+                    .frameOptions(f -> f.deny())
+                    .referrerPolicy(r -> r.policy(ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                    .httpStrictTransportSecurity(
+                        hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31_536_000))
+                    .addHeaderWriter(
+                        new StaticHeadersWriter(
+                            "Permissions-Policy", "camera=(self), microphone=(), geolocation=()")))
         .authorizeHttpRequests(
             authorize ->
                 authorize

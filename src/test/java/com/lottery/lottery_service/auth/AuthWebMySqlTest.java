@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.MemberLogin;
+import com.lottery.lottery_service.config.SecurityConfig;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import jakarta.servlet.http.Cookie;
 import java.sql.SQLException;
@@ -156,6 +157,22 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
                 .header("X-CSRF-TOKEN", token)
                 .with(oauth2Login().oauth2User(principal)))
         .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("모든 응답에 보안 헤더를 붙인다(C-29)")
+  void securityHeaders() throws Exception {
+    mvc.perform(get("/api/v1/session").secure(true))
+        .andExpect(
+            header().string("Content-Security-Policy", SecurityConfig.CONTENT_SECURITY_POLICY))
+        .andExpect(header().string("X-Frame-Options", "DENY"))
+        .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+        .andExpect(header().string("Referrer-Policy", "strict-origin-when-cross-origin"))
+        .andExpect(
+            header().string("Permissions-Policy", "camera=(self), microphone=(), geolocation=()"))
+        .andExpect(
+            header().string("Strict-Transport-Security", "max-age=31536000 ; includeSubDomains"))
+        .andExpect(header().string("Cache-Control", "no-store"));
   }
 
   private long authVersion(long memberId) {
