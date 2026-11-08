@@ -1,112 +1,168 @@
 package com.lottery.lottery_service.config;
 
-import com.lottery.lottery_service.auth.CustomOAuth2UserService;
-import lombok.RequiredArgsConstructor;
+import com.lottery.lottery_service.account.AccountStore;
+import com.lottery.lottery_service.account.GuestCredentialStore;
+import com.lottery.lottery_service.account.GuestIssueService;
+import com.lottery.lottery_service.account.SubjectClaimStore;
+import com.lottery.lottery_service.auth.CsrfFilter;
+import com.lottery.lottery_service.auth.CsrfTokens;
+import com.lottery.lottery_service.auth.GuestAuthenticationFilter;
+import com.lottery.lottery_service.auth.LoginFailureHandler;
+import com.lottery.lottery_service.auth.LoginSuccessHandler;
+import com.lottery.lottery_service.auth.MemberOAuth2UserService;
+import com.lottery.lottery_service.auth.MemberPrincipal;
+import com.lottery.lottery_service.auth.ReauthAuthorizationRequestResolver;
+import com.lottery.lottery_service.auth.SessionRevocationFilter;
+import com.lottery.lottery_service.common.error.BusinessException;
+import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.web.OriginGuard;
+import java.time.Clock;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.env.Environment;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.logout.LogoutFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
+import org.springframework.security.web.header.writers.StaticHeadersWriter;
+import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
+import org.springframework.web.servlet.HandlerExceptionResolver;
 
 /**
- * Spring Security 설정 클래스 - OAuth2 기반 소셜 로그인(Google, Kakao, Naver) 설정 - H2 콘솔 접근 허용 - 정적 리소스 및 비로그인
- * 페이지 접근 허용
- */
-/**
- * 목적: OAuth2 로그인 성공 후 사용자 정보를 우리 커스텀 서비스로 처리하도록 연결한다. -
- * userInfoEndpoint.userService(customOAuth2UserService): 업서트 로직 진입점 - defaultSuccessUrl("/", true):
- * 로그인 성공 시 리다이렉트
+ * 소셜 로그인과 요청별 접근 규칙을 정한다. 회원은 {@code MemberPrincipal}로 세션에, 비회원은 요청마다 자격 쿠키로 확인한다. 변경 요청의 CSRF는
+ * Spring 기본 방식 대신 {@link CsrfFilter}가 서명 토큰으로 확인한다(D-051).
  */
 @Configuration
-@RequiredArgsConstructor
 public class SecurityConfig {
 
-  private final CustomOAuth2UserService customOAuth2UserService;
-  private final Environment env;
+  /** 응답에 붙이는 CSP(03 6.2, C-29). 인라인 스크립트·스타일을 쓰지 않는 것을 전제로 한다. */
+  public static final String CONTENT_SECURITY_POLICY =
+      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;"
+          + " connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 
+  private final MemberOAuth2UserService memberOAuth2UserService;
+  private final AccountStore accounts;
+  private final GuestCredentialStore guestCredentials;
+  private final GuestIssueService guestIssuer;
+  private final CsrfTokens csrfTokens;
+  private final OriginGuard originGuard;
+  private final HandlerExceptionResolver errors;
+  private final SubjectClaimStore claims;
+  private final ClientRegistrationRepository registrations;
+  private final Clock clock;
+
+  /** 보안 설정에 쓰는 구성 요소로 만든다. */
+  public SecurityConfig(
+      MemberOAuth2UserService memberOAuth2UserService,
+      AccountStore accounts,
+      GuestCredentialStore guestCredentials,
+      GuestIssueService guestIssuer,
+      CsrfTokens csrfTokens,
+      OriginGuard originGuard,
+      @Qualifier("handlerExceptionResolver") HandlerExceptionResolver errors,
+      SubjectClaimStore claims,
+      ClientRegistrationRepository registrations,
+      Clock clock) {
+    this.memberOAuth2UserService = memberOAuth2UserService;
+    this.accounts = accounts;
+    this.guestCredentials = guestCredentials;
+    this.guestIssuer = guestIssuer;
+    this.csrfTokens = csrfTokens;
+    this.originGuard = originGuard;
+    this.errors = errors;
+    this.claims = claims;
+    this.registrations = registrations;
+    this.clock = clock;
+  }
+
+  /** 요청 보안 규칙. */
   @Bean
   public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-    http
-        // CSRF 보호 기능 비활성화 (개발 단계에서는 편의상 꺼두고, 운영 시에는 꼭 활성화 권장)
-        .csrf(AbstractHttpConfigurer::disable)
-
-        // (개발) H2 콘솔은 frame-ancestors 허용
-        .headers(h -> h.frameOptions(f -> f.sameOrigin()))
-
-        //                // CSRF: 쿠키 토큰 발급 + 일부 경로는 예외
-        //                .csrf(csrf -> csrf
-        //
-        // .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-        //                        .ignoringRequestMatchers(
-        //                                new AntPathRequestMatcher("/h2-console/**"),
-        //                                new AntPathRequestMatcher("/oauth2/**"),
-        //                                new AntPathRequestMatcher("/login/oauth2/**")
-        //                        )
-        //                )
-
-        // 요청별 권한 설정
+    http.csrf(AbstractHttpConfigurer::disable)
+        .headers(
+            h ->
+                h.contentSecurityPolicy(csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY))
+                    .frameOptions(f -> f.deny())
+                    .referrerPolicy(r -> r.policy(ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                    .httpStrictTransportSecurity(
+                        hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31_536_000))
+                    .addHeaderWriter(
+                        new StaticHeadersWriter(
+                            "Permissions-Policy", "camera=(self), microphone=(), geolocation=()")))
         .authorizeHttpRequests(
             authorize ->
                 authorize
                     .requestMatchers(
                         "/",
-                        "/index.html", // 루트/정적 인덱스
+                        "/index.html",
                         "/error",
-                        "/favicon.ico", // 오류/파비콘 (없으면 /login으로 튐)
+                        "/favicon.ico",
                         "/css/**",
                         "/js/**",
                         "/images/**",
-                        "/webjars/**",
-                        "/h2-console/**", // 개발용
-                        "/api/me", // 비로그인 상태에서도 호출
-                        "/api/lotto/guests/recommendations", // 비회원용 추천 서비스
-                        "/api/v1/lotto/context" // 현재 회차(인증 없음)
-                        )
+                        "/api/v1/lotto/context",
+                        "/api/v1/session",
+                        "/api/v1/guest-credentials")
                     .permitAll()
                     .anyRequest()
                     .authenticated())
-
-        // OAuth2 로그인 설정
+        .requestCache(c -> c.requestCache(pageRequestCache()))
+        .exceptionHandling(
+            e ->
+                e.defaultAuthenticationEntryPointFor(
+                        (request, response, ex) ->
+                            errors.resolveException(
+                                request,
+                                response,
+                                null,
+                                new BusinessException(ErrorCode.UNAUTHENTICATED, "로그인이 필요합니다.")),
+                        new AntPathRequestMatcher("/api/**"))
+                    .defaultAccessDeniedHandlerFor(
+                        (request, response, ex) ->
+                            errors.resolveException(
+                                request,
+                                response,
+                                null,
+                                new BusinessException(ErrorCode.FORBIDDEN, "권한이 없습니다.")),
+                        new AntPathRequestMatcher("/api/**")))
+        .addFilterBefore(new SessionRevocationFilter(accounts), LogoutFilter.class)
+        .addFilterBefore(
+            new GuestAuthenticationFilter(guestCredentials, guestIssuer), LogoutFilter.class)
+        .addFilterBefore(new CsrfFilter(csrfTokens, originGuard, errors), LogoutFilter.class)
         .oauth2Login(
             oauth2 ->
                 oauth2
-                    // ★ 여기 추가: 로그인 성공 후 사용자 정보 로딩을 커스텀 서비스로 처리
-                    .userInfoEndpoint(u -> u.userService(customOAuth2UserService))
-                    // 사용자 지정 로그인 페이지 (있다면)
-                    //                        .loginPage("/login")
-                    // 로그인 성공 시 리다이렉트할 기본 경로
-                    // 로그인 전에 보던 페이지로 돌아가고 싶다면 true → false
-                    .defaultSuccessUrl("/", false))
-
-        // 로그아웃 설정
+                    .authorizationEndpoint(
+                        a ->
+                            a.authorizationRequestResolver(
+                                new ReauthAuthorizationRequestResolver(registrations)))
+                    .userInfoEndpoint(u -> u.userService(memberOAuth2UserService))
+                    .successHandler(
+                        new LoginSuccessHandler(guestCredentials, guestIssuer, claims, clock))
+                    .failureHandler(new LoginFailureHandler()))
         .logout(
             logout ->
                 logout
+                    .logoutRequestMatcher(new AntPathRequestMatcher("/logout", "POST"))
+                    .addLogoutHandler(
+                        (request, response, auth) -> {
+                          if (auth != null && auth.getPrincipal() instanceof MemberPrincipal p) {
+                            accounts.revokeSessions(p.memberId());
+                          }
+                        })
                     .logoutSuccessUrl("/")
                     .invalidateHttpSession(true)
-                    .deleteCookies("JSESSIONID", "XSRF-TOKEN"));
-
-    // http 빌드 직후(체인 끝나기 전)에 추가
-    //        http.addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class);
-
+                    .deleteCookies("__Host-lottery_session", "lottery_session"));
     return http.build();
   }
 
-  //    private static final class CsrfCookieFilter extends OncePerRequestFilter {
-  //        @Override
-  //        protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res,
-  // FilterChain chain)
-  //                throws ServletException, IOException {
-  //
-  //            CsrfToken token = (CsrfToken) req.getAttribute(CsrfToken.class.getName());
-  //            if (token == null) {
-  //                token = (CsrfToken) req.getAttribute("_csrf"); // 호환
-  //            }
-  //            if (token != null) {
-  //                token.getToken(); // ★ 이 호출이 있어야 XSRF-TOKEN이 생성/Set-Cookie 됨
-  //            }
-  //            chain.doFilter(req, res);
-  //        }
-  //    }
+  private static HttpSessionRequestCache pageRequestCache() {
+    HttpSessionRequestCache cache = new HttpSessionRequestCache();
+    cache.setRequestMatcher(new NegatedRequestMatcher(new AntPathRequestMatcher("/api/**")));
+    return cache;
+  }
 }
