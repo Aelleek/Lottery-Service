@@ -82,8 +82,23 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.code").value("CSRF_REJECTED"));
     mvc.perform(post("/api/v1/command-tokens").cookie(guest).header("X-CSRF-TOKEN", "v1.1.AAAA"))
         .andExpect(jsonPath("$.code").value("CSRF_REJECTED"));
-    mvc.perform(post("/api/v1/command-tokens").cookie(guest).header("X-CSRF-TOKEN", token))
-        .andExpect(status().isNotFound());
+    mvc.perform(
+            post("/api/v1/command-tokens")
+                .cookie(guest)
+                .header("X-CSRF-TOKEN", token)
+                .contentType("application/json")
+                .content("{\"operation\":\"RECOMMEND\",\"round\":1200,\"scheduleVersion\":\"1\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.token").isString())
+        .andExpect(header().string("Cache-Control", "no-store"));
+    mvc.perform(
+            post("/api/v1/command-tokens")
+                .cookie(guest)
+                .header("X-CSRF-TOKEN", token)
+                .contentType("application/json")
+                .content("{\"operation\":\"REGISTER_PURCHASE\"}"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
 
     MvcResult again =
         mvc.perform(post("/api/v1/guest-credentials").cookie(guest))
