@@ -170,7 +170,17 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     assertThat(budget.matchesMessages(LocalDate.parse("2026-11-01"))).isTrue();
     assertThat(budgetRow()).containsEntry("reserved_units", 0L).containsEntry("spent_units", 143L);
 
+    Map<String, Object> pinned = recipient(b);
+    assertThat(pinned.get("recipient_version")).isNotNull();
+    assertThat(pinned.get("consent_event_id")).isNotNull();
+    assertThat((byte[]) pinned.get("recipient_ciphertext")).containsExactly(1);
+    jdbc.update(
+        "UPDATE member_contact SET address_ciphertext = ?, version = version + 1 WHERE member_id = ?",
+        new byte[] {2},
+        thirdMember);
     assertThat(inTx(() -> store.startSending(b, 143))).isTrue();
+    assertThat(recipient(b).get("recipient_version")).isEqualTo(pinned.get("recipient_version"));
+    assertThat((byte[]) recipient(b).get("recipient_ciphertext")).containsExactly(1);
     tx.executeWithoutResult(s -> store.recordOutcome(b, new SendOutcome.Unknown()));
     assertThat(state(thirdMember)).isEqualTo("UNKNOWN");
     assertThat(budgetRow()).containsEntry("reserved_units", 143L);
@@ -424,6 +434,35 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("한 메시지의 준비 단계 오류가 다른 회원의 발송을 막지 않는다")
+  void slotIsolatesPrepareFailure() {
+    tx.execute(s -> store.createMissing(ROUND));
+    long broken = message(fourthMember);
+    ResultMessageStore spied = org.mockito.Mockito.spy(store);
+    org.mockito.Mockito.doThrow(new IllegalStateException("boom")).when(spied).recheck(broken);
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    SlotResult result =
+        new ResultSlotRunner(
+                jdbc,
+                spied,
+                id -> new SendOutcome.Accepted("M-" + id),
+                new JobStore(jdbc, tm, clock, new JobProperties(null, null)),
+                tm,
+                clock)
+            .run(ROUND, slot(true, false));
+
+    assertThat(result.failed()).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'", Long.class))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery_message WHERE id = ?", String.class, broken))
+        .isNotEqualTo("ACCEPTED");
+  }
+
+  @Test
   @DisplayName("결과가 없으면 RESULT_NOT_PUBLISHED로 실패하고, 운영자 알림 슬롯에서만 알린다(T36)")
   void slotWithoutResult() {
     jdbc.update("UPDATE lotto_round SET published_result_id = NULL");
@@ -592,6 +631,39 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
                     + " AND available_at = '2026-11-14 11:50:00'",
                 Long.class))
         .isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("이미 게시된 회차의 수집 job은 수집하지 않고 다음 시도도 등록하지 않는다")
+  void collectJobSkipsPublishedRound() {
+    jdbc.update("DELETE FROM job");
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    JobStore jobs = new JobStore(jdbc, tm, clock, new JobProperties(null, null));
+    Instant drawAt = Instant.parse("2026-11-14T11:35:00Z");
+    clock.set(drawAt.plusSeconds(600));
+    List<Integer> fetched = new ArrayList<>();
+    ResultCollectJobHandler handler =
+        new ResultCollectJobHandler(
+            new ResultCollector(
+                r -> {
+                  fetched.add(r);
+                  return new ParsedDraw.NotAnnounced();
+                },
+                null),
+            jobs,
+            jdbc,
+            tm,
+            clock);
+
+    assertThat(handler.plan(ROUND, drawAt)).isTrue();
+    assertThat(new JobRunner(jobs, List.of(handler), tm, clock).runOnce())
+        .contains(JobState.SUCCEEDED);
+    assertThat(fetched).isEmpty();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM job WHERE job_type = 'RESULT_COLLECT' AND state = 'READY'",
+                Long.class))
+        .isZero();
   }
 
   @Test
@@ -789,6 +861,13 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   private long message(long memberId) {
     return jdbc.queryForObject(
         "SELECT id FROM delivery_message WHERE member_id = ?", Long.class, memberId);
+  }
+
+  private Map<String, Object> recipient(long messageId) {
+    return jdbc.queryForMap(
+        "SELECT recipient_version, consent_event_id, recipient_ciphertext FROM delivery_message"
+            + " WHERE id = ?",
+        messageId);
   }
 
   private String state(long memberId) {

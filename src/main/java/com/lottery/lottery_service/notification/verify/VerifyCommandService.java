@@ -51,11 +51,11 @@ public class VerifyCommandService {
   /**
    * 코드를 확인한다.
    *
-   * @return 인증된 연락처의 지금 버전({@code verifiedContactVersion})
+   * @return 명령 ID와 인증된 연락처의 지금 버전({@code verifiedContactVersion})
    * @throws BusinessException 틀리면 {@code VALIDATION_FAILED}, 잠기면 {@code ATTEMPTS_EXCEEDED}, 만료면
    *     {@code CHALLENGE_EXPIRED}, 연락처가 바뀌었으면 {@code CONTACT_CHANGED}
    */
-  public long verify(
+  public Verified verify(
       long memberId,
       long subjectId,
       UUID subjectPublicId,
@@ -66,8 +66,8 @@ public class VerifyCommandService {
     CommandToken token = tokens.verify(commandToken, subjectPublicId, OPERATION);
     CommandStart start =
         operations.begin(subjectId, token, idempotencyKey, requestHash(challengeId));
-    if (start instanceof CommandStart.Completed) {
-      return contactVersion(memberId);
+    if (start instanceof CommandStart.Completed done) {
+      return new Verified(done.publicId(), contactVersion(memberId));
     }
     if (start instanceof CommandStart.InProgress progress) {
       throw new CommandInProgressException(progress.publicId());
@@ -97,8 +97,16 @@ public class VerifyCommandService {
       operations.markFailed(started, result.errorCode().name());
       throw new BusinessException(result.errorCode(), "인증 코드를 확인하지 못했습니다.");
     }
-    return contactVersion(memberId);
+    return new Verified(started.publicId(), contactVersion(memberId));
   }
+
+  /**
+   * 확인 결과.
+   *
+   * @param operationId 명령 외부 ID
+   * @param contactVersion 인증된 연락처의 지금 버전
+   */
+  public record Verified(UUID operationId, long contactVersion) {}
 
   private long lockedContactVersion(long memberId) {
     List<Long> versions =

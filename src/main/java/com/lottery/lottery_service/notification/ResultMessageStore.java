@@ -12,9 +12,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -103,11 +101,7 @@ public class ResultMessageStore {
                 + " FROM member m LEFT JOIN member_contact c ON c.member_id = m.id WHERE m.id = ?",
             Boolean.class,
             member);
-    Set<Long> stillTargets =
-        targets.targets(round).stream()
-            .map(NotificationTarget::memberId)
-            .collect(Collectors.toSet());
-    if (Boolean.TRUE.equals(eligible) && stillTargets.contains(member)) {
+    if (Boolean.TRUE.equals(eligible) && targets.target(round, member) != null) {
       return true;
     }
     jdbc.update(
@@ -133,11 +127,7 @@ public class ResultMessageStore {
             "SELECT member_id, round_no FROM delivery_message WHERE id = ?", messageId);
     long member = ((Number) message.get("member_id")).longValue();
     int round = ((Number) message.get("round_no")).intValue();
-    NotificationTarget target =
-        targets.targets(round).stream()
-            .filter(t -> t.memberId() == member)
-            .findFirst()
-            .orElse(null);
+    NotificationTarget target = targets.target(round, member);
     int changed =
         jdbc.update(
             "UPDATE delivery_message SET state = 'IN_FLIGHT', attempt_count = attempt_count + 1,"
@@ -149,7 +139,21 @@ public class ResultMessageStore {
     if (changed != 1) {
       throw new IllegalStateException("message is not ready to send: " + messageId);
     }
+    pinRecipient(messageId);
     return true;
+  }
+
+  /**
+   * 첫 시도 때 연락처 버전, 동의 이벤트, 수신 번호 암호문 사본을 메시지에 고정한다(05 8.2절 5번). 다시 시도할 때는 바꾸지 않는다. 본문과 템플릿 버전은 발송기를
+   * 연결할 때 함께 고정한다.
+   */
+  private void pinRecipient(long messageId) {
+    jdbc.update(
+        "UPDATE delivery_message m JOIN member_contact c ON c.member_id = m.member_id"
+            + " SET m.recipient_version = c.version, m.consent_event_id = c.consent_event_id,"
+            + " m.recipient_ciphertext = c.address_ciphertext, m.key_version = c.key_version"
+            + " WHERE m.id = ? AND m.recipient_version IS NULL",
+        messageId);
   }
 
   /** 제공자 호출 결과를 남긴다. IN_FLIGHT일 때만 바꾸고, 비용은 결과에 따라 확정·반환·유지한다. */

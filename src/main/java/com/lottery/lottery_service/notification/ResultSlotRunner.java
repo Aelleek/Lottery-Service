@@ -3,6 +3,7 @@ package com.lottery.lottery_service.notification;
 import com.lottery.lottery_service.common.job.JobStore;
 import java.time.Clock;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -12,6 +13,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 결과 알림 슬롯 하나를 실행한다(05 8.2절). 메시지마다 짧은 트랜잭션으로 직전 확인과 IN_FLIGHT 예약을 커밋한 뒤 트랜잭션 밖에서 제공자를 부르고, 결과를 다시
  * 짧은 트랜잭션으로 남긴다. 한 회원의 오류가 다른 회원의 발송을 막지 않는다. 결과 수집은 이 단위 밖에서 미리 시도한다.
  */
+@Slf4j
 @Component
 public class ResultSlotRunner {
 
@@ -86,8 +88,15 @@ public class ResultSlotRunner {
     int failed = 0;
     boolean budgetShort = false;
     for (long id : messages.sendable(roundNo)) {
-      Boolean ready =
-          tx.execute(status -> messages.recheck(id) && messages.startSending(id, COST_UNITS));
+      Boolean ready;
+      try {
+        ready = tx.execute(status -> messages.recheck(id) && messages.startSending(id, COST_UNITS));
+      } catch (RuntimeException e) {
+        log.warn(
+            "result message prepare failed message={} cause={}", id, e.getClass().getSimpleName());
+        failed++;
+        continue;
+      }
       if (!Boolean.TRUE.equals(ready)) {
         if (stateOf(id).equals("PENDING") || stateOf(id).equals("RETRY_WAIT")) {
           budgetShort = true;

@@ -90,7 +90,7 @@ public class VerificationStore {
         bytes(publicId),
         memberId,
         target,
-        cipher.encrypt(phone),
+        cipher.encrypt(memberId, phone),
         codeHmac(ring, ring.currentVersion(), publicId, target, code),
         ring.currentVersion(),
         contactVersion,
@@ -183,7 +183,8 @@ public class VerificationStore {
         scope,
         scopeHmac,
         day,
-        utc(now),
+        // 첫 발송은 바로 되게 그날 시작으로 둔다. 지금 시각을 넣으면 MySQL이 마이크로초로 반올림해 now보다 늦어질 수 있다.
+        utc(SeoulTime.startOfDay(day)),
         utc(SeoulTime.startOfDay(day.plusDays(2))));
     Map<String, Object> bucket =
         jdbc.queryForMap(
