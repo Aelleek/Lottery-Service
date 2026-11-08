@@ -87,24 +87,24 @@ public class RecommendationController {
             RecommendationCondition.of(input.include(), input.exclude()),
             input.round(),
             version);
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(new Success(view.operationId(), "SUCCEEDED", toData(view), clock.instant()));
+  }
+
+  /** 추천 결과를 openapi {@code RecommendationData} 모양으로 바꾼다. 명령 조회도 쓴다. */
+  public static Data toData(RecommendationView view) {
     List<RecommendedSet> sets = new ArrayList<>();
     for (int i = 0; i < view.sets().size(); i++) {
       sets.add(new RecommendedSet(view.recordIds().get(i), view.sets().get(i).toList(), null));
     }
-    return ResponseEntity.ok()
-        .cacheControl(CacheControl.noStore())
-        .body(
-            new Success(
-                view.operationId(),
-                "SUCCEEDED",
-                new Data(
-                    view.publicId(),
-                    view.roundNo(),
-                    sets,
-                    view.generationMode(),
-                    view.filterVersion(),
-                    view.responseExpiresAt()),
-                clock.instant()));
+    return new Data(
+        view.publicId(),
+        view.roundNo(),
+        sets,
+        view.generationMode(),
+        view.filterVersion(),
+        view.responseExpiresAt());
   }
 
   /**
