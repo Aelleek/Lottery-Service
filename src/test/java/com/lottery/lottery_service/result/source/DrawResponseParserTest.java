@@ -29,6 +29,21 @@ class DrawResponseParserTest {
   }
 
   @Test
+  @DisplayName("1등 금액·당첨 수가 음수면 믿지 않고 비워 둔다(번호는 그대로 읽음)")
+  void negativeAmountsIgnored() {
+    String body =
+        VALID
+            .replace("\"firstWinamnt\":1672663500", "\"firstWinamnt\":-5")
+            .replace("\"firstPrzwnerCo\":16", "\"firstPrzwnerCo\":-1");
+
+    OfficialDraw draw = ((ParsedDraw.Valid) DrawResponseParser.parse(1112, body)).draw();
+
+    assertThat(draw.firstPrizePerGame()).isNull();
+    assertThat(draw.firstWinnerCount()).isNull();
+    assertThat(draw.winning().main().key()).isEqualTo("16 20 26 30 42 44");
+  }
+
+  @Test
   @DisplayName("미발표(returnValue=fail)는 수집 실패와 구분한다")
   void notAnnounced() {
     assertThat(DrawResponseParser.parse(1300, "{\"returnValue\":\"fail\"}"))

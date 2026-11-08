@@ -102,6 +102,9 @@ public class RecordHistoryQuery {
       purchasedFilter = " AND l.purchased = ?";
       args.add(purchased);
     }
+    if (rankClause.contains("?")) {
+      args.add(Integer.parseInt(rank));
+    }
     args.add(PAGE_SIZE + 1);
     List<Map<String, Object>> rows =
         jdbc.queryForList(
@@ -161,7 +164,7 @@ public class RecordHistoryQuery {
       return " AND e.record_id IS NOT NULL AND e.rank_no IS NULL";
     }
     if (rank.length() == 1 && rank.charAt(0) >= '1' && rank.charAt(0) <= '5') {
-      return " AND e.rank_no = " + rank;
+      return " AND e.rank_no = ?";
     }
     throw new BusinessException(ErrorCode.VALIDATION_FAILED, "등수 필터 값이 올바르지 않습니다.");
   }
