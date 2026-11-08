@@ -518,6 +518,18 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'", Long.class))
         .isEqualTo(2);
+
+    RoundNotificationStatusQuery.Status status =
+        new RoundNotificationStatusQuery(jdbc, clock).status(ROUND);
+    assertThat(status.resultState()).isEqualTo("PUBLISHED");
+    assertThat(status.slots()).hasSize(1);
+    assertThat(status.slots().get(0).outcome()).isEqualTo("SUCCEEDED");
+    assertThat(status.slots().get(0).causeCode()).isNull();
+    assertThat(status.messageCounts()).containsEntry("ACCEPTED", 2L).containsEntry("UNKNOWN", 0L);
+    assertThat(status.autoDispatchClosed()).isFalse();
+    assertThatThrownBy(() -> new RoundNotificationStatusQuery(jdbc, clock).status(9999))
+        .isInstanceOfSatisfying(
+            BusinessException.class, e -> assertThat(e.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
   }
 
   @Test
