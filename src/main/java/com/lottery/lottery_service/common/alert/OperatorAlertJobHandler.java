@@ -135,6 +135,9 @@ public class OperatorAlertJobHandler implements JobHandler {
           + "건을 보관 기간이 지나고 7일 넘게 지우지 못했습니다. 이유 "
           + payload.path("reason").asText()
           + ".";
+      case "ADMIN_MFA_LOCKED" -> "[관리자 인증 잠금] 인증 앱 코드를 5번 틀려 "
+          + payload.path("lockMinutes").asLong()
+          + "분 잠갔습니다. 본인이 아니면 그 관리자 권한을 회수하고 감사 기록을 확인하세요.";
       default -> "[운영자 알림] " + kind;
     };
   }

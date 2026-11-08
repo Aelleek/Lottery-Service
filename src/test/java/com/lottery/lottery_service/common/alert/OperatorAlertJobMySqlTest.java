@@ -126,6 +126,10 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
         .contains("사용 24000.0원")
         .contains("남은 6000.0원");
     assertThat(
+            handler.format(mapper.readTree("{\"kind\":\"ADMIN_MFA_LOCKED\",\"lockMinutes\":15}")))
+        .startsWith("[관리자 인증 잠금]")
+        .contains("15분");
+    assertThat(
             handler.format(
                 mapper.readTree(
                     "{\"kind\":\"RESULT_CORRECTED\",\"roundNo\":1200,\"changed\":1,"
