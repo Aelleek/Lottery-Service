@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
@@ -57,7 +58,15 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
             TestSecrets.keys(),
             new JobStore(jdbc, tm, clock, new JobProperties(5, Duration.ofMinutes(5))),
             clock);
-    grants = new AdminGrants(jdbc, tm, access, new AdminAuditLog(jdbc, tm, clock), mfa, clock);
+    grants =
+        new AdminGrants(
+            jdbc,
+            tm,
+            access,
+            new AdminAuditLog(jdbc, tm, clock),
+            mfa,
+            new JobStore(jdbc, tm, clock, new JobProperties(5, Duration.ofMinutes(5))),
+            clock);
   }
 
   @Test
@@ -93,6 +102,21 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
         .isEqualTo(admin);
     assertThat(audits("ADMIN_GRANT", "SUCCEEDED")).isEqualTo(2);
     assertThat(audits("ADMIN_REVOKE", "SUCCEEDED")).isEqualTo(1);
+    List<String> alerts =
+        jdbc.queryForList(
+            "SELECT payload FROM job WHERE job_type = 'OPERATOR_ALERT'"
+                + " AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.kind')) = 'ADMIN_CHANGE' ORDER BY id",
+            String.class);
+    assertThat(alerts)
+        .filteredOn(p -> p.contains("\"ADMIN_GRANT\"") || p.contains("\"ADMIN_REVOKE\""))
+        .hasSize(3);
+    assertThat(alerts)
+        .allSatisfy(
+            p ->
+                assertThat(p)
+                    .doesNotContain(target.toString())
+                    .doesNotContain("운영 담당")
+                    .doesNotContain(Long.toString(targetId) + ","));
   }
 
   @Test

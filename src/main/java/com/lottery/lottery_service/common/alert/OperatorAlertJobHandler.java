@@ -125,9 +125,9 @@ public class OperatorAlertJobHandler implements JobHandler {
           + payload.path("name").asText()
           + " 만료일 "
           + payload.path("expiresOn").asText()
-          + "(남은 "
-          + payload.path("daysLeft").asLong()
-          + "일).";
+          + (payload.path("daysLeft").asLong() < 0
+              ? "(이미 만료됨)."
+              : "(남은 " + payload.path("daysLeft").asLong() + "일).");
       case "CLEANUP_DELAYED" -> "[정리 지연] "
           + payload.path("roundNo").asInt()
           + "회 기록 "
@@ -138,7 +138,21 @@ public class OperatorAlertJobHandler implements JobHandler {
       case "ADMIN_MFA_LOCKED" -> "[관리자 인증 잠금] 인증 앱 코드를 5번 틀려 "
           + payload.path("lockMinutes").asLong()
           + "분 잠갔습니다. 본인이 아니면 그 관리자 권한을 회수하고 감사 기록을 확인하세요.";
+      case "ADMIN_CHANGE" -> "[관리자 권한 변경] "
+          + adminAction(payload.path("action").asText())
+          + (payload.path("role").isTextual() ? "(역할 " + payload.path("role").asText() + ")" : "")
+          + ". 본인이 한 변경이 아니면 감사 기록을 확인하세요.";
       default -> "[운영자 알림] " + kind;
+    };
+  }
+
+  private static String adminAction(String action) {
+    return switch (action) {
+      case "ADMIN_GRANT_BY_COMMAND" -> "서버 명령으로 권한 부여";
+      case "ADMIN_GRANT" -> "권한 부여·역할 변경";
+      case "ADMIN_REVOKE" -> "권한 회수";
+      case "ADMIN_MFA_RESET" -> "2차 인증 초기화";
+      default -> "알 수 없는 변경";
     };
   }
 
