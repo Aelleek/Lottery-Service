@@ -124,13 +124,16 @@ class AccountStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("빈 제공자 사용자 ID는 받지 않는다")
+  @DisplayName("빈 제공자 사용자 ID와 255바이트를 넘는 ID는 받지 않는다")
   void blankProviderUserIdRejected() {
     assertThatThrownBy(() -> store.login(OAuthProvider.KAKAO, null))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> store.login(OAuthProvider.KAKAO, " "))
         .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> store.login(OAuthProvider.KAKAO, "가".repeat(86)))
+        .isInstanceOf(IllegalArgumentException.class);
     assertThat(count("member")).isZero();
+    assertThat(store.login(OAuthProvider.KAKAO, "a".repeat(255)).newMember()).isTrue();
   }
 
   @Test
