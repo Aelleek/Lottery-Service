@@ -212,14 +212,16 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
         .isEqualTo(1);
 
     long version =
-        commands.verify(
-            login.memberId(),
-            login.subjectId(),
-            login.subjectPublicId(),
-            token,
-            UUID.randomUUID(),
-            c.publicId(),
-            c.code());
+        commands
+            .verify(
+                login.memberId(),
+                login.subjectId(),
+                login.subjectPublicId(),
+                token,
+                UUID.randomUUID(),
+                c.publicId(),
+                c.code())
+            .contactVersion();
     assertThat(version)
         .isEqualTo(
             jdbc.queryForObject(
