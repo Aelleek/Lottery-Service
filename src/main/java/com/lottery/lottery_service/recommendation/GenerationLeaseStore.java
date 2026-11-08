@@ -71,18 +71,22 @@ public class GenerationLeaseStore {
               fence,
               utc(until),
               subjectId);
-          return new GenerationLease(subjectId, fence, until);
+          return new GenerationLease(
+              subjectId, fence, until, ((Number) row.get("claim_version")).longValue());
         });
   }
 
   /**
-   * 저장 트랜잭션 안에서 주체 행을 잠그고 이 생성이 아직 최신인지 확인한다. 호출한 쪽 트랜잭션 안에서 불러야 한다.
+   * 저장 트랜잭션 안에서 주체 행을 잠그고 이 생성이 아직 최신인지 확인한다. 생성 번호, 주체 상태(ACTIVE), 귀속 버전이 권한을 잡을 때와 같아야 한다(05 2절
+   * 8번). 귀속이 끼어들었으면 합친 이력으로 다시 만들어야 하므로 거부한다. 호출한 쪽 트랜잭션 안에서 불러야 한다.
    *
-   * @throws GenerationSupersededException 다른 생성이 이미 시작됐을 때
+   * @throws GenerationSupersededException 다른 생성이 이미 시작됐거나, 주체가 귀속·탈퇴됐거나, 귀속 버전이 바뀌었을 때
    */
   public void requireCurrent(GenerationLease lease) {
     Map<String, Object> row = lockSubject(lease.subjectId());
-    if (((Number) row.get("generation_fence")).longValue() != lease.fence()) {
+    if (((Number) row.get("generation_fence")).longValue() != lease.fence()
+        || !"ACTIVE".equals(row.get("state"))
+        || ((Number) row.get("claim_version")).longValue() != lease.claimVersion()) {
       throw new GenerationSupersededException(lease.subjectId(), lease.fence());
     }
   }
@@ -108,7 +112,7 @@ public class GenerationLeaseStore {
   private Map<String, Object> lockSubject(long subjectId) {
     List<Map<String, Object>> rows =
         jdbc.queryForList(
-            "SELECT state, generation_fence, generation_lease_until, next_generation_at"
+            "SELECT state, generation_fence, generation_lease_until, next_generation_at, claim_version"
                 + " FROM actor_subject WHERE id = ? FOR UPDATE",
             subjectId);
     if (rows.isEmpty()) {

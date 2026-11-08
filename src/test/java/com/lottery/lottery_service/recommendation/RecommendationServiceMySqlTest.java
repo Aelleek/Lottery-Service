@@ -2,6 +2,11 @@ package com.lottery.lottery_service.recommendation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.lottery.lottery_service.account.GuestCredentialStore;
 import com.lottery.lottery_service.common.error.BusinessException;
@@ -53,6 +58,9 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
   private RoundSchedule schedule;
   private long subject;
 
+  private DataSourceTransactionManager tm;
+  private GenerationFilterPipeline filters;
+
   @BeforeAll
   static void migrate() throws Exception {
     dataSource = migratedDatabase("recommendation_service");
@@ -76,6 +84,7 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
     jdbc.update("DELETE FROM draw_result");
     jdbc.update("DELETE FROM lotto_round");
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    this.tm = tm;
     rounds = new RoundStore(jdbc, tm);
     Instant dbNow = rounds.dbNow();
     schedule =
@@ -87,7 +96,7 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
             1);
     rounds.register(schedule);
     subject = new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys()).issue().subjectId();
-    GenerationFilterPipeline filters =
+    filters =
         new GenerationFilterPipeline(
             List.of(
                 new PastFirstPrizeFilter(),
@@ -179,6 +188,40 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("시간 안에 못 만들면 후보 부족과 다른 GENERATION_TIMEOUT(503, 다시 시도 가능)이고 권한을 풀며 아무것도 저장하지 않는다")
+  void generationTimeout() {
+    long[] ticks = {0};
+    RecommendationService slow =
+        new RecommendationService(
+            new GenerationLeaseStore(jdbc, tm, clock),
+            new RecommendationStore(jdbc),
+            rounds,
+            new PublishedFirstPrizes(jdbc),
+            filters,
+            new RecommendationGenerator(
+                new SplittableRandom(5), () -> ticks[0] += Duration.ofSeconds(10).toNanos()),
+            new UsageEventStore(jdbc),
+            tm);
+
+    assertThatThrownBy(() -> slow.recommend(basic(1)))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> {
+              assertThat(e.getCode()).isEqualTo(ErrorCode.GENERATION_TIMEOUT);
+              assertThat(e.getCode().status().value()).isEqualTo(503);
+              assertThat(e.isRetryable()).isTrue();
+            });
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_request", Long.class))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT generation_lease_until IS NULL FROM actor_subject WHERE id = ?",
+                Boolean.class,
+                subject))
+        .isTrue();
+  }
+
+  @Test
   @DisplayName("조건 추천 후보가 5개 미만이면 CANDIDATES_EXHAUSTED이고 아무것도 저장하지 않는다")
   void exhaustedCondition() {
     RecommendationCondition four =
@@ -194,6 +237,50 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
             e -> assertThat(e.getCode()).isEqualTo(ErrorCode.CANDIDATES_EXHAUSTED));
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_request", Long.class))
         .isZero();
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT generation_fence, generation_lease_until, next_generation_at"
+                    + " FROM actor_subject WHERE id = ?",
+                subject))
+        .containsEntry("generation_fence", 0L)
+        .containsEntry("generation_lease_until", null)
+        .containsEntry("next_generation_at", null);
+    assertThat(service.recommend(basic(2)).recordIds()).hasSize(5);
+  }
+
+  @Test
+  @DisplayName("저장 때 이력이 겹치면 다시 만들어 저장하고, 계속 겹치면 GENERATION_TIMEOUT이다")
+  void regeneratesOnConflict() {
+    RecommendationStore real = new RecommendationStore(jdbc);
+    RecommendationStore flaky = spy(real);
+    doThrow(new RecommendationConflictException(subject, ROUND))
+        .doCallRealMethod()
+        .when(flaky)
+        .save(any());
+    RecommendationService retrying = serviceWith(flaky);
+
+    assertThat(retrying.recommend(basic(3)).recordIds()).hasSize(5);
+    verify(flaky, times(2)).save(any());
+
+    clock.set(clock.instant().plusSeconds(2));
+    RecommendationStore always = spy(real);
+    doThrow(new RecommendationConflictException(subject, ROUND)).when(always).save(any());
+    assertThatThrownBy(() -> serviceWith(always).recommend(basic(4)))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.getCode()).isEqualTo(ErrorCode.GENERATION_TIMEOUT));
+  }
+
+  private RecommendationService serviceWith(RecommendationStore store) {
+    return new RecommendationService(
+        new GenerationLeaseStore(jdbc, tm, clock),
+        store,
+        rounds,
+        new PublishedFirstPrizes(jdbc),
+        filters,
+        new RecommendationGenerator(new SplittableRandom(9), System::nanoTime),
+        new UsageEventStore(jdbc),
+        tm);
   }
 
   @Test

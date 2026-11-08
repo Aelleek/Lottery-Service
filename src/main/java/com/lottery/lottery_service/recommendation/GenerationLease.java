@@ -8,5 +8,6 @@ import java.time.Instant;
  * @param subjectId 주체 ID
  * @param fence 이 생성의 번호
  * @param leaseUntil 생성 권한 만료 시각
+ * @param claimVersion 권한을 잡을 때 읽은 귀속 버전. 저장 때 그대로인지 본다(05 2절 8번)
  */
-public record GenerationLease(long subjectId, long fence, Instant leaseUntil) {}
+public record GenerationLease(long subjectId, long fence, Instant leaseUntil, long claimVersion) {}
