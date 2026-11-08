@@ -27,6 +27,22 @@ paths:
           $ref: '#/components/responses/400'
         '500':
           $ref: '#/components/responses/500'
+  /session:
+    get:
+      operationId: getSession
+      summary: 로그인 상태와 CSRF 토큰 조회
+      description: 회원 세션이나 비회원 자격이 있으면 그 주체에 묶은 CSRF 토큰을 준다(D-051). 회원은 화면을 열 때와 토큰이 거부됐을 때 이 API로 토큰을
+        받는다. 주체가 없으면 kind=NONE이고 토큰이 없다. 응답은 캐시하지 않는다(no-store).
+      security: []
+      responses:
+        '200':
+          description: 처리 결과
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionState'
+        '500':
+          $ref: '#/components/responses/500'
   /guest-credentials:
     post:
       operationId: createGuestCredential
@@ -463,7 +479,6 @@ paths:
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CommandToken'
       - $ref: '#/components/parameters/CsrfToken'
-      - $ref: '#/components/parameters/Reauth'
       requestBody:
         required: true
         content:
@@ -624,7 +639,6 @@ paths:
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CommandToken'
       - $ref: '#/components/parameters/CsrfToken'
-      - $ref: '#/components/parameters/Reauth'
       requestBody:
         required: true
         content:
@@ -741,7 +755,6 @@ paths:
       - $ref: '#/components/parameters/roundPath'
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CsrfToken'
-      - $ref: '#/components/parameters/Reauth'
       requestBody:
         required: true
         content:
@@ -819,6 +832,9 @@ paths:
         '500':
           $ref: '#/components/responses/500'
 components:
+  # 재인증은 헤더 증명 없이 서버 세션의 재인증 시각으로 확인한다(03 6.3, C-31). 로그인 시작
+  # /oauth2/authorization/{provider}?reauth=true로 다시 인증하고, 민감한 API는 그 시각이 5분 안인지 본다.
+  # 없거나 지났으면 403 REAUTH_REQUIRED.
   securitySchemes:
     MemberSession:
       type: apiKey
@@ -861,16 +877,9 @@ components:
       schema:
         type: string
         description: ''
-      description: 쿠키 인증 변경 요청의 CSRF 방어. 토큰 생성/회전은 세션 계약을 따른다.
-    Reauth:
-      name: X-Reauthentication-Proof
-      in: header
-      required: true
-      schema:
-        type: string
-        description: ''
-        maxLength: 4096
-      description: 현재 회원/세션/행동에 묶인 최근 재인증 증거. 유효 시간은 ../02-policies.md 5, 7.2, 발급 방식은 ../08-delivery.md 6에서 정한다.
+      description: 쿠키 인증 변경 요청의 CSRF 방어(D-051). 회원은 GET /session, 비회원은 POST /guest-credentials 응답 본문으로 받는다.
+        회원 토큰은 그 세션과 auth_version에, 비회원 토큰은 그 자격에 묶이며 발급 뒤 24시간 유효하다. 다시 로그인하거나 자격이 회전되면 새로 받는다.
+        서버에 저장하지 않고 로그에 남기지 않는다.
     recordId:
       name: recordId
       in: path
@@ -1042,7 +1051,7 @@ components:
           description: 안정된 업무 오류 코드. 화면은 message가 아니라 이 값으로 동작을 나눈다. 각 값의 설명 앞 숫자는 주로 쓰는 HTTP 상태다.
           oneOf:
           - const: VALIDATION_FAILED
-            description: 400·422. 입력 형식이나 업무 규칙 위반. details.fieldErrors에 위치
+            description: 400·422, 그 밖의 요청 형식 4xx(405 허용되지 않은 메서드, 415 본문 형식 등). 입력 형식이나 업무 규칙 위반. details.fieldErrors에 위치
           - const: UNAUTHENTICATED
             description: 401. 세션이나 비회원 자격이 없거나 만료됨
           - const: CSRF_REJECTED
@@ -1583,15 +1592,14 @@ components:
       type: object
       additionalProperties: false
       properties:
-        sourceRecordIds:
-          type: array
-          items: *id005
-          minItems: 1
-          maxItems: 100
-          uniqueItems: true
+        confirm:
+          type: boolean
+          const: true
+          description: 사용자가 가져오기를 확인했다는 표시. 귀속된 비회원 기록 전체를 가져온다(D-058).
       required:
-      - sourceRecordIds
-      description: 한 명령 최대100건씩 가져온다. 전체 가져오기 횟수 제한은 아니다. 다른 계정의 claim은404.
+      - confirm
+      description: 고른 기록만 가져오지 않는다. job이 귀속 전체를 묶음으로 옮기고, 진행과 건수는 GET /operations/{id}로 본다. 이미 가져온 기록은 다시 해도 늘지
+        않는다. 다른 계정의 claim은 404.
     VerificationInput:
       type: object
       additionalProperties: false
@@ -1737,6 +1745,7 @@ components:
     ImportResult:
       type: object
       additionalProperties: false
+      description: 가져오기 명령의 결과. 명령 조회(GET /operations/{id})의 data로 준다. 항목별 결과는 주지 않는다(D-058).
       properties:
         outcome:
           type: string
@@ -1744,43 +1753,28 @@ components:
           - COMPLETE
           - PARTIAL
           - FAILED
-        processedCount:
+        createdCount:
+          type: integer
+          minimum: 0
+        mergedCount:
           type: integer
           minimum: 0
         skippedCount:
           type: integer
           minimum: 0
+          description: 회원이 지운 기록이거나 비회원 보관 기한이 지나 건너뛴 수
         lateImportRounds:
           type: array
           items: *id006
           minItems: 0
           uniqueItems: true
           description: 판매 마감 뒤에 가져와 그 회차 알림톡 대상이 아닌 회차. 화면은 이 회차를 알린다.
-        items:
-          type: array
-          items:
-            type: object
-            additionalProperties: false
-            properties:
-              sourceRecordId: *id005
-              outcome:
-                type: string
-                enum:
-                - CREATED
-                - MERGED
-                - SKIPPED_TARGET_DELETED
-                - SKIPPED_SOURCE_EXPIRED
-            required:
-            - sourceRecordId
-            - outcome
-          minItems: 0
-          maxItems: 100
       required:
       - outcome
-      - processedCount
+      - createdCount
+      - mergedCount
       - skippedCount
       - lateImportRounds
-      - items
     RecommendationSuccess:
       type: object
       additionalProperties: false
@@ -1917,6 +1911,35 @@ components:
       - $ref: '#/components/schemas/VerificationSuccess'
       - $ref: '#/components/schemas/PreferenceSuccess'
       - $ref: '#/components/schemas/ImportSuccess'
+    SessionState:
+      type: object
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum:
+          - MEMBER
+          - GUEST
+          - NONE
+        csrfToken:
+          type:
+          - string
+          - 'null'
+          description: 브라우저 메모리에 보관하고 변경 요청 헤더로 전송. 로그 금지. kind=NONE이면 null.
+        guestExpiresAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: 비회원 자격 만료 시각. 비회원이 아니면 null.
+        serverTime:
+          type: string
+          format: date-time
+      required:
+      - kind
+      - csrfToken
+      - guestExpiresAt
+      - serverTime
     GuestCredentialCreated:
       type: object
       additionalProperties: false

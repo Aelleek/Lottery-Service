@@ -42,7 +42,9 @@ class FlywayMigrationMySqlTest extends MySqlContainerSupport {
     assertThat(first.targetSchemaVersion).isEqualTo("1");
 
     long expectedTables = countCreateTables(Files.readString(SCHEMA));
-    assertThat(countTables(db, "flyway_schema_history")).isEqualTo(expectedTables).isEqualTo(26);
+    assertThat(countTables(db, "flyway_schema_history"))
+        .isEqualTo(expectedTables)
+        .isEqualTo(26 + 2);
 
     MigrateResult second = flyway.migrate();
     assertThat(second.migrationsExecuted).isZero();
