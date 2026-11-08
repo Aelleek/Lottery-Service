@@ -1042,7 +1042,7 @@ components:
           description: 안정된 업무 오류 코드. 화면은 message가 아니라 이 값으로 동작을 나눈다. 각 값의 설명 앞 숫자는 주로 쓰는 HTTP 상태다.
           oneOf:
           - const: VALIDATION_FAILED
-            description: 400·422. 입력 형식이나 업무 규칙 위반. details.fieldErrors에 위치
+            description: 400·422, 그 밖의 요청 형식 4xx(예: 405 허용되지 않은 메서드, 415 본문 형식). 입력 형식이나 업무 규칙 위반. details.fieldErrors에 위치
           - const: UNAUTHENTICATED
             description: 401. 세션이나 비회원 자격이 없거나 만료됨
           - const: CSRF_REJECTED

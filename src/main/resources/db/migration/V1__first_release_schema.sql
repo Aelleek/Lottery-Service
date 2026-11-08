@@ -94,7 +94,8 @@ CREATE TABLE lotto_round (
   CONSTRAINT ck_lotto_round_0 CHECK (round_no > 0),
   CONSTRAINT ck_lotto_round_1 CHECK (sales_open_at < sales_close_at),
   CONSTRAINT ck_lotto_round_2 CHECK (cutoff_state IN ('OPEN','SEALED')),
-  CONSTRAINT ck_lotto_round_3 CHECK ((cutoff_state='OPEN' AND cutoff_close_at IS NULL) OR (cutoff_state='SEALED' AND cutoff_close_at IS NOT NULL))
+  CONSTRAINT ck_lotto_round_3 CHECK ((cutoff_state='OPEN' AND cutoff_close_at IS NULL) OR (cutoff_state='SEALED' AND cutoff_close_at IS NOT NULL)),
+  CONSTRAINT ck_lotto_round_4 CHECK (cleanup_held IN (0,1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 완료 응답을 받지 못한 요청을 같은 업무로 확인하고 재실행을 막는다.
@@ -409,7 +410,8 @@ CREATE TABLE job (
   UNIQUE KEY uq_job_key (job_type, dedupe_key),
   KEY ix_job_due (state, available_at, id),
   KEY ix_job_lease (state, lease_until),
-  CONSTRAINT ck_job_0 CHECK (state IN ('READY','RUNNING','SUCCEEDED','RETRY_WAIT','DEAD','CANCELED'))
+  CONSTRAINT ck_job_0 CHECK (state IN ('READY','RUNNING','SUCCEEDED','RETRY_WAIT','DEAD','CANCELED')),
+  CONSTRAINT ck_job_1 CHECK (cancel_requested IN (0,1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 숫자/전화번호를 복제하지 않고 발행량 사건을 보관한다.
