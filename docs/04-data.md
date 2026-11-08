@@ -28,7 +28,7 @@
 
 ## 2. 테이블
 
-26개다(D-040). 이 밖에 세션 저장용 Spring Session JDBC 표준 테이블 2개를 쓴다 **[미확인]**.
+26개다(D-040). 이 밖에 세션 저장용 Spring Session JDBC 표준 테이블 2개(`spring_session`, `spring_session_attributes`)를 쓴다 **[미확인]**. 두 테이블도 `schema.sql`과 V1에 있다.
 
 | 묶음 | 테이블 | 하는 일 | 꼭 지키는 규칙 |
 |---|---|---|---|

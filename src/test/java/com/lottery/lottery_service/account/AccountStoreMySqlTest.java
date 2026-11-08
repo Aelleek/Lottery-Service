@@ -65,6 +65,29 @@ class AccountStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("auth_version을 올리면 그 전에 만든 세션은 유효하지 않다(로그아웃·회수)")
+  void revokeSessionsInvalidatesOlderVersion() {
+    MemberLogin login = store.login(OAuthProvider.KAKAO, "k-1");
+    assertThat(store.sessionValid(login.memberId(), login.authVersion())).isTrue();
+
+    store.revokeSessions(login.memberId());
+
+    assertThat(store.sessionValid(login.memberId(), login.authVersion())).isFalse();
+    MemberLogin again = store.login(OAuthProvider.KAKAO, "k-1");
+    assertThat(again.authVersion()).isEqualTo(login.authVersion() + 1);
+    assertThat(store.sessionValid(again.memberId(), again.authVersion())).isTrue();
+  }
+
+  @Test
+  @DisplayName("ACTIVE가 아닌 회원의 세션은 버전이 같아도 유효하지 않다")
+  void inactiveMemberSessionInvalid() {
+    MemberLogin login = store.login(OAuthProvider.NAVER, "n-1");
+    jdbc.update("UPDATE member SET state = 'WITHDRAWING' WHERE id = ?", login.memberId());
+
+    assertThat(store.sessionValid(login.memberId(), login.authVersion())).isFalse();
+  }
+
+  @Test
   @DisplayName("같은 소셜 계정으로 다시 로그인하면 같은 회원이고 마지막 로그인 시각만 바뀐다")
   void returningLoginKeepsMember() {
     MemberLogin first = store.login(OAuthProvider.GOOGLE, "sub-1");

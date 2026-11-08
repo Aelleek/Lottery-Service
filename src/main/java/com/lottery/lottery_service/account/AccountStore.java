@@ -61,6 +61,27 @@ public class AccountStore {
     }
   }
 
+  /**
+   * 세션이 아직 유효한지 본다. 회원이 ACTIVE이고 {@code auth_version}이 세션을 만들 때와 같아야 한다(03 6.3).
+   *
+   * @param memberId 세션의 회원 ID
+   * @param authVersion 세션을 만들 때 읽은 버전
+   */
+  public boolean sessionValid(long memberId, long authVersion) {
+    Integer found =
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM member WHERE id = ? AND state = 'ACTIVE' AND auth_version = ?",
+            Integer.class,
+            memberId,
+            authVersion);
+    return found != null && found == 1;
+  }
+
+  /** 회원의 모든 세션을 회수한다. {@code auth_version}을 올려 이전 세션이 다음 요청에서 거부되게 한다. */
+  public void revokeSessions(long memberId) {
+    jdbc.update("UPDATE member SET auth_version = auth_version + 1 WHERE id = ?", memberId);
+  }
+
   private MemberLogin loginOrRegister(OAuthProvider provider, byte[] key) {
     return existing(provider, key).orElseGet(() -> register(provider, key));
   }
