@@ -38,6 +38,7 @@ public class RoundMaintenance {
   private final JdbcTemplate jdbc;
   private final NotificationPlanCloser planCloser;
   private final RecordRetentionCleaner cleaner;
+  private final HousekeepingCleaner housekeeping;
   private final JobStore jobs;
   private final TransactionTemplate tx;
   private final Clock clock;
@@ -47,12 +48,14 @@ public class RoundMaintenance {
       JdbcTemplate jdbc,
       NotificationPlanCloser planCloser,
       RecordRetentionCleaner cleaner,
+      HousekeepingCleaner housekeeping,
       JobStore jobs,
       PlatformTransactionManager transactionManager,
       Clock clock) {
     this.jdbc = jdbc;
     this.planCloser = planCloser;
     this.cleaner = cleaner;
+    this.housekeeping = housekeeping;
     this.jobs = jobs;
     this.tx = new TransactionTemplate(transactionManager);
     this.clock = clock;
@@ -76,7 +79,8 @@ public class RoundMaintenance {
   }
 
   /**
-   * 보관 기간이 지난 회차의 기록을 지운다. 정리 조건은 {@link RecordRetentionCleaner}가 확인한다.
+   * 보관 기간이 지난 회차의 기록을 지운다. 정리 조건은 {@link RecordRetentionCleaner}가 확인한다. 이어서 기록이 남지 않은 주체·회차의 추천 이력과
+   * 요청을 지운다(04 5절 순서: 기록, 추천 이력, 추천 요청). 그래야 빈 비회원 주체도 지울 수 있다.
    *
    * @param batch 한 트랜잭션에서 지울 기록 수
    * @return 지운 기록 수
@@ -96,6 +100,14 @@ public class RoundMaintenance {
           break;
         }
       }
+    }
+    for (int round :
+        jdbc.queryForList(
+            "SELECT r.round_no FROM lotto_round r WHERE r.draw_at <= ? AND EXISTS (SELECT 1"
+                + " FROM recommendation_request q WHERE q.round_no = r.round_no) ORDER BY r.round_no",
+            Integer.class,
+            utc(clock.instant().minus(RecordRetentionCleaner.RETENTION)))) {
+      tx.execute(status -> housekeeping.deleteOrphanRoundHistory(round));
     }
     return deleted;
   }

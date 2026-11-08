@@ -63,6 +63,9 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
     for (String t :
         List.of(
             "usage_aggregate",
+            "recommendation_seen",
+            "recommendation_item",
+            "recommendation_request",
             "winning_evaluation",
             "job",
             "lotto_record",
@@ -97,6 +100,7 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
             jdbc,
             new NotificationPlanCloser(jdbc, clock),
             new RecordRetentionCleaner(jdbc, clock),
+            new HousekeepingCleaner(jdbc, clock),
             new JobStore(jdbc, tm, clock, new JobProperties(null, null)),
             tm,
             clock);
@@ -110,6 +114,8 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
     record(guest, LottoNumbers.of(1, 2, 12, 22, 32, 42), false);
     long fourth = record(member, LottoNumbers.of(1, 2, 3, 4, 20, 30), false);
     long bought = record(member, LottoNumbers.of(1, 2, 13, 23, 33, 43), true);
+    history(guest);
+    history(member);
     publishAndEvaluate();
 
     assertThat(maintenance.cleanupRecords(1)).isZero();
@@ -119,6 +125,18 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
 
     assertThat(jdbc.queryForList("SELECT id FROM lotto_record ORDER BY id", Long.class))
         .containsExactly(fourth, bought);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM recommendation_request WHERE subject_id = ?",
+                Long.class,
+                guest))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM recommendation_request WHERE subject_id = ?",
+                Long.class,
+                member))
+        .isEqualTo(1);
     clock.set(AFTER_DELAY);
     assertThat(maintenance.alertDelayedCleanup()).isZero();
   }
@@ -202,5 +220,23 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
         numbers.key(),
         purchased);
     return jdbc.queryForObject("SELECT MAX(id) FROM lotto_record", Long.class);
+  }
+
+  private void history(long subject) {
+    jdbc.update(
+        "INSERT INTO recommendation_request (public_id, subject_id, round_no, key_digest, request_hash,"
+            + " accepted_at, policy_version, generation_mode, filter_version, response_expires_at)"
+            + " VALUES (UUID_TO_BIN(UUID()), ?, ?, ?, ?, NOW(6), 1, 'BASIC', 'FILTER_V1', NOW(6))",
+        subject,
+        ROUND,
+        new byte[32],
+        new byte[32]);
+    long request = jdbc.queryForObject("SELECT MAX(id) FROM recommendation_request", Long.class);
+    jdbc.update(
+        "INSERT INTO recommendation_seen (subject_id, round_no, numbers_key, first_request_id)"
+            + " VALUES (?, ?, '01 02 03 04 05 06', ?)",
+        subject,
+        ROUND,
+        request);
   }
 }
