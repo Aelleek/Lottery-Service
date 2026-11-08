@@ -11,7 +11,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * 복원 뒤 서버 관리 명령(07 4절 3·4번). {@code --lottery.restore.replay-journal=true}로 실행하면 삭제 기록을 다시 적용하고 모든
- * 세션을 회수한 뒤 끝난다. 삭제 기록 저장소가 없거나 읽지 못하면 실패로 끝나며, 그때는 서비스를 열지 않는다.
+ * 세션을 회수한 뒤 끝난다. 삭제 기록 저장소가 없거나 읽지 못하면 실패로 끝나며, 그때는 서비스를 열지 않는다. 이 명령으로 실행하면 웹 서버와 주기 작업은 켜지지
+ * 않는다({@code ServerCommandEnvironment}).
  */
 @Slf4j
 @Component
