@@ -206,6 +206,12 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("CSRF_REJECTED"));
 
+    mvc.perform(
+            get("/api/v1/guest/lotto/records")
+                .param("round", Integer.toString(ROUND))
+                .with(oauth2Login().oauth2User(member)))
+        .andExpect(status().isUnauthorized());
+
     MvcResult guest = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
     mvc.perform(
             post("/api/v1/me/lotto/purchases")

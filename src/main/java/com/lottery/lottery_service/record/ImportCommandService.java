@@ -135,7 +135,7 @@ public class ImportCommandService implements CommandResultLoader {
                 + " JOIN lotto_round r ON r.round_no = t.round_no"
                 + " JOIN subject_claim c ON c.id = i.claim_id"
                 + " WHERE i.claim_id = ? AND i.outcome IN ('CREATED','MERGED')"
-                + " AND c.imported_at IS NOT NULL AND c.imported_at >= r.sales_close_at"
+                + " AND c.imported_at IS NOT NULL AND c.imported_at >= COALESCE(r.cutoff_close_at, r.sales_close_at)"
                 + " ORDER BY t.round_no",
             Integer.class,
             claimId);
