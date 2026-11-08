@@ -35,6 +35,16 @@ public class SecretKeys {
     return ring(properties.contact(), "contact");
   }
 
+  /** CSRF 토큰 서명 키. */
+  public KeyRing csrfToken() {
+    return ring(properties.csrfToken(), "csrf-token");
+  }
+
+  /** 관리자 인증 앱 비밀값 암호화 키. */
+  public KeyRing adminMfa() {
+    return ring(properties.adminMfa(), "admin-mfa");
+  }
+
   private static KeyRing ring(SecretProperties.Ring ring, String name) {
     if (ring == null) {
       throw new IllegalStateException("secret key ring is not configured: " + name);

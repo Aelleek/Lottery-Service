@@ -6,7 +6,7 @@
 
 - 새 API는 `/api/v1` 아래에 둔다. 아래 경로는 이 접두어를 뺀 것이다.
 - 주체는 로그인 세션이나 비회원 쿠키에서 구한다. 본문의 회원 ID를 믿지 않는다.
-- 쿠키 인증을 쓰므로 변경 요청은 `X-CSRF-TOKEN` 헤더가 필요하다.
+- 쿠키 인증을 쓰므로 변경 요청은 `X-CSRF-TOKEN` 헤더가 필요하다. 토큰은 회원이면 `GET /session`, 비회원이면 `POST /guest-credentials` 응답 본문으로 받는다. 회원 토큰은 그 세션에, 비회원 토큰은 그 자격에 묶이고 발급 뒤 24시간 유효하다. 거부(403 `CSRF_REJECTED`)되면 화면은 토큰을 다시 받아 한 번 다시 보낸다(D-051).
 - 시각은 오프셋이 있는 ISO-8601, 번호는 `[1,2,3,4,5,6]` 같은 정수 배열, 버전은 십진 문자열이다.
 - 금액은 1게임 기준이다. 실제 구매 수량이나 총 수령액으로 표시하지 않는다.
 - 명령 응답은 `operationId, status, data, serverTime`이다. 오류는 `code, message, retryable, requestId, details`다. `details`에는 입력 위치나 재시도 시각 같은 안전한 정보만 넣는다.
@@ -32,6 +32,7 @@
 
 | API | 하는 일 | 주요 실패와 화면 동작 |
 |---|---|---|
+| `GET /session` | 로그인 상태(회원·비회원·없음)와 그 주체에 묶은 CSRF 토큰 | 실패 없음. 주체가 없으면 토큰 없이 NONE |
 | `GET /lotto/context` | 현재 회차, 일정 버전, 추천 가능 여부, 다음 개시 시각 | 일정 미확인은 503. 결과 수집 지연과는 별개 |
 | `POST /guest-credentials` | 비회원 자격 발급. 쿠키와 CSRF 토큰을 준다 | Origin·Fetch Metadata 검사 실패 403, 발급 속도 초과 429. 429에는 다시 시도할 시각을 주고 화면이 그 시각을 보여 준다. 회원 세션 중이면 발급하지 않는다 |
 | `POST /command-tokens` | 명령 토큰 발급 | 허용되지 않은 명령 403. 발급 자체는 업무 실행이 아니다 |
@@ -67,7 +68,7 @@ Spring Security OAuth2 기본 경로를 쓴다. `/api/v1` 밖이다.
 | `GET /login/oauth2/code/{provider}` | 제공자 콜백. 로그인 후 비회원 귀속 확인 화면으로 보낸다 |
 | `POST /logout` | 로그아웃. 서버 세션 회수 |
 
-재인증과 관리자 다중 요소 인증 방식은 [03 6.3](03-architecture.md#63-인증과-관리자)에 있다. 재인증은 서버 세션에 적은 재인증 시각으로 확인하므로, openapi의 `X-Reauthentication-Proof` 헤더는 재인증을 구현하는 단위에서 뺀다(C-31).
+재인증과 관리자 다중 요소 인증 방식은 [03 6.3](03-architecture.md#63-인증과-관리자)에 있다. 재인증은 서버 세션에 적은 재인증 시각으로 확인한다(C-31). 화면은 로그인 시작 주소에 `reauth=true`를 붙여(예: `/oauth2/authorization/kakao?reauth=true`) 다시 인증하고 돌아온다. 다른 소셜 계정으로 돌아오거나 취소하면 `/?reauth=failed`로 돌아오고 세션은 그대로다. openapi의 `X-Reauthentication-Proof` 헤더는 뺐다.
 
 ## 4. 관리자 API
 
