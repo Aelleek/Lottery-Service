@@ -157,7 +157,8 @@ class PurchaseCommandServiceMySqlTest extends MySqlContainerSupport {
 
   private PurchaseCommandService.PurchaseData register(
       String token, UUID key, List<PurchaseCommandService.Entry> entries) {
-    return commands.register(
-        member.subjectId(), member.subjectPublicId(), token, key, ROUND, entries);
+    return commands
+        .register(member.subjectId(), member.subjectPublicId(), token, key, ROUND, entries)
+        .data();
   }
 }

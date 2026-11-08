@@ -78,7 +78,7 @@ public class PurchaseCommandService implements CommandResultLoader {
    * @throws BusinessException 항목 수·{@code clientItemId}가 틀리면 {@code VALIDATION_FAILED}
    * @throws CommandInProgressException 같은 요청이 처리 중일 때
    */
-  public PurchaseData register(
+  public Registered register(
       long subjectId,
       UUID subjectPublicId,
       String commandToken,
@@ -90,7 +90,7 @@ public class PurchaseCommandService implements CommandResultLoader {
     CommandStart start =
         operations.begin(subjectId, token, idempotencyKey, requestHash(roundNo, entries));
     if (start instanceof CommandStart.Completed completed) {
-      return replay(completed.publicId());
+      return new Registered(completed.publicId(), replay(completed.publicId()));
     }
     if (start instanceof CommandStart.InProgress progress) {
       throw new CommandInProgressException(progress.publicId());
@@ -100,31 +100,33 @@ public class PurchaseCommandService implements CommandResultLoader {
     }
     CommandStart.Started started = (CommandStart.Started) start;
     try {
-      return tx.execute(
-          status -> {
-            List<LottoNumbers> sets = new ArrayList<>();
-            for (Entry entry : entries) {
-              sets.add(entry.numbers());
-            }
-            PurchaseResult result = purchases.register(subjectId, roundNo, sets);
-            Map<String, PurchaseItem> byKey = new HashMap<>();
-            for (PurchaseItem item : result.items()) {
-              byKey.put(item.numbers().key(), item);
-            }
-            List<ItemResult> items = new ArrayList<>();
-            for (Entry entry : entries) {
-              PurchaseItem item = byKey.get(entry.numbers().key());
-              items.add(
-                  new ItemResult(
-                      entry.clientItemId(),
-                      item.recordPublicId(),
-                      Long.toString(version(item.recordPublicId())),
-                      item.outcome()));
-            }
-            PurchaseData data = new PurchaseData(roundNo, items, result.afterSalesClose());
-            operations.succeedWithSummary(started, REGISTERED, write(data));
-            return data;
-          });
+      PurchaseData registered =
+          tx.execute(
+              status -> {
+                List<LottoNumbers> sets = new ArrayList<>();
+                for (Entry entry : entries) {
+                  sets.add(entry.numbers());
+                }
+                PurchaseResult result = purchases.register(subjectId, roundNo, sets);
+                Map<String, PurchaseItem> byKey = new HashMap<>();
+                for (PurchaseItem item : result.items()) {
+                  byKey.put(item.numbers().key(), item);
+                }
+                List<ItemResult> items = new ArrayList<>();
+                for (Entry entry : entries) {
+                  PurchaseItem item = byKey.get(entry.numbers().key());
+                  items.add(
+                      new ItemResult(
+                          entry.clientItemId(),
+                          item.recordPublicId(),
+                          Long.toString(version(item.recordPublicId())),
+                          item.outcome()));
+                }
+                PurchaseData data = new PurchaseData(roundNo, items, result.afterSalesClose());
+                operations.succeedWithSummary(started, REGISTERED, write(data));
+                return data;
+              });
+      return new Registered(started.publicId(), registered);
     } catch (BusinessException e) {
       if (FINAL_FAILURES.contains(e.getCode())) {
         operations.markFailed(started, e.getCode().name());
@@ -207,6 +209,14 @@ public class PurchaseCommandService implements CommandResultLoader {
       throw new IllegalStateException(e);
     }
   }
+
+  /**
+   * 처리 결과.
+   *
+   * @param operationId 명령 외부 ID
+   * @param data 처음 결과
+   */
+  public record Registered(UUID operationId, PurchaseData data) {}
 
   /**
    * 입력 항목(openapi {@code PurchaseEntry}).
