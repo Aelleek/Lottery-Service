@@ -90,6 +90,22 @@ class GenerationLeaseStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("권한을 잡은 뒤 귀속(귀속 버전 변경)이나 상태 변경이 끼어들면 저장 확인이 거부된다(05 2절 8번)")
+  void claimBetweenAcquireAndSaveRejected() {
+    GenerationLease lease = leases.acquire(subject);
+    jdbc.update("UPDATE actor_subject SET claim_version = claim_version + 1 WHERE id = ?", subject);
+
+    assertThatThrownBy(() -> tx.executeWithoutResult(s -> leases.requireCurrent(lease)))
+        .isInstanceOf(GenerationSupersededException.class);
+
+    clock.set(clock.instant().plus(GenerationLeaseStore.LEASE).plusSeconds(1));
+    GenerationLease fresh = leases.acquire(subject);
+    jdbc.update("UPDATE actor_subject SET state = 'CLAIMED' WHERE id = ?", subject);
+    assertThatThrownBy(() -> tx.executeWithoutResult(s -> leases.requireCurrent(fresh)))
+        .isInstanceOf(GenerationSupersededException.class);
+  }
+
+  @Test
   @DisplayName("같은 주체의 동시 요청은 하나만 생성 권한을 얻는다(T03의 생성 부분)")
   void concurrentAcquire() throws Exception {
     CountDownLatch start = new CountDownLatch(1);
