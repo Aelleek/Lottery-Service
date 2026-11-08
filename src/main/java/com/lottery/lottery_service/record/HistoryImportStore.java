@@ -43,19 +43,25 @@ public class HistoryImportStore {
   /**
    * 묶음 하나를 가져온다.
    *
+   * @param memberSubjectId 가져오기를 요청한 회원 주체 ID. 귀속의 회원 주체와 같아야 한다
    * @param claimId 귀속 ID
    * @param afterSourceId 이 ID 뒤의 원본부터 처리한다. 처음이면 0
    * @param limit 묶음 크기
-   * @throws BusinessException 귀속이 없거나 회원 주체가 활성 상태가 아니면 {@code NOT_FOUND}
+   * @throws BusinessException 귀속이 없거나, 다른 회원의 귀속이거나, 회원 주체가 활성 상태가 아니면 {@code NOT_FOUND}
    */
-  public ImportBatch importBatch(long claimId, long afterSourceId, int limit) {
+  public ImportBatch importBatch(
+      long memberSubjectId, long claimId, long afterSourceId, int limit) {
     Map<String, Object> claim = lockClaim(claimId);
+    if (((Number) claim.get("member_subject_id")).longValue() != memberSubjectId) {
+      throw notFound();
+    }
     long guest = ((Number) claim.get("guest_subject_id")).longValue();
     long member = ((Number) claim.get("member_subject_id")).longValue();
     List<Map<String, Object>> sources =
         jdbc.queryForList(
             "SELECT s.id, s.round_no, s.numbers_key, s.recommended_at, s.expires_at,"
-                + " r.sales_close_at, r.published_result_id FROM lotto_record s"
+                + " COALESCE(r.cutoff_close_at, r.sales_close_at) AS close_at,"
+                + " r.published_result_id FROM lotto_record s"
                 + " JOIN lotto_round r ON r.round_no = s.round_no"
                 + " WHERE s.owner_subject_id = ? AND s.id > ? AND s.deleted_at IS NULL"
                 + " AND NOT EXISTS (SELECT 1 FROM history_import_item h WHERE h.claim_id = ?"
@@ -106,11 +112,8 @@ public class HistoryImportStore {
       return;
     }
     boolean closed =
-        !((LocalDateTime) source.get("sales_close_at"))
+        !((LocalDateTime) source.get("close_at"))
             .isAfter(LocalDateTime.ofInstant(now, ZoneOffset.UTC));
-    if (closed) {
-      afterClose.add(round);
-    }
     List<Map<String, Object>> targets =
         jdbc.queryForList(
             "SELECT id, deleted_at, recommended_at FROM lotto_record WHERE owner_subject_id = ?"
@@ -147,6 +150,9 @@ public class HistoryImportStore {
             targetId);
       }
       item(claimId, sourceId, targetId, "MERGED");
+    }
+    if (closed) {
+      afterClose.add(round);
     }
     if (source.get("published_result_id") != null) {
       long version =

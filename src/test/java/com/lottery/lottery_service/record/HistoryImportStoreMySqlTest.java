@@ -1,11 +1,14 @@
 package com.lottery.lottery_service.record;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.GuestCredentialStore;
 import com.lottery.lottery_service.account.SubjectClaimStore;
 import com.lottery.lottery_service.auth.OAuthProvider;
+import com.lottery.lottery_service.common.error.BusinessException;
+import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.job.JobProperties;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.number.LottoNumbers;
@@ -22,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import javax.sql.DataSource;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -123,7 +127,7 @@ class HistoryImportStoreMySqlTest extends MySqlContainerSupport {
   @Test
   @DisplayName("항목마다 CREATED·MERGED·건너뜀 결과를 남기고, 마감 뒤 회차는 추천 표시를 붙이지 않는다(T51, T53 일부)")
   void importOutcomes() {
-    ImportBatch batch = tx.execute(s -> store.importBatch(claim, 0, 100));
+    ImportBatch batch = tx.execute(s -> store.importBatch(member, claim, 0, 100));
 
     assertThat(batch.finished()).isTrue();
     assertThat(batch.roundsAfterSalesClose()).containsExactly(CLOSED);
@@ -158,7 +162,7 @@ class HistoryImportStoreMySqlTest extends MySqlContainerSupport {
     ImportBatch batch;
     do {
       long from = last;
-      batch = tx.execute(s -> store.importBatch(claim, from, 2));
+      batch = tx.execute(s -> store.importBatch(member, claim, from, 2));
       last = batch.lastSourceId();
       batches++;
     } while (!batch.finished());
@@ -167,7 +171,7 @@ class HistoryImportStoreMySqlTest extends MySqlContainerSupport {
     assertThat(outcomes()).hasSize(5);
     long records = jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class);
 
-    ImportBatch again = tx.execute(s -> store.importBatch(claim, 0, 100));
+    ImportBatch again = tx.execute(s -> store.importBatch(member, claim, 0, 100));
     assertThat(again.processed()).isZero();
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class))
         .isEqualTo(records);
@@ -188,7 +192,7 @@ class HistoryImportStoreMySqlTest extends MySqlContainerSupport {
         jdbc.queryForObject(
             "SELECT COUNT(*) FROM lotto_record WHERE owner_subject_id = ?", Long.class, member);
 
-    ImportBatch batch = tx.execute(s -> store.importBatch(claim, 0, 100));
+    ImportBatch batch = tx.execute(s -> store.importBatch(member, claim, 0, 100));
 
     assertThat(batch.finished()).isTrue();
     assertThat(outcomes())
@@ -201,6 +205,28 @@ class HistoryImportStoreMySqlTest extends MySqlContainerSupport {
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM lotto_record WHERE owner_subject_id = ?", Long.class, member))
         .isEqualTo(memberRecords + 1);
+  }
+
+  @Test
+  @DisplayName("다른 회원의 귀속, 없는 귀속, 활성이 아닌 회원은 NOT_FOUND이고 아무것도 옮기지 않는다")
+  void notFoundCases() {
+    long other =
+        new AccountStore(jdbc, new DataSourceTransactionManager(dataSource), Clock.systemUTC())
+            .login(OAuthProvider.KAKAO, "other")
+            .subjectId();
+
+    assertNotFound(() -> tx.execute(s -> store.importBatch(other, claim, 0, 100)));
+    assertNotFound(() -> tx.execute(s -> store.importBatch(member, claim + 999, 0, 100)));
+    jdbc.update("UPDATE actor_subject SET state = 'WITHDRAWING' WHERE id = ?", member);
+    assertNotFound(() -> tx.execute(s -> store.importBatch(member, claim, 0, 100)));
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM history_import_item", Long.class))
+        .isZero();
+  }
+
+  private static void assertNotFound(ThrowingCallable call) {
+    assertThatThrownBy(call)
+        .isInstanceOfSatisfying(
+            BusinessException.class, e -> assertThat(e.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
   }
 
   private void guestRecord(int round, String key, boolean expired) {
