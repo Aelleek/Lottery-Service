@@ -60,7 +60,9 @@ class RoundResultControllerTest {
     Clock clock = Clock.fixed(CHECKED, ZoneOffset.UTC);
     mvc =
         MockMvcBuilders.standaloneSetup(new RoundResultController(query, new InstantCheck(query)))
-            .setControllerAdvice(new ApiExceptionHandler(clock))
+            .setControllerAdvice(
+                new ApiExceptionHandler(
+                    clock, new com.lottery.lottery_service.common.web.SecuritySignals()))
             .setMessageConverters(
                 new MappingJackson2HttpMessageConverter(
                     Jackson2ObjectMapperBuilder.json()

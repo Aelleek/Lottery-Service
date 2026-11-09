@@ -202,6 +202,12 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
         .startsWith("[관리자 권한 변경] 2차 인증 초기화.");
     assertThat(handler.format(mapper.readTree("{\"kind\":\"ADMIN_CHANGE\",\"action\":\"OTHER\"}")))
         .contains("알 수 없는 변경");
+    assertThat(
+            handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"SECURITY_SIGNAL\",\"signal\":\"TOO_MANY_REQUESTS\",\"count\":1200,"
+                        + "\"topPath\":\"/api/v1/lotto/check\"}")))
+        .isEqualTo("[보안 신호] 10분 동안 요청 제한(429) 1200건. 많이 걸린 경로 `/api/v1/lotto/check`.");
     assertThat(handler.format(mapper.readTree("{\"kind\":\"NEW_KIND\"}")))
         .isEqualTo("[운영자 알림] NEW_KIND");
     assertThat(handler.format(mapper.readTree("{}"))).isEqualTo("[운영자 알림] UNKNOWN");

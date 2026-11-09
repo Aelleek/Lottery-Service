@@ -14,6 +14,7 @@ import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.number.LottoNumbers;
+import com.lottery.lottery_service.common.web.SecuritySignals;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
@@ -51,6 +52,7 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
   @Autowired private RoundStore rounds;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private ObjectMapper json;
+  @Autowired private SecuritySignals signals;
 
   @DynamicPropertySource
   static void database(DynamicPropertyRegistry registry) throws SQLException {
@@ -102,7 +104,7 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("T59: 토큰 없음, 다른 비회원 자격의 토큰, 다른 회원 세션의 토큰은 모두 403 CSRF_REJECTED")
+  @DisplayName("T59: 토큰 없음, 다른 비회원 자격의 토큰, 다른 회원 세션의 토큰은 모두 403 CSRF_REJECTED이고 보안 신호로 센다")
   void foreignCsrfTokensRejected() throws Exception {
     MvcResult g1 = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
     MvcResult g2 = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
@@ -132,6 +134,8 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
                 .contentType("application/json")
                 .content("{\"operation\":\"WITHDRAW\"}"))
         .andExpect(jsonPath("$.code").value("CSRF_REJECTED"));
+    assertThat(signals.drain().get(SecuritySignals.Kind.CSRF_REJECTED).topPath())
+        .isEqualTo("/api/v1/command-tokens");
   }
 
   @Test

@@ -4,6 +4,7 @@ import com.lottery.lottery_service.common.alert.ExpiryWatch;
 import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.job.RecoveredJob;
+import com.lottery.lottery_service.common.web.SecuritySignals;
 import com.lottery.lottery_service.notification.RoundJobPlanner;
 import com.lottery.lottery_service.notification.UnknownMessageReconciler;
 import com.lottery.lottery_service.notification.UnknownMessageSweep;
@@ -55,6 +56,9 @@ public class WorkerScheduler {
 
   static final int RECORD_CLEANUP_BATCH = 500;
 
+  /** 보안 신호 알림 기준. 10분 동안 한 종류가 이만큼 넘으면 알린다(07 2.1절, 초기 설정값). */
+  static final long SECURITY_SIGNAL_THRESHOLD = 1_000;
+
   private final JobRunner runner;
   private final JobStore jobs;
   private final RoundStore rounds;
@@ -68,6 +72,7 @@ public class WorkerScheduler {
   private final UnknownMessageReconciler unknown;
   private final UnknownMessageSweep sweep;
   private final ExpiryWatch expiry;
+  private final SecuritySignals signals;
   private final Clock clock;
   private final TransactionTemplate tx;
 
@@ -86,6 +91,7 @@ public class WorkerScheduler {
       UnknownMessageReconciler unknown,
       UnknownMessageSweep sweep,
       ExpiryWatch expiry,
+      SecuritySignals signals,
       Clock clock,
       PlatformTransactionManager transactionManager) {
     this.runner = runner;
@@ -101,6 +107,7 @@ public class WorkerScheduler {
     this.unknown = unknown;
     this.sweep = sweep;
     this.expiry = expiry;
+    this.signals = signals;
     this.clock = clock;
     this.tx = new TransactionTemplate(transactionManager);
   }
@@ -183,6 +190,33 @@ public class WorkerScheduler {
   @Scheduled(cron = "0 0 0 1 * *", zone = "Asia/Seoul")
   public void openBudgetMonth() {
     budget.openMonth();
+  }
+
+  /**
+   * 10분 동안 센 보안 신호(429, CSRF 거절, 출처 검사 거절) 가운데 기준을 넘은 종류를 운영자에게 알린다(07 2.1절). 내용은 종류, 건수, 많이 걸린
+   * 경로뿐이고 IP는 넣지 않는다.
+   */
+  @Scheduled(fixedRate = 600_000, initialDelay = 600_000)
+  public void alertSecuritySignals() {
+    Instant now = clock.instant();
+    signals
+        .drain()
+        .forEach(
+            (kind, summary) -> {
+              if (summary.count() >= SECURITY_SIGNAL_THRESHOLD) {
+                jobs.enqueue(
+                    JobStore.OPERATOR_ALERT,
+                    "security-signal:" + kind + ":" + now,
+                    "{\"kind\":\"SECURITY_SIGNAL\",\"signal\":\""
+                        + kind
+                        + "\",\"count\":"
+                        + summary.count()
+                        + ",\"topPath\":\""
+                        + summary.topPath()
+                        + "\"}",
+                    now);
+              }
+            });
   }
 
   /** 매일 보관 정리. */

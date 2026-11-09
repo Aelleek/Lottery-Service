@@ -45,7 +45,9 @@ class LottoContextControllerTest {
   private MockMvc mvc(Instant now) {
     Clock clock = Clock.fixed(now, ZoneOffset.UTC);
     return MockMvcBuilders.standaloneSetup(new LottoContextController(rounds, clock))
-        .setControllerAdvice(new ApiExceptionHandler(clock))
+        .setControllerAdvice(
+            new ApiExceptionHandler(
+                clock, new com.lottery.lottery_service.common.web.SecuritySignals()))
         .setMessageConverters(
             new MappingJackson2HttpMessageConverter(
                 Jackson2ObjectMapperBuilder.json()

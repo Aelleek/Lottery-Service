@@ -11,6 +11,7 @@ import com.lottery.lottery_service.common.alert.ExpiryWatch;
 import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobState;
 import com.lottery.lottery_service.common.job.JobStore;
+import com.lottery.lottery_service.common.web.SecuritySignals;
 import com.lottery.lottery_service.notification.RoundJobPlanner;
 import com.lottery.lottery_service.notification.UnknownMessageReconciler;
 import com.lottery.lottery_service.notification.UnknownMessageSweep;
@@ -50,6 +51,7 @@ class WorkerSchedulerTest {
   private final UnknownMessageReconciler unknown = mock(UnknownMessageReconciler.class);
   private final UnknownMessageSweep sweep = mock(UnknownMessageSweep.class);
   private final ExpiryWatch expiry = mock(ExpiryWatch.class);
+  private final SecuritySignals signals = new SecuritySignals();
   private final Clock clock = Clock.fixed(Instant.parse("2026-11-14T12:00:00Z"), ZoneOffset.UTC);
 
   private WorkerScheduler scheduler() {
@@ -69,6 +71,7 @@ class WorkerSchedulerTest {
         unknown,
         sweep,
         expiry,
+        signals,
         clock,
         tm);
   }
@@ -147,5 +150,29 @@ class WorkerSchedulerTest {
     scheduler().reconcileUnknownMessages();
 
     verify(sweep).run(UnknownMessageSweep.MAX_LOOKUPS);
+  }
+
+  @Test
+  @DisplayName("보안 신호는 10분 동안 한 종류가 1,000건을 넘을 때만 종류·건수·많이 걸린 경로로 알리고, 센 값은 비운다")
+  void alertsSecuritySignalsOverThreshold() {
+    for (int i = 0; i < 1_000; i++) {
+      signals.record(
+          SecuritySignals.Kind.CSRF_REJECTED, "/api/v1/me/lotto/records/" + i + "/cancel-purchase");
+    }
+    for (int i = 0; i < 999; i++) {
+      signals.record(SecuritySignals.Kind.TOO_MANY_REQUESTS, "/api/v1/lotto/check");
+    }
+
+    scheduler().alertSecuritySignals();
+
+    verify(jobs)
+        .enqueue(
+            JobStore.OPERATOR_ALERT,
+            "security-signal:CSRF_REJECTED:2026-11-14T12:00:00Z",
+            "{\"kind\":\"SECURITY_SIGNAL\",\"signal\":\"CSRF_REJECTED\",\"count\":1000,"
+                + "\"topPath\":\"/api/v1/me/lotto/records/{id}/cancel-purchase\"}",
+            clock.instant());
+    verify(jobs, times(1)).enqueue(any(), any(), any(), any());
+    org.assertj.core.api.Assertions.assertThat(signals.drain()).isEmpty();
   }
 }

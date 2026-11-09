@@ -154,7 +154,23 @@ public class OperatorAlertJobHandler implements JobHandler {
           + adminAction(payload.path("action").asText())
           + (payload.path("role").isTextual() ? "(역할 " + payload.path("role").asText() + ")" : "")
           + ". 본인이 한 변경이 아니면 감사 기록을 확인하세요.";
+      case "SECURITY_SIGNAL" -> "[보안 신호] 10분 동안 "
+          + signalName(payload.path("signal").asText())
+          + " "
+          + payload.path("count").asLong()
+          + "건. 많이 걸린 경로 `"
+          + payload.path("topPath").asText()
+          + "`.";
       default -> "[운영자 알림] " + kind;
+    };
+  }
+
+  private static String signalName(String signal) {
+    return switch (signal) {
+      case "TOO_MANY_REQUESTS" -> "요청 제한(429)";
+      case "CSRF_REJECTED" -> "CSRF 거절";
+      case "ORIGIN_REJECTED" -> "출처 검사 거절";
+      default -> "알 수 없는 신호";
     };
   }
 

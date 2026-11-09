@@ -2,6 +2,7 @@ package com.lottery.lottery_service.common.error;
 
 import com.lottery.lottery_service.common.number.InvalidLottoNumberException;
 import com.lottery.lottery_service.common.web.RequestIdFilter;
+import com.lottery.lottery_service.common.web.SecuritySignals;
 import com.lottery.lottery_service.recommendation.CommandInProgressException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Clock;
@@ -45,12 +46,14 @@ public class ApiExceptionHandler {
   static final String FORBIDDEN_MESSAGE = "허용되지 않은 요청입니다.";
 
   private final Clock clock;
+  private final SecuritySignals signals;
 
   /** 업무 예외를 그 코드의 상태와 본문으로 응답한다. */
   @ExceptionHandler(BusinessException.class)
   public ResponseEntity<ErrorResponse> handleBusiness(
       BusinessException e, HttpServletRequest request) {
     log.debug("business error code={}", e.getCode());
+    signals.record(e.getCode(), request.getRequestURI());
     return respond(
         e.getCode(),
         e.getCode().status(),

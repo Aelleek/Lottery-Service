@@ -47,7 +47,10 @@ class ApiExceptionHandlerTest {
   void setUp() {
     mockMvc =
         MockMvcBuilders.standaloneSetup(new ProbeController())
-            .setControllerAdvice(new ApiExceptionHandler(Clock.fixed(NOW, ZoneOffset.UTC)))
+            .setControllerAdvice(
+                new ApiExceptionHandler(
+                    Clock.fixed(NOW, ZoneOffset.UTC),
+                    new com.lottery.lottery_service.common.web.SecuritySignals()))
             .addFilters(new RequestIdFilter())
             .build();
   }
