@@ -80,7 +80,7 @@ class AdminMfaStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("앞뒤 한 단위까지 받고, 이미 받은 단위 이하의 코드는 다시 받지 않는다")
+  @DisplayName("T63: 앞뒤 한 단위까지 받고, 이미 받은 단위 이하의 코드는 다시 받지 않는다")
   void windowAndReplay() {
     byte[] secret = enrolled();
     clock.set(T0.plusSeconds(300));
@@ -93,7 +93,7 @@ class AdminMfaStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("5번 틀리면 15분 잠그고 운영자 알림 job을 남긴다. 잠긴 동안은 맞는 코드도 받지 않는다")
+  @DisplayName("T63: 5번 틀리면 15분 잠그고 운영자 알림 job을 남긴다. 잠긴 동안은 맞는 코드도 받지 않는다")
   void lockAfterFiveFailures() {
     byte[] secret = enrolled();
     clock.set(T0.plusSeconds(120));
@@ -120,7 +120,7 @@ class AdminMfaStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("복구 코드는 한 번만 쓸 수 있고, 초기화하면 다시 등록할 수 있다")
+  @DisplayName("T63: 복구 코드는 한 번만 쓸 수 있고, 초기화하면 다시 등록할 수 있다")
   void recoveryCodesAndReset() {
     AdminMfaStore.Enrollment enrollment = store.enroll(admin);
     store.confirm(admin, code(decode(enrollment.secret()), 0));

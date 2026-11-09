@@ -17,6 +17,7 @@ import com.lottery.lottery_service.support.MySqlContainerSupport;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -157,6 +158,69 @@ class AccountWebMySqlTest extends MySqlContainerSupport {
                 "SELECT state FROM member WHERE id = ?", String.class, member.memberId()))
         .isEqualTo("WITHDRAWING");
     assertThat(sessions.findById(sessionId)).isNull();
+  }
+
+  @Test
+  @DisplayName("T62: 다른 계정으로 돌아와 재인증을 마치지 못한 세션과 6분 전에 재인증한 세션의 탈퇴는 모두 403이고, 세션과 회원은 그대로다")
+  void withdrawRejectsUnfinishedOrStaleReauthentication() throws Exception {
+    assertWithdrawRejectedAndSessionKept("reauth-other", false);
+    assertWithdrawRejectedAndSessionKept("reauth-stale", true);
+  }
+
+  private void assertWithdrawRejectedAndSessionKept(
+      String providerUserId, boolean staleReauthentication) throws Exception {
+    MemberPrincipal member =
+        MemberPrincipal.of(
+            accounts.login(OAuthProvider.KAKAO, providerUserId), OAuthProvider.KAKAO);
+    MvcResult state =
+        mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
+    String csrf = json.readTree(state.getResponse().getContentAsString()).get("csrfToken").asText();
+    String setCookie = state.getResponse().getHeader("Set-Cookie");
+    String cookieValue = setCookie.substring(setCookie.indexOf('=') + 1, setCookie.indexOf(';'));
+    Cookie session = new Cookie("__Host-lottery_session", cookieValue);
+    String sessionId =
+        new String(java.util.Base64.getDecoder().decode(cookieValue), StandardCharsets.UTF_8);
+    Session stored = sessions.findById(sessionId);
+    if (staleReauthentication) {
+      stored.setAttribute(
+          "com.lottery.lottery_service.auth.Reauthentication.completedAt",
+          Instant.now().minus(Duration.ofMinutes(6)));
+    } else {
+      stored.setAttribute(
+          "com.lottery.lottery_service.auth.Reauthentication.pendingMemberId", member.memberId());
+    }
+    saveSession(stored);
+    String token =
+        json.readTree(
+                mvc.perform(
+                        post("/api/v1/command-tokens")
+                            .cookie(session)
+                            .with(oauth2Login().oauth2User(member))
+                            .header("X-CSRF-TOKEN", csrf)
+                            .contentType("application/json")
+                            .content("{\"operation\":\"WITHDRAW\"}"))
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString())
+            .get("token")
+            .asText();
+
+    mvc.perform(
+            delete("/api/v1/me/account")
+                .cookie(session)
+                .with(oauth2Login().oauth2User(member))
+                .header("X-CSRF-TOKEN", csrf)
+                .header("X-Command-Token", token)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content("{\"expectedVersion\":\"0\"}"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("REAUTH_REQUIRED"));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM member WHERE id = ?", String.class, member.memberId()))
+        .isEqualTo("ACTIVE");
+    assertThat(sessions.findById(sessionId)).isNotNull();
   }
 
   @SuppressWarnings("unchecked")
