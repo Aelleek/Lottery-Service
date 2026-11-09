@@ -160,8 +160,8 @@ public class WorkerScheduler {
     }
   }
 
-  /** 접수 여부를 모르는 메시지를 제공자에 조회해 반영한다. */
-  @Scheduled(fixedDelay = 60_000)
+  /** 접수 여부를 모르는 메시지를 제공자에 조회해 반영한다. 기본 10분 간격이다(07 1절, 초기 설정값). */
+  @Scheduled(fixedDelayString = "${lottery.worker.unknown-sweep-ms:600000}")
   public void reconcileUnknownMessages() {
     int resolved = sweep.run(UnknownMessageSweep.MAX_LOOKUPS);
     if (resolved > 0) {
