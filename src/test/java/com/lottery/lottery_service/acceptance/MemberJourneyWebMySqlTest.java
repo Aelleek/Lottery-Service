@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
+import com.lottery.lottery_service.account.ClaimResult;
+import com.lottery.lottery_service.account.SubjectClaimStore;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.job.JobRunner;
@@ -41,8 +43,8 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /**
- * 회원 한 명의 회차 흐름을 웹 API로 끝까지 확인한다(08 2절 단계 10). 추천 → 구매 등록 → 마감 → 결과 게시 → 판정 → 결과·내역·즉시 확인. 결과 원천만
- * 게시기 호출로 대신한다(08 3절).
+ * 회원 한 명의 회차 흐름을 웹 API로 끝까지 확인한다(08 2절 단계 10). 추천 → 구매 등록 → 마감 → 결과 게시 → 판정 → 결과·내역·즉시 확인. 결과 원천은
+ * 게시기 호출로, 로그인 때의 비회원 귀속은 귀속 저장소 호출로 대신한다(08 3절, 로그인 처리기는 {@code LoginSuccessHandlerMySqlTest}).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -57,6 +59,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
   @Autowired private AccountStore accounts;
   @Autowired private ResultPublisher publisher;
   @Autowired private JobRunner jobs;
+  @Autowired private SubjectClaimStore claims;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private ObjectMapper json;
 
@@ -187,6 +190,122 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.items[0].evaluation.rank").value(4))
         .andExpect(jsonPath("$.items[0].evaluation.prizePerGame").value("50000"));
+  }
+
+  @Test
+  @DisplayName("비회원이 추천받은 뒤 로그인해 귀속하고 가져오면, 마감·게시·판정 뒤 회원 내역에 그 5세트가 추천 기록으로 판정되어 있다")
+  void guestRecommendClaimImportAndView() throws Exception {
+    int round = ROUND + 1;
+    Instant now = rounds.dbNow();
+    rounds.register(
+        new RoundSchedule(
+            round, now.minus(Duration.ofDays(1)), now.plusSeconds(3600), now.plusSeconds(7200), 1));
+    MvcResult issued = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
+    Cookie guest = issued.getResponse().getCookie("__Host-lottery_guest");
+    String guestCsrf = body(issued).get("csrfToken").asText();
+    String guestToken =
+        body(mvc.perform(
+                    post("/api/v1/command-tokens")
+                        .cookie(guest)
+                        .header("X-CSRF-TOKEN", guestCsrf)
+                        .contentType("application/json")
+                        .content(
+                            "{\"operation\":\"RECOMMEND\",\"round\":"
+                                + round
+                                + ",\"scheduleVersion\":\"1\"}"))
+                .andExpect(status().isOk())
+                .andReturn())
+            .get("token")
+            .asText();
+    JsonNode sets =
+        body(mvc.perform(
+                    post("/api/v1/lotto/recommendations")
+                        .cookie(guest)
+                        .header("X-CSRF-TOKEN", guestCsrf)
+                        .header("X-Command-Token", guestToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType("application/json")
+                        .content(
+                            "{\"round\":"
+                                + round
+                                + ",\"scheduleVersion\":\"1\",\"include\":[],\"exclude\":[]}"))
+                .andExpect(status().isOk())
+                .andReturn())
+            .get("data")
+            .get("sets");
+    List<String> guestRecords = new ArrayList<>();
+    sets.forEach(set -> guestRecords.add(set.get("recordId").asText()));
+    mvc.perform(
+            get("/api/v1/guest/lotto/records")
+                .param("round", Integer.toString(round))
+                .cookie(guest))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(5));
+
+    member =
+        MemberPrincipal.of(accounts.login(OAuthProvider.NAVER, "from-guest"), OAuthProvider.NAVER);
+    long guestSubject =
+        jdbc.queryForObject(
+            "SELECT owner_subject_id FROM lotto_record WHERE public_id = UUID_TO_BIN(?)",
+            Long.class,
+            guestRecords.get(0));
+    assertThat(claims.claim(guestSubject, member.subjectId())).isEqualTo(ClaimResult.CLAIMED);
+    String claimId =
+        jdbc.queryForObject(
+            "SELECT BIN_TO_UUID(public_id) FROM subject_claim WHERE guest_subject_id = ?",
+            String.class,
+            guestSubject);
+    MvcResult state =
+        mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
+    csrf = body(state).get("csrfToken").asText();
+    String setCookie = state.getResponse().getHeader("Set-Cookie");
+    session =
+        new Cookie(
+            "__Host-lottery_session",
+            setCookie.substring(setCookie.indexOf('=') + 1, setCookie.indexOf(';')));
+
+    String operationId =
+        body(mvc.perform(
+                    command(
+                            post("/api/v1/me/guest-claims/" + claimId + "/imports"),
+                            "{\"operation\":\"IMPORT_GUEST\"}")
+                        .content("{\"confirm\":true}"))
+                .andExpect(status().isAccepted())
+                .andReturn())
+            .get("operationId")
+            .asText();
+    for (int i = 0; i < 20 && jobs.runOnce().isPresent(); i++) {}
+    mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(member)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("SUCCEEDED"));
+
+    jdbc.update(
+        "UPDATE lotto_round SET sales_close_at = NOW(6), draw_at = NOW(6) WHERE round_no = ?",
+        round);
+    assertThat(rounds.sealDue()).contains(round);
+    publisher.receive(
+        new OfficialDraw(
+            round,
+            new WinningNumbers(LottoNumbers.of(40, 41, 42, 43, 44, 45), LottoNumber.of(39)),
+            2_000_000_000L,
+            10L,
+            new byte[32]));
+    for (int i = 0; i < 20 && jobs.runOnce().isPresent(); i++) {}
+
+    JsonNode items =
+        body(mvc.perform(
+                    get("/api/v1/me/lotto/records")
+                        .param("round", Integer.toString(round))
+                        .with(oauth2Login().oauth2User(member)))
+                .andExpect(status().isOk())
+                .andReturn())
+            .get("items");
+    assertThat(items).hasSize(5);
+    for (JsonNode item : items) {
+      assertThat(item.get("recommended").asBoolean()).isTrue();
+      assertThat(item.get("purchased").asBoolean()).isFalse();
+      assertThat(item.get("evaluation").get("state").asText()).isEqualTo("EVALUATED");
+    }
   }
 
   private MockHttpServletRequestBuilder command(
