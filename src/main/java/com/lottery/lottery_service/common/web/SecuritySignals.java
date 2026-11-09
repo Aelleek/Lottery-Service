@@ -73,6 +73,12 @@ public class SecuritySignals {
     return result;
   }
 
+  /** 알림을 남기지 못한 합계를 다음 창에 되돌려 넣는다. 경로별 내역은 가장 많이 걸린 경로 하나로 합친다. */
+  public synchronized void restore(Kind kind, Summary summary) {
+    Map<String, Long> paths = counts.computeIfAbsent(kind, k -> new HashMap<>());
+    paths.merge(summary.topPath(), summary.count(), Long::sum);
+  }
+
   static Optional<Kind> kindOf(ErrorCode code) {
     if (code == ErrorCode.CSRF_REJECTED) {
       return Optional.of(Kind.CSRF_REJECTED);

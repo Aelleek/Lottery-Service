@@ -20,6 +20,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -39,7 +40,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li>회차 계획: 10분마다 추첨이 하루 안팎인 회차의 발송 슬롯 job과 첫 결과 수집 job을 등록한다(중복 키로 한 번만).
  *   <li>미평가 대조: 매시간 판정이 빠진 기록에 판정 job을 등록한다.
  *   <li>집계: 매시간 최근 기간을 다시 계산하고 보정 기간이 끝난 기간을 확정한다.
- *   <li>접수 대조: 1분마다 접수 여부를 모르는 메시지를 최대 20건 제공자에 조회해 반영한다.
+ *   <li>접수 대조: 10분마다 접수 여부를 모르는 메시지를 최대 20건 제공자에 조회해 반영한다.
  *   <li>발송 감시: 매시간 예산 80% 도달과 24시간 넘은 접수 확인을 운영자에게 알린다.
  *   <li>예산 월 전환: 매월 1일 00:00(서울) 그 달 예산 행을 만든다.
  *   <li>보관 정리: 매일 04:00(서울) 끝난 job, 만료된 비회원 자격, 빈 비회원 주체를 정리하고, 알림 계획 완료를 확인하고, 보관 기간이 지난 기록을 지우고,
@@ -56,7 +57,7 @@ public class WorkerScheduler {
 
   static final int RECORD_CLEANUP_BATCH = 500;
 
-  /** 보안 신호 알림 기준. 10분 동안 한 종류가 이만큼 넘으면 알린다(07 2.1절, 초기 설정값). */
+  /** 보안 신호 알림 기준. 10분 동안 한 종류가 이 수를 넘으면 알린다(07 2.1절, 초기 설정값). */
   static final long SECURITY_SIGNAL_THRESHOLD = 1_000;
 
   private final JobRunner runner;
@@ -199,24 +200,32 @@ public class WorkerScheduler {
   @Scheduled(fixedRate = 600_000, initialDelay = 600_000)
   public void alertSecuritySignals() {
     Instant now = clock.instant();
-    signals
-        .drain()
-        .forEach(
-            (kind, summary) -> {
-              if (summary.count() >= SECURITY_SIGNAL_THRESHOLD) {
-                jobs.enqueue(
-                    JobStore.OPERATOR_ALERT,
-                    "security-signal:" + kind + ":" + now,
-                    "{\"kind\":\"SECURITY_SIGNAL\",\"signal\":\""
-                        + kind
-                        + "\",\"count\":"
-                        + summary.count()
-                        + ",\"topPath\":\""
-                        + summary.topPath()
-                        + "\"}",
-                    now);
-              }
-            });
+    Map<SecuritySignals.Kind, SecuritySignals.Summary> drained = signals.drain();
+    for (Map.Entry<SecuritySignals.Kind, SecuritySignals.Summary> e : drained.entrySet()) {
+      SecuritySignals.Summary summary = e.getValue();
+      if (summary.count() <= SECURITY_SIGNAL_THRESHOLD) {
+        continue;
+      }
+      try {
+        jobs.enqueue(
+            JobStore.OPERATOR_ALERT,
+            "security-signal:" + e.getKey() + ":" + now,
+            "{\"kind\":\"SECURITY_SIGNAL\",\"signal\":\""
+                + e.getKey()
+                + "\",\"count\":"
+                + summary.count()
+                + ",\"topPath\":\""
+                + summary.topPath()
+                + "\"}",
+            now);
+      } catch (RuntimeException ex) {
+        signals.restore(e.getKey(), summary);
+        log.warn(
+            "security signal alert failed kind={} cause={}",
+            e.getKey(),
+            ex.getClass().getSimpleName());
+      }
+    }
   }
 
   /** 매일 보관 정리. */

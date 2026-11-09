@@ -42,15 +42,14 @@ class ApiExceptionHandlerTest {
       "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
   private MockMvc mockMvc;
+  private final com.lottery.lottery_service.common.web.SecuritySignals signals =
+      new com.lottery.lottery_service.common.web.SecuritySignals();
 
   @BeforeEach
   void setUp() {
     mockMvc =
         MockMvcBuilders.standaloneSetup(new ProbeController())
-            .setControllerAdvice(
-                new ApiExceptionHandler(
-                    Clock.fixed(NOW, ZoneOffset.UTC),
-                    new com.lottery.lottery_service.common.web.SecuritySignals()))
+            .setControllerAdvice(new ApiExceptionHandler(Clock.fixed(NOW, ZoneOffset.UTC), signals))
             .addFilters(new RequestIdFilter())
             .build();
   }
@@ -87,6 +86,22 @@ class ApiExceptionHandlerTest {
         .andExpect(jsonPath("$.retryable").value(true))
         .andExpect(jsonPath("$.details.retryAt").value("2026-11-07T10:59:30.200Z"))
         .andExpect(header().string("Retry-After", "31"));
+    assertThat(signals.drain())
+        .containsOnlyKeys(
+            com.lottery.lottery_service.common.web.SecuritySignals.Kind.TOO_MANY_REQUESTS);
+  }
+
+  @Test
+  @DisplayName("출처 검사 거절과 CSRF 거절은 보안 신호로 세고, 다른 업무 오류는 세지 않는다")
+  void recordsSecuritySignals() throws Exception {
+    for (String code : new String[] {"ORIGIN_REJECTED", "CSRF_REJECTED", "ROUND_CHANGED"}) {
+      mockMvc.perform(get("/probe/business").param("code", code));
+    }
+
+    assertThat(signals.drain())
+        .containsOnlyKeys(
+            com.lottery.lottery_service.common.web.SecuritySignals.Kind.ORIGIN_REJECTED,
+            com.lottery.lottery_service.common.web.SecuritySignals.Kind.CSRF_REJECTED);
   }
 
   @Test

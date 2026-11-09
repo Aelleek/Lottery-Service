@@ -474,6 +474,28 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     assertThat(runner(id -> new SendOutcome.Accepted("x")).run(ROUND, slot(true, false)).cause())
         .isEqualTo("RESULT_NOT_PUBLISHED");
     assertThat(alerts()).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT JSON_TYPE(JSON_EXTRACT(payload, '$.targets')) FROM job"
+                    + " WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .isEqualTo("NULL");
+  }
+
+  @Test
+  @DisplayName("슬롯 실패 알림의 대상 수는 SUPPRESSED 메시지를 세지 않는다")
+  void slotAlertTargetsExcludeSuppressed() {
+    tx.execute(s -> store.createMissing(ROUND));
+    jdbc.update(
+        "UPDATE delivery_message SET state = 'SUPPRESSED' WHERE id = ?", message(thirdMember));
+
+    runner(id -> new SendOutcome.NotAccepted("E")).run(ROUND, slot(true, false));
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT JSON_EXTRACT(payload, '$.targets') FROM job WHERE job_type = 'OPERATOR_ALERT'",
+                Integer.class))
+        .isEqualTo(1);
   }
 
   @Test

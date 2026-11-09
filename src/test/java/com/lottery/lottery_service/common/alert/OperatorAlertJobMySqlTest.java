@@ -96,6 +96,14 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
         .contains("PARTIAL_FAILURE")
         .contains("3건")
         .contains("다시 보내기");
+    assertThat(
+            new OperatorAlertJobHandler(sent::add, jdbc)
+                .format(
+                    new ObjectMapper()
+                        .readTree(
+                            "{\"kind\":\"SLOT_FAILED\",\"roundNo\":1200,\"targets\":null,"
+                                + "\"cause\":\"RESULT_NOT_PUBLISHED\",\"failed\":0,\"unknown\":0}")))
+        .contains("원인 RESULT_NOT_PUBLISHED, 대상 수는 판정 뒤 정해짐, 미발송 0건");
   }
 
   @Test

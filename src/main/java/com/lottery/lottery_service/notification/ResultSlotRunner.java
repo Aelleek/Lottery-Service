@@ -58,7 +58,7 @@ public class ResultSlotRunner {
                       + ",\"slotAt\":\""
                       + slot.at()
                       + "\",\"targets\":"
-                      + targets(roundNo)
+                      + targets(roundNo, result.cause())
                       + ",\"cause\":\""
                       + result.cause()
                       + "\",\"failed\":"
@@ -149,12 +149,16 @@ public class ResultSlotRunner {
     return !pending.isEmpty();
   }
 
-  private long targets(int roundNo) {
-    return jdbc.queryForObject(
-        "SELECT COUNT(*) FROM delivery_message WHERE round_no = ? AND purpose = 'RESULT'"
-            + " AND state <> 'SUPPRESSED'",
-        Long.class,
-        roundNo);
+  private String targets(int roundNo, String cause) {
+    if ("RESULT_NOT_PUBLISHED".equals(cause) || "EVALUATION_PENDING".equals(cause)) {
+      return "null";
+    }
+    return String.valueOf(
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM delivery_message WHERE round_no = ? AND purpose = 'RESULT'"
+                + " AND state <> 'SUPPRESSED'",
+            Long.class,
+            roundNo));
   }
 
   private String stateOf(long id) {

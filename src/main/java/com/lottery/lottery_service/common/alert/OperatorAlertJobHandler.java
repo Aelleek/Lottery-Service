@@ -88,7 +88,9 @@ public class OperatorAlertJobHandler implements JobHandler {
               : "")
           + ", 원인 "
           + payload.path("cause").asText()
-          + (payload.has("targets") ? ", 대상 " + payload.path("targets").asLong() + "명" : "")
+          + (payload.path("targets").isNumber()
+              ? ", 대상 " + payload.path("targets").asLong() + "명"
+              : payload.has("targets") ? ", 대상 수는 판정 뒤 정해짐" : "")
           + ", 미발송 "
           + payload.path("failed").asInt()
           + "건, 접수 확인 중 "

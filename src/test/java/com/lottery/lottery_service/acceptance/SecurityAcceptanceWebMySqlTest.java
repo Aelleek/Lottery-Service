@@ -191,6 +191,8 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
         .andExpect(status().isTooManyRequests())
         .andExpect(header().exists("Retry-After"))
         .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+    assertThat(signals.drain().get(SecuritySignals.Kind.TOO_MANY_REQUESTS))
+        .isEqualTo(new SecuritySignals.Summary(1, "/api/v1/lotto/rounds/{id}/result"));
     mvc.perform(
             get("/api/v1/lotto/rounds/" + ROUND + "/result").with(r -> remote(r, "198.51.100.8")))
         .andExpect(status().is2xxSuccessful());
