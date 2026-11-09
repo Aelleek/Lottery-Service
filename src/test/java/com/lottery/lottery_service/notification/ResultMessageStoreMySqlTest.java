@@ -488,6 +488,13 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
             .run(ROUND, slot(true, false));
     assertThat(first.cause()).isEqualTo("PARTIAL_FAILURE");
     assertThat(first.failed()).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT CONCAT(JSON_EXTRACT(payload, '$.targets'), ' ',"
+                    + " JSON_UNQUOTE(JSON_EXTRACT(payload, '$.slotAt'))) FROM job"
+                    + " WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .isEqualTo("2 " + clock.instant());
 
     List<Long> called = new ArrayList<>();
     runner(

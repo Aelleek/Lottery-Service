@@ -6,6 +6,9 @@ import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
 import com.lottery.lottery_service.common.job.JobStore;
+import com.lottery.lottery_service.common.time.SeoulTime;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,6 +22,7 @@ import org.springframework.stereotype.Component;
 public class OperatorAlertJobHandler implements JobHandler {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final DateTimeFormatter SLOT_TIME = DateTimeFormatter.ofPattern("M월 d일 HH:mm");
 
   private final OperatorAlertSender sender;
   private final JdbcTemplate jdbc;
@@ -73,8 +77,16 @@ public class OperatorAlertJobHandler implements JobHandler {
       }
       case "SLOT_FAILED" -> "[결과 알림 슬롯 실패] "
           + payload.path("roundNo").asInt()
-          + "회, 원인 "
+          + "회"
+          + (payload.path("slotAt").isTextual()
+              ? " "
+                  + SLOT_TIME.format(
+                      SeoulTime.atSeoul(Instant.parse(payload.path("slotAt").asText())))
+                  + " 슬롯"
+              : "")
+          + ", 원인 "
           + payload.path("cause").asText()
+          + (payload.has("targets") ? ", 대상 " + payload.path("targets").asLong() + "명" : "")
           + ", 미발송 "
           + payload.path("failed").asInt()
           + "건, 접수 확인 중 "

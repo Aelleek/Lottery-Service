@@ -55,6 +55,10 @@ public class ResultSlotRunner {
                   "slot-failed:" + roundNo + ":" + slot.at(),
                   "{\"kind\":\"SLOT_FAILED\",\"roundNo\":"
                       + roundNo
+                      + ",\"slotAt\":\""
+                      + slot.at()
+                      + "\",\"targets\":"
+                      + targets(roundNo)
                       + ",\"cause\":\""
                       + result.cause()
                       + "\",\"failed\":"
@@ -143,6 +147,14 @@ public class ResultSlotRunner {
             Integer.class,
             roundNo);
     return !pending.isEmpty();
+  }
+
+  private long targets(int roundNo) {
+    return jdbc.queryForObject(
+        "SELECT COUNT(*) FROM delivery_message WHERE round_no = ? AND purpose = 'RESULT'"
+            + " AND state <> 'SUPPRESSED'",
+        Long.class,
+        roundNo);
   }
 
   private String stateOf(long id) {

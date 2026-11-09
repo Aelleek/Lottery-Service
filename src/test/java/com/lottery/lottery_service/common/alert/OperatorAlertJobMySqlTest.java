@@ -79,17 +79,19 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("슬롯 실패 알림은 회차, 원인, 건수를 담고 마지막 슬롯이면 다시 보내기를 안내한다")
+  @DisplayName("슬롯 실패 알림은 회차, 슬롯 시각(서울), 원인, 대상 수, 건수를 담고 마지막 슬롯이면 다시 보내기를 안내한다")
   void slotFailedFormat() throws Exception {
     String text =
         new OperatorAlertJobHandler(sent::add, jdbc)
             .format(
                 new ObjectMapper()
                     .readTree(
-                        "{\"kind\":\"SLOT_FAILED\",\"roundNo\":1200,\"cause\":\"PARTIAL_FAILURE\","
-                            + "\"failed\":3,\"unknown\":1,\"last\":true}"));
+                        "{\"kind\":\"SLOT_FAILED\",\"roundNo\":1200,"
+                            + "\"slotAt\":\"2026-11-14T13:00:00Z\",\"targets\":12,"
+                            + "\"cause\":\"PARTIAL_FAILURE\",\"failed\":3,\"unknown\":1,\"last\":true}"));
 
     assertThat(text)
+        .startsWith("[결과 알림 슬롯 실패] 1200회 11월 14일 22:00 슬롯, 원인 PARTIAL_FAILURE, 대상 12명, 미발송 3건")
         .contains("1200회")
         .contains("PARTIAL_FAILURE")
         .contains("3건")
