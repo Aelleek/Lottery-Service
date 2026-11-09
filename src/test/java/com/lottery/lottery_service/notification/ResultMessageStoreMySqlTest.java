@@ -2,6 +2,7 @@ package com.lottery.lottery_service.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.admin.AdminRole;
@@ -612,6 +613,84 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     assertThatThrownBy(() -> new RoundNotificationStatusQuery(jdbc, clock).status(9999))
         .isInstanceOfSatisfying(
             BusinessException.class, e -> assertThat(e.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
+  }
+
+  @Test
+  @DisplayName("알림 현황은 실행 중·실패·원인 있는 성공 슬롯을 구분하고, 실행 전·취소 슬롯은 빼며, 격리·미게시 결과와 마감을 보여 준다")
+  void notificationStatusBranches() {
+    jdbc.update("DELETE FROM job");
+    slotJob("a", "SUCCEEDED", "2026-11-14T12:30:00Z", false, false, null, null);
+    slotJob("b", "DEAD", "2026-11-14T13:00:00Z", true, false, "PARTIAL_FAILURE", 2);
+    slotJob("c", "SUCCEEDED", "2026-11-14T13:30:00Z", false, false, "BUDGET_EXHAUSTED", 1);
+    slotJob("d", "RETRY_WAIT", "2026-11-14T14:00:00Z", true, false, "PARTIAL_FAILURE", 3);
+    slotJob("e", "RUNNING", "2026-11-14T14:30:00Z", false, false, null, null);
+    slotJob("f", "READY", "2026-11-15T03:00:00Z", false, true, null, null);
+    slotJob("g", "CANCELED", "2026-11-15T03:30:00Z", false, false, null, null);
+    Instant published =
+        jdbc.queryForObject("SELECT published_at FROM draw_result", LocalDateTime.class)
+            .toInstant(ZoneOffset.UTC);
+    clock.set(published.plusSeconds(3600));
+    RoundNotificationStatusQuery query = new RoundNotificationStatusQuery(jdbc, clock);
+
+    RoundNotificationStatusQuery.Status status = query.status(ROUND);
+    assertThat(status.slots())
+        .extracting(
+            RoundNotificationStatusQuery.Slot::outcome,
+            RoundNotificationStatusQuery.Slot::causeCode,
+            RoundNotificationStatusQuery.Slot::failedCount,
+            RoundNotificationStatusQuery.Slot::operatorAlerted)
+        .containsExactly(
+            tuple("SUCCEEDED", null, 0, false),
+            tuple("FAILED", "PARTIAL_FAILURE", 2, true),
+            tuple("FAILED", "BUDGET_EXHAUSTED", 1, false),
+            tuple("RUNNING", null, 3, false),
+            tuple("RUNNING", null, 0, false));
+    assertThat(status.autoDispatchClosed()).isFalse();
+    assertThat(status.manualDispatchUntil())
+        .isEqualTo(published.plus(NotificationPlanCloser.RESEND_WINDOW));
+
+    jdbc.update("UPDATE job SET state = 'SUCCEEDED' WHERE dedupe_key = 'f'");
+    assertThat(query.status(ROUND).autoDispatchClosed()).isTrue();
+    jdbc.update("UPDATE job SET state = 'READY' WHERE dedupe_key = 'f'");
+    clock.set(published.plus(NotificationPlanCloser.RESEND_WINDOW));
+    assertThat(query.status(ROUND).autoDispatchClosed()).isTrue();
+
+    jdbc.update("UPDATE lotto_round SET published_result_id = NULL");
+    jdbc.update("UPDATE draw_result SET state = 'QUARANTINED'");
+    RoundNotificationStatusQuery.Status quarantined = query.status(ROUND);
+    assertThat(quarantined.resultState()).isEqualTo("QUARANTINED");
+    assertThat(quarantined.manualDispatchUntil()).isNull();
+    assertThat(quarantined.autoDispatchClosed()).isFalse();
+    jdbc.update("UPDATE draw_result SET state = 'SUPERSEDED'");
+    assertThat(query.status(ROUND).resultState()).isEqualTo("NOT_PUBLISHED");
+  }
+
+  private void slotJob(
+      String key,
+      String state,
+      String at,
+      boolean alert,
+      boolean last,
+      String cause,
+      Integer failed) {
+    jdbc.update(
+        "INSERT INTO job (public_id, job_type, dedupe_key, state, payload, cursor_json,"
+            + " available_at, last_error_code) VALUES (UUID_TO_BIN(UUID()), ?, ?, ?, ?, ?, ?, ?)",
+        ResultSlotJobHandler.JOB,
+        key,
+        state,
+        "{\"roundNo\":"
+            + ROUND
+            + ",\"at\":\""
+            + at
+            + "\",\"alert\":"
+            + alert
+            + ",\"last\":"
+            + last
+            + "}",
+        failed == null ? null : "{\"failed\":" + failed + "}",
+        LocalDateTime.ofInstant(Instant.parse(at), ZoneOffset.UTC),
+        cause);
   }
 
   @Test
