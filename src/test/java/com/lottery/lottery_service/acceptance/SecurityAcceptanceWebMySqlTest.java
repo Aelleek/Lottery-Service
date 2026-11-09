@@ -146,6 +146,32 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("T60: HTTPS 요청에는 03 6.2의 헤더 값이 모두 있고, 개인 자료 응답은 저장하지 않게 한다")
+  void productionHeaderValues() throws Exception {
+    MemberPrincipal member = member("t60-headers");
+    mvc.perform(get("/api/v1/session").secure(true))
+        .andExpect(
+            header()
+                .string(
+                    "Content-Security-Policy",
+                    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;"
+                        + " connect-src 'self'; object-src 'none'; base-uri 'self';"
+                        + " frame-ancestors 'none'"))
+        .andExpect(
+            header().string("Strict-Transport-Security", "max-age=31536000 ; includeSubDomains"))
+        .andExpect(header().string("Referrer-Policy", "strict-origin-when-cross-origin"))
+        .andExpect(
+            header().string("Permissions-Policy", "camera=(self), microphone=(), geolocation=()"));
+    MvcResult records =
+        mvc.perform(
+                get("/api/v1/me/lotto/records").secure(true).with(oauth2Login().oauth2User(member)))
+            .andExpect(status().isOk())
+            .andReturn();
+    assertThat(records.getResponse().getHeader("Cache-Control")).contains("no-store");
+    assertThat(records.getResponse().getHeader("Access-Control-Allow-Origin")).isNull();
+  }
+
+  @Test
   @DisplayName("T61: 같은 IP의 회차 결과 조회 121번째는 429와 Retry-After, X-Forwarded-For를 바꿔도 같고 다른 IP는 통과")
   void roundResultRateLimit() throws Exception {
     registerRound();
