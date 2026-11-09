@@ -54,6 +54,7 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
             "recommendation_request",
             "lotto_record",
             "guest_credential",
+            "command_operation",
             "actor_subject",
             "member",
             "lotto_round")) {
@@ -84,6 +85,37 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM usage_event WHERE subject_id IS NULL", Long.class))
         .isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("표시 기한이 지난 멱등 기록만 지우고, 기한 전 기록은 남긴다(02 8절)")
+  void commandOperations() {
+    GuestCredential guest = new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys()).issue();
+    commandOperation(guest.subjectId(), T0.plus(Duration.ofDays(7)));
+    commandOperation(guest.subjectId(), T0.plus(Duration.ofDays(8)));
+    HousekeepingCleaner cleaner = new HousekeepingCleaner(jdbc, clock);
+
+    clock.set(T0.plus(Duration.ofDays(7)).minusSeconds(1));
+    assertThat(cleaner.deleteExpiredCommandOperations(100)).isZero();
+    clock.set(T0.plus(Duration.ofDays(7)));
+    assertThat(cleaner.deleteExpiredCommandOperations(100)).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT marker_expires_at FROM command_operation", java.time.LocalDateTime.class))
+        .isEqualTo(java.time.LocalDateTime.parse("2026-11-09T00:00:00"));
+  }
+
+  private void commandOperation(long subjectId, Instant markerExpiresAt) {
+    jdbc.update(
+        "INSERT INTO command_operation (public_id, subject_id, operation, token_id, client_key,"
+            + " request_hash, state, token_expires_at, marker_expires_at)"
+            + " VALUES (UUID_TO_BIN(UUID()), ?, 'RECOMMEND', UUID_TO_BIN(UUID()),"
+            + " UUID_TO_BIN(UUID()), ?, 'SUCCEEDED', ?, ?)",
+        subjectId,
+        new byte[32],
+        java.time.LocalDateTime.ofInstant(
+            markerExpiresAt.minus(Duration.ofDays(7)), java.time.ZoneOffset.UTC),
+        java.time.LocalDateTime.ofInstant(markerExpiresAt, java.time.ZoneOffset.UTC));
   }
 
   @Test

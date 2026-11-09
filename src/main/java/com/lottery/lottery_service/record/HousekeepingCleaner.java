@@ -53,6 +53,15 @@ public class HousekeepingCleaner {
         "DELETE FROM guest_credential WHERE expires_at <= ? OR revoked_at <= ?", cutoff, cutoff);
   }
 
+  /** 표시 기한(명령 토큰 만료 후 7일)이 지난 멱등 기록을 지운다(02 8절). 지운 뒤 같은 요청은 토큰 만료로 410을 받는다. */
+  public int deleteExpiredCommandOperations(int limit) {
+    return jdbc.update(
+        "DELETE FROM command_operation WHERE marker_expires_at <= ? ORDER BY marker_expires_at"
+            + " LIMIT ?",
+        utc(clock.instant()),
+        limit);
+  }
+
   /** 남은 자료가 없는 비회원 주체를 지운다. */
   public int deleteEmptyGuestSubjects(int limit) {
     List<Long> ids =

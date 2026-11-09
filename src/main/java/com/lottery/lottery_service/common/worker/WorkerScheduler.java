@@ -192,6 +192,7 @@ public class WorkerScheduler {
         status -> {
           housekeeping.deleteFinishedJobs();
           housekeeping.deleteExpiredGuestCredentials();
+          housekeeping.deleteExpiredCommandOperations(10_000);
           housekeeping.deleteEmptyGuestSubjects(1_000);
           housekeeping.clearMessageCopies(10_000);
           housekeeping.deleteAggregatedUsageEvents(10_000);
