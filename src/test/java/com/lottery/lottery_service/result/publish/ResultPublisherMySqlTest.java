@@ -100,7 +100,7 @@ class ResultPublisherMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("의미가 같은 결과를 다시 받으면 게시본을 새로 만들지 않고, 다른 결과는 격리하고 운영자 알림 1건(T14)")
+  @DisplayName("의미가 같은 결과를 다시 받으면 게시본을 새로 만들지 않고, 다른 결과는 격리하고 바뀐 항목을 담은 운영자 알림 1건(T14)")
   void sameAndDifferent() {
     publisher.receive(draw(WIN, null));
 
@@ -113,6 +113,19 @@ class ResultPublisherMySqlTest extends MySqlContainerSupport {
     assertThat(count("draw_result WHERE state = 'QUARANTINED'")).isEqualTo(1);
     assertThat(count("job WHERE job_type = 'OPERATOR_ALERT'")).isEqualTo(1);
     assertThat(round().get("publication_version")).isEqualTo(1L);
+
+    assertThat(
+            publisher.receive(
+                draw(
+                    new WinningNumbers(LottoNumbers.of(3, 11, 19, 27, 36, 44), LottoNumber.of(8)),
+                    null)))
+        .isEqualTo(ReceiveOutcome.QUARANTINED);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT CAST(JSON_EXTRACT(payload, '$.changed') AS CHAR) FROM job"
+                    + " WHERE job_type = 'OPERATOR_ALERT' ORDER BY id",
+                String.class))
+        .containsExactly("[\"NUMBERS\"]", "[\"BONUS\"]");
   }
 
   @Test

@@ -65,7 +65,9 @@ public class OperatorAlertJobHandler implements JobHandler {
           + "명. 정정 알림은 보내지 않습니다. 새로 대상이 된 회원은 자동 슬롯 기간이 지났으면 다시 보내기로 보낼 수 있습니다.";
       case "RESULT_QUARANTINED" -> "[결과 격리] "
           + payload.path("roundNo").asInt()
-          + "회 결과가 게시본과 달라 격리했습니다. 승인이 필요합니다.";
+          + "회 결과가 게시본과 달라 격리했습니다."
+          + changedNames(payload.path("changed"))
+          + " 승인이 필요합니다.";
       case "MESSAGE_UNRESOLVED" -> {
         List<Integer> rounds =
             jdbc.queryForList(
@@ -163,6 +165,19 @@ public class OperatorAlertJobHandler implements JobHandler {
           + "`.";
       default -> "[운영자 알림] " + kind;
     };
+  }
+
+  private static String changedNames(JsonNode changed) {
+    List<String> names = new java.util.ArrayList<>();
+    changed.forEach(
+        field -> {
+          switch (field.asText()) {
+            case "NUMBERS" -> names.add("당첨 번호");
+            case "BONUS" -> names.add("보너스 번호");
+            default -> names.add("기타");
+          }
+        });
+    return names.isEmpty() ? "" : " 바뀐 항목: " + String.join(", ", names) + ".";
   }
 
   private static String signalName(String signal) {

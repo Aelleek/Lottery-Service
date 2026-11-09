@@ -13,6 +13,7 @@ import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -73,7 +74,8 @@ public class ResultPublisher {
     long published = ((Number) publishedId).longValue();
     Map<String, Object> current =
         jdbc.queryForMap(
-            "SELECT semantic_hash, source, api_confirmed_at FROM draw_result WHERE id = ?",
+            "SELECT semantic_hash, source, api_confirmed_at, numbers_key, bonus_number"
+                + " FROM draw_result WHERE id = ?",
             published);
     if (MessageDigest.isEqual((byte[]) current.get("semantic_hash"), draw.semanticHash())) {
       if ("MANUAL".equals(current.get("source")) && current.get("api_confirmed_at") == null) {
@@ -107,9 +109,22 @@ public class ResultPublisher {
             + draw.roundNo()
             + ",\"resultId\":"
             + id
+            + ",\"changed\":"
+            + changedFields(current, draw)
             + "}",
         clock.instant());
     return ReceiveOutcome.QUARANTINED;
+  }
+
+  private static String changedFields(Map<String, Object> published, OfficialDraw draw) {
+    List<String> changed = new ArrayList<>();
+    if (!draw.winning().main().key().equals(published.get("numbers_key"))) {
+      changed.add("\"NUMBERS\"");
+    }
+    if (draw.winning().bonus().value() != ((Number) published.get("bonus_number")).intValue()) {
+      changed.add("\"BONUS\"");
+    }
+    return "[" + String.join(",", changed) + "]";
   }
 
   /**

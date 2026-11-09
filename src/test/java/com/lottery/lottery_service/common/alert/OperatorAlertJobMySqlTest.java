@@ -194,6 +194,11 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
     assertThat(
             handler.format(
                 mapper.readTree(
+                    "{\"kind\":\"RESULT_QUARANTINED\",\"roundNo\":1200,\"changed\":[\"NUMBERS\",\"BONUS\"]}")))
+        .isEqualTo("[결과 격리] 1200회 결과가 게시본과 달라 격리했습니다. 바뀐 항목: 당첨 번호, 보너스 번호. 승인이 필요합니다.");
+    assertThat(
+            handler.format(
+                mapper.readTree(
                     "{\"kind\":\"ADMIN_CHANGE\",\"action\":\"ADMIN_GRANT\",\"role\":\"OPERATOR\"}")))
         .startsWith("[관리자 권한 변경] 권한 부여·역할 변경(역할 OPERATOR).");
     assertThat(
