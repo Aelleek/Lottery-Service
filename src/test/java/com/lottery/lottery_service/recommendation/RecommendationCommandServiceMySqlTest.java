@@ -125,7 +125,7 @@ class RecommendationCommandServiceMySqlTest extends MySqlContainerSupport {
     codec = new CommandTokenCodec(TestSecrets.keys(), clock);
     commands =
         new RecommendationCommandService(
-            codec, new CommandOperationStore(jdbc, tm, clock), service, jdbc);
+            codec, new CommandOperationStore(jdbc, tm, clock), service, jdbc, clock);
   }
 
   @Test
@@ -272,6 +272,22 @@ class RecommendationCommandServiceMySqlTest extends MySqlContainerSupport {
     assertCode(
         () -> recommend(token, key, RecommendationCondition.none(), 1), ErrorCode.RESPONSE_EXPIRED);
     assertThat(count("recommendation_request")).isZero();
+  }
+
+  @Test
+  @DisplayName("원본이 남아 있어도 응답 보관 기한이 지나면 같은 요청과 명령 조회는 410 RESPONSE_EXPIRED이고 번호를 다시 주지 않는다(T05)")
+  void responseRetentionPassed() {
+    String token = codec.issue(subjectPublicId, "RECOMMEND", ROUND, 1L);
+    UUID key = UUID.randomUUID();
+    RecommendationView first = recommend(token, key, RecommendationCondition.none(), 1);
+    clock.set(first.responseExpiresAt());
+
+    assertCode(
+        () -> recommend(token, key, RecommendationCondition.none(), 1), ErrorCode.RESPONSE_EXPIRED);
+    assertCode(
+        () -> commands.load(subject, first.operationId(), first.publicId(), "CREATED"),
+        ErrorCode.RESPONSE_EXPIRED);
+    assertThat(count("recommendation_request")).isEqualTo(1);
   }
 
   @Test

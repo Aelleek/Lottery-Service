@@ -16,6 +16,8 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -28,8 +30,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * 추천 명령 하나를 멱등하게 처리한다(06 1.1절). 같은 토큰·키·본문을 다시 보내면 새 추천이 아니라 처음 5세트를 돌려준다. 원본이 지워졌으면 {@code
- * RESPONSE_EXPIRED}다.
+ * 추천 명령 하나를 멱등하게 처리한다(06 1.1절). 같은 토큰·키·본문을 다시 보내면 새 추천이 아니라 처음 5세트를 돌려준다. 원본이 지워졌거나 응답 보관
+ * 기한(추첨일+30일)이 지났으면 {@code RESPONSE_EXPIRED}다.
  */
 @Component
 public class RecommendationCommandService implements CommandResultLoader {
@@ -44,17 +46,20 @@ public class RecommendationCommandService implements CommandResultLoader {
   private final CommandOperationStore operations;
   private final RecommendationService recommendations;
   private final JdbcTemplate jdbc;
+  private final Clock clock;
 
   /** 서비스를 만든다. */
   public RecommendationCommandService(
       CommandTokenCodec tokens,
       CommandOperationStore operations,
       RecommendationService recommendations,
-      JdbcTemplate jdbc) {
+      JdbcTemplate jdbc,
+      Clock clock) {
     this.tokens = tokens;
     this.operations = operations;
     this.recommendations = recommendations;
     this.jdbc = jdbc;
+    this.clock = clock;
   }
 
   /**
@@ -152,6 +157,10 @@ public class RecommendationCommandService implements CommandResultLoader {
     if (((Number) first.get("subject_id")).longValue() != subjectId) {
       throw new BusinessException(ErrorCode.NOT_FOUND, "요청한 내용을 찾을 수 없습니다.");
     }
+    Instant expiresAt = DbValues.instant((LocalDateTime) first.get("response_expires_at"));
+    if (!clock.instant().isBefore(expiresAt)) {
+      throw new BusinessException(ErrorCode.RESPONSE_EXPIRED, "추천 원본 보관 기간이 지났습니다.");
+    }
     List<UUID> recordIds = new ArrayList<>();
     for (Map<String, Object> row : rows) {
       recordIds.add(DbValues.uuid((byte[]) row.get("record_public_id")));
@@ -164,7 +173,7 @@ public class RecommendationCommandService implements CommandResultLoader {
         recordIds,
         (String) first.get("generation_mode"),
         (String) first.get("filter_version"),
-        DbValues.instant((LocalDateTime) first.get("response_expires_at")));
+        expiresAt);
   }
 
   static byte[] requestHash(int round, long scheduleVersion, RecommendationCondition condition) {
