@@ -22,8 +22,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 /** 가짜 SOLAPI 서버로 요청 형식과 응답 해석을 확인한다. 실제 발송 왕복은 출시 조건으로 따로 확인한다(08 3절). */
+@ExtendWith(OutputCaptureExtension.class)
 class SolapiClientTest {
 
   private final AtomicInteger status = new AtomicInteger(200);
@@ -148,6 +152,20 @@ class SolapiClientTest {
     status.set(500);
     assertThat(lookup.lookup(new MessageLookup.UnknownMessage(1, key, "M4V1", at)))
         .isInstanceOf(ProviderStatus.NotFound.class);
+  }
+
+  @Test
+  @DisplayName("JSON이 아닌 응답은 찾지 못함으로 보고, 로그에 응답 본문 조각(전화번호 등)을 남기지 않는다")
+  void malformedLookupResponseIsNotLogged(CapturedOutput output) {
+    SolapiMessageLookup lookup = new SolapiMessageLookup(client);
+    responseBody.set("{\"messageList\":{\"to\":tel01058219734}}");
+
+    assertThat(
+            lookup.lookup(
+                new MessageLookup.UnknownMessage(
+                    1, new byte[] {1}, "M4V1", Instant.parse("2026-11-08T12:31:00Z"))))
+        .isInstanceOf(ProviderStatus.NotFound.class);
+    assertThat(output.getAll()).contains("solapi lookup failed").doesNotContain("1058219734");
   }
 
   private SendOutcome send() {

@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.notification.solapi;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -180,12 +181,20 @@ public class SolapiClient {
         if (bytes.length > MAX_BODY) {
           throw new IOException("solapi response too large");
         }
-        JsonNode body = bytes.length == 0 ? json.createObjectNode() : json.readTree(bytes);
+        JsonNode body = bytes.length == 0 ? json.createObjectNode() : parse(bytes);
         return new Response(response.statusCode(), body == null ? json.createObjectNode() : body);
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new IOException("interrupted", e);
+    }
+  }
+
+  private JsonNode parse(byte[] bytes) throws IOException {
+    try {
+      return json.readTree(bytes);
+    } catch (JsonProcessingException e) {
+      throw new IOException("solapi response is not json");
     }
   }
 
