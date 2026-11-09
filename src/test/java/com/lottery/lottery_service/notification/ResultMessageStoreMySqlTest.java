@@ -517,7 +517,8 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("수동 다시 보내기는 HALTED 회원에게만 보내고 접수된 회원은 건드리지 않으며, 게시 후 7일이 지나면 거부한다(T37, T43)")
+  @DisplayName(
+      "수동 다시 보내기는 HALTED 회원에게만 보내고 접수된 회원은 건드리지 않으며, 알림의 접수 수는 같은 때 대조로 접수된 메시지를 세지 않고, 게시 후 7일이 지나면 거부한다(T37, T43)")
   void manualResend() {
     Instant published =
         jdbc.queryForObject("SELECT published_at FROM draw_result", LocalDateTime.class)
@@ -530,6 +531,8 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
                     : new SendOutcome.Accepted("M"))
         .run(ROUND, new ResultSlot(clock.instant(), true, true));
     assertThat(state(fourthMember)).isEqualTo("HALTED");
+    long reconciling = message(thirdMember);
+    jdbc.update("UPDATE delivery_message SET state = 'UNKNOWN' WHERE id = ?", reconciling);
     List<Long> called = new ArrayList<>();
     ManualResendService resend =
         new ManualResendService(
@@ -537,6 +540,8 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
             runner(
                 id -> {
                   called.add(id);
+                  jdbc.update(
+                      "UPDATE delivery_message SET state = 'ACCEPTED' WHERE id = ?", reconciling);
                   return new SendOutcome.Accepted("M2");
                 }),
             new JobStore(

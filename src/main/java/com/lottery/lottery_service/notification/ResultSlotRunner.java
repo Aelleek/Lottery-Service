@@ -79,13 +79,14 @@ public class ResultSlotRunner {
         jdbc.queryForObject(
             "SELECT published_result_id FROM lotto_round WHERE round_no = ?", Long.class, roundNo);
     if (published == null) {
-      return new SlotResult(false, "RESULT_NOT_PUBLISHED", 0, 0);
+      return new SlotResult(false, "RESULT_NOT_PUBLISHED", 0, 0, 0);
     }
     if (evaluationPending(roundNo)) {
-      return new SlotResult(false, "EVALUATION_PENDING", 0, 0);
+      return new SlotResult(false, "EVALUATION_PENDING", 0, 0, 0);
     }
     tx.execute(status -> messages.createMissing(roundNo));
     int failed = 0;
+    int sent = 0;
     boolean budgetShort = false;
     for (long id : messages.sendable(roundNo)) {
       Boolean ready;
@@ -112,7 +113,9 @@ public class ResultSlotRunner {
       }
       SendOutcome recorded = outcome;
       tx.executeWithoutResult(status -> messages.recordOutcome(id, recorded));
-      if (!(outcome instanceof SendOutcome.Accepted)) {
+      if (outcome instanceof SendOutcome.Accepted) {
+        sent++;
+      } else {
         failed++;
       }
     }
@@ -123,10 +126,10 @@ public class ResultSlotRunner {
             Integer.class,
             roundNo);
     if (failed == 0) {
-      return new SlotResult(true, null, 0, unknown);
+      return new SlotResult(true, null, 0, unknown, sent);
     }
     return new SlotResult(
-        false, budgetShort ? "BUDGET_EXHAUSTED" : "PARTIAL_FAILURE", failed, unknown);
+        false, budgetShort ? "BUDGET_EXHAUSTED" : "PARTIAL_FAILURE", failed, unknown, sent);
   }
 
   private boolean evaluationPending(int roundNo) {

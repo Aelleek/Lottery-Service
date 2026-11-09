@@ -70,9 +70,7 @@ public class ManualResendService {
                 "UPDATE delivery_message SET state = 'PENDING', version = version + 1"
                     + " WHERE round_no = ? AND purpose = 'RESULT' AND state IN ('HALTED','RETRY_WAIT')",
                 roundNo));
-    long acceptedBefore = accepted(roundNo);
     SlotResult result = runner.run(roundNo, new ResultSlot(now, false, false));
-    long sent = accepted(roundNo) - acceptedBefore;
     jobs.enqueue(
         JobStore.OPERATOR_ALERT,
         "manual-resend:" + roundNo + ":" + now,
@@ -83,7 +81,7 @@ public class ManualResendService {
             + ",\"actor\":\""
             + actor
             + "\",\"sent\":"
-            + sent
+            + result.sent()
             + ",\"failed\":"
             + result.failed()
             + ",\"unknown\":"
@@ -91,13 +89,5 @@ public class ManualResendService {
             + "}",
         now);
     return result;
-  }
-
-  private long accepted(int roundNo) {
-    return jdbc.queryForObject(
-        "SELECT COUNT(*) FROM delivery_message WHERE round_no = ? AND purpose = 'RESULT'"
-            + " AND state IN ('ACCEPTED','DELIVERED')",
-        Long.class,
-        roundNo);
   }
 }
