@@ -62,6 +62,14 @@ public class HousekeepingCleaner {
         limit);
   }
 
+  /** 보관 기한(기록 후 1년)이 지난 관리자 감사 기록을 지운다(02 8절, D-020). */
+  public int deleteExpiredAuditEvents(int limit) {
+    return jdbc.update(
+        "DELETE FROM admin_audit_event WHERE expires_at <= ? ORDER BY expires_at LIMIT ?",
+        utc(clock.instant()),
+        limit);
+  }
+
   /** 남은 자료가 없는 비회원 주체를 지운다. */
   public int deleteEmptyGuestSubjects(int limit) {
     List<Long> ids =

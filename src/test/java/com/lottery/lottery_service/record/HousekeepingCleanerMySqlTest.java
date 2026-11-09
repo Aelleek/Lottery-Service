@@ -55,6 +55,7 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
             "lotto_record",
             "guest_credential",
             "command_operation",
+            "admin_audit_event",
             "actor_subject",
             "member",
             "lotto_round")) {
@@ -116,6 +117,35 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
         java.time.LocalDateTime.ofInstant(
             markerExpiresAt.minus(Duration.ofDays(7)), java.time.ZoneOffset.UTC),
         java.time.LocalDateTime.ofInstant(markerExpiresAt, java.time.ZoneOffset.UTC));
+  }
+
+  @Test
+  @DisplayName("보관 기한(1년)이 지난 관리자 감사 기록만 지운다")
+  void auditEvents() {
+    long actor =
+        new com.lottery.lottery_service.account.AccountStore(jdbc, tm, clock)
+            .login(com.lottery.lottery_service.auth.OAuthProvider.KAKAO, "auditor")
+            .memberId();
+    audit(actor, T0.plus(Duration.ofDays(365)));
+    audit(actor, T0.plus(Duration.ofDays(366)));
+    HousekeepingCleaner cleaner = new HousekeepingCleaner(jdbc, clock);
+
+    clock.set(T0.plus(Duration.ofDays(365)).minusSeconds(1));
+    assertThat(cleaner.deleteExpiredAuditEvents(100)).isZero();
+    clock.set(T0.plus(Duration.ofDays(365)));
+    assertThat(cleaner.deleteExpiredAuditEvents(100)).isEqualTo(1);
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM admin_audit_event", Long.class))
+        .isEqualTo(1);
+  }
+
+  private void audit(long actor, Instant expiresAt) {
+    jdbc.update(
+        "INSERT INTO admin_audit_event (actor_member_id, action, target_type, target_key, reason,"
+            + " outcome, occurred_at, expires_at) VALUES (?, 'ADMIN_GRANT', 'MEMBER', 'x', 'r',"
+            + " 'SUCCEEDED', ?, ?)",
+        actor,
+        java.time.LocalDateTime.ofInstant(T0, java.time.ZoneOffset.UTC),
+        java.time.LocalDateTime.ofInstant(expiresAt, java.time.ZoneOffset.UTC));
   }
 
   @Test
