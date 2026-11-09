@@ -193,7 +193,8 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("비회원이 추천받은 뒤 로그인해 귀속하고 가져오면, 마감·게시·판정 뒤 회원 내역에 그 5세트가 추천 기록으로 판정되어 있다")
+  @DisplayName(
+      "비회원이 추천받은 뒤 로그인해 귀속하고 가져오면, 마감·게시·판정 뒤 회원 내역에 그 5세트가 추천 기록으로 판정되어 있다. 귀속 뒤 옛 쿠키와 새 쿠키로는 그 기록을 보지 못한다(T32)")
   void guestRecommendClaimImportAndView() throws Exception {
     int round = ROUND + 1;
     Instant now = rounds.dbNow();
@@ -250,6 +251,20 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
             Long.class,
             guestRecords.get(0));
     assertThat(claims.claim(guestSubject, member.subjectId())).isEqualTo(ClaimResult.CLAIMED);
+    mvc.perform(
+            get("/api/v1/guest/lotto/records")
+                .param("round", Integer.toString(round))
+                .cookie(guest))
+        .andExpect(status().isUnauthorized());
+    Cookie lost =
+        mvc.perform(post("/api/v1/guest-credentials"))
+            .andReturn()
+            .getResponse()
+            .getCookie("__Host-lottery_guest");
+    mvc.perform(
+            get("/api/v1/guest/lotto/records").param("round", Integer.toString(round)).cookie(lost))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(0));
     String claimId =
         jdbc.queryForObject(
             "SELECT BIN_TO_UUID(public_id) FROM subject_claim WHERE guest_subject_id = ?",
