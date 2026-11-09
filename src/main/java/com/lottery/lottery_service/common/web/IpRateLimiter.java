@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 /** 키(IP 등)별 고정 창 속도 제한. 창은 그 키의 첫 요청부터 센다. 인스턴스 1개 운영을 가정해 메모리에 둔다(03 6.5). */
 public class IpRateLimiter {
@@ -13,10 +14,14 @@ public class IpRateLimiter {
   /** 기억하는 키가 이 수를 넘으면 창이 끝난 키를 지운다. */
   static final int PURGE_THRESHOLD = 10_000;
 
+  /** 정리는 이 간격에 한 번만 한다. 키가 많을 때 요청마다 전체를 훑지 않게 한다. */
+  static final Duration PURGE_INTERVAL = Duration.ofSeconds(1);
+
   private final int limit;
   private final Duration window;
   private final Clock clock;
   private final Map<String, Window> windows = new ConcurrentHashMap<>();
+  private final AtomicReference<Instant> lastPurge = new AtomicReference<>(Instant.MIN);
 
   /** 창마다 {@code limit}회를 허용하는 제한기를 만든다. */
   public IpRateLimiter(int limit, Duration window, Clock clock) {
@@ -33,7 +38,10 @@ public class IpRateLimiter {
   public Optional<Instant> tryAcquire(String key) {
     Instant now = clock.instant();
     if (windows.size() > PURGE_THRESHOLD) {
-      windows.values().removeIf(w -> !now.isBefore(w.end()));
+      Instant last = lastPurge.get();
+      if (!now.isBefore(last.plus(PURGE_INTERVAL)) && lastPurge.compareAndSet(last, now)) {
+        windows.values().removeIf(w -> !now.isBefore(w.end()));
+      }
     }
     Window next =
         windows.compute(

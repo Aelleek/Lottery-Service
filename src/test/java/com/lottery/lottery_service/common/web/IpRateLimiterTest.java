@@ -26,4 +26,25 @@ class IpRateLimiterTest {
     limiter.tryAcquire("later");
     assertThat(limiter.trackedKeys()).isEqualTo(2);
   }
+
+  @Test
+  @DisplayName("키가 많아도 정리는 1초에 한 번만 해서 요청마다 전체를 훑지 않는다")
+  void purgesAtMostOncePerInterval() {
+    Instant t0 = Instant.parse("2026-11-08T15:00:00Z");
+    MutableClock clock = new MutableClock(t0);
+    IpRateLimiter limiter = new IpRateLimiter(5, Duration.ofMinutes(1), clock);
+    for (int i = 0; i <= IpRateLimiter.PURGE_THRESHOLD; i++) {
+      limiter.tryAcquire("10.0." + i);
+    }
+    clock.set(t0.plusMillis(59_500));
+    limiter.tryAcquire("x");
+
+    clock.set(t0.plusMillis(60_200));
+    limiter.tryAcquire("y");
+    assertThat(limiter.trackedKeys()).isEqualTo(IpRateLimiter.PURGE_THRESHOLD + 3);
+
+    clock.set(t0.plusMillis(60_600));
+    limiter.tryAcquire("z");
+    assertThat(limiter.trackedKeys()).isEqualTo(3);
+  }
 }
