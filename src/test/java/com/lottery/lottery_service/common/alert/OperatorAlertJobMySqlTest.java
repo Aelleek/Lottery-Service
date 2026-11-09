@@ -169,6 +169,43 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("만료·격리·관리자 변경 알림 문구와 모르는 종류의 기본 문구")
+  void expiryQuarantineAndAdminFormat() throws Exception {
+    OperatorAlertJobHandler handler = new OperatorAlertJobHandler(sent::add, jdbc);
+    ObjectMapper mapper = new ObjectMapper();
+
+    assertThat(
+            handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"EXPIRY\",\"name\":\"solapi-sender\","
+                        + "\"expiresOn\":\"2026-12-01\",\"daysLeft\":7}")))
+        .isEqualTo("[인증서·연동 만료] solapi-sender 만료일 2026-12-01(남은 7일).");
+    assertThat(
+            handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"EXPIRY\",\"name\":\"tls\","
+                        + "\"expiresOn\":\"2026-11-01\",\"daysLeft\":-3}")))
+        .isEqualTo("[인증서·연동 만료] tls 만료일 2026-11-01(이미 만료됨).");
+    assertThat(
+            handler.format(mapper.readTree("{\"kind\":\"RESULT_QUARANTINED\",\"roundNo\":1200}")))
+        .isEqualTo("[결과 격리] 1200회 결과가 게시본과 달라 격리했습니다. 승인이 필요합니다.");
+    assertThat(
+            handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"ADMIN_CHANGE\",\"action\":\"ADMIN_GRANT\",\"role\":\"OPERATOR\"}")))
+        .startsWith("[관리자 권한 변경] 권한 부여·역할 변경(역할 OPERATOR).");
+    assertThat(
+            handler.format(
+                mapper.readTree("{\"kind\":\"ADMIN_CHANGE\",\"action\":\"ADMIN_MFA_RESET\"}")))
+        .startsWith("[관리자 권한 변경] 2차 인증 초기화.");
+    assertThat(handler.format(mapper.readTree("{\"kind\":\"ADMIN_CHANGE\",\"action\":\"OTHER\"}")))
+        .contains("알 수 없는 변경");
+    assertThat(handler.format(mapper.readTree("{\"kind\":\"NEW_KIND\"}")))
+        .isEqualTo("[운영자 알림] NEW_KIND");
+    assertThat(handler.format(mapper.readTree("{}"))).isEqualTo("[운영자 알림] UNKNOWN");
+  }
+
+  @Test
   @DisplayName("웹훅 주소가 없으면 보낼 때 실패한다")
   void unconfiguredWebhook() {
     assertThatThrownBy(() -> new DiscordWebhookSender("").send("x"))
