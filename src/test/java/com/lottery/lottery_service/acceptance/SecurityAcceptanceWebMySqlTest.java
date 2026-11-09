@@ -21,6 +21,7 @@ import jakarta.servlet.http.Cookie;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -179,6 +180,38 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
     String body = result.getResponse().getContentAsString();
     assertThat(body).doesNotContain("13,13").doesNotContain("27, 38").doesNotContain("38,41");
     assertThat(output.getAll()).doesNotContain("13,13,27").doesNotContain("13, 13, 27");
+  }
+
+  @Test
+  @DisplayName("T65: 인증 코드 확인이 형식 오류·없는 요청·깨진 JSON으로 끝나도 오류 응답과 로그에 코드와 전화번호 원문이 없다")
+  void noRawCodesOrPhonesInErrors(CapturedOutput output) throws Exception {
+    MemberPrincipal member = member("t65-code");
+    Session session = session(member);
+    String path = "/api/v1/me/notification-verifications/" + UUID.randomUUID() + "/verify";
+    List<String> bodies =
+        List.of(
+            "{\"code\":\"58219x\"}",
+            "{\"code\":\"582197\"}",
+            "{\"code\":\"+821058219734\",",
+            "{\"code\":582197,\"phoneNumber\":\"+821058219734\"}");
+    for (String content : bodies) {
+      MvcResult result =
+          mvc.perform(
+                  post(path)
+                      .cookie(session.cookie())
+                      .with(oauth2Login().oauth2User(member))
+                      .header("X-CSRF-TOKEN", session.csrf())
+                      .header("X-Command-Token", commandToken(session, member, "VERIFY_CONTACT"))
+                      .header("Idempotency-Key", UUID.randomUUID().toString())
+                      .contentType("application/json")
+                      .content(content))
+              .andExpect(status().is4xxClientError())
+              .andReturn();
+      assertThat(result.getResponse().getContentAsString())
+          .doesNotContain("58219")
+          .doesNotContain("1058219734");
+    }
+    assertThat(output.getAll()).doesNotContain("58219").doesNotContain("1058219734");
   }
 
   private static org.springframework.mock.web.MockHttpServletRequest remote(
