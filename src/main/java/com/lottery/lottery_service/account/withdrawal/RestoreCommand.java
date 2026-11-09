@@ -35,11 +35,16 @@ public class RestoreCommand implements ApplicationRunner {
 
   @Override
   public void run(ApplicationArguments args) {
+    int code = execute();
+    System.exit(SpringApplication.exit(context, () -> code));
+  }
+
+  /** 삭제 기록을 다시 적용하고 세션을 회수한다. 삭제 기록 저장소가 없으면 아무것도 바꾸지 않고 2를 준다. 읽다가 실패하면 예외를 그대로 던진다. */
+  int execute() {
     DeletionJournalReader reader = journal.getIfAvailable();
     if (reader == null) {
       log.error("deletion journal reader is not configured; do not open the service");
-      System.exit(SpringApplication.exit(context, () -> 2));
-      return;
+      return 2;
     }
     RestoreReplay.Result result = replay.replay(reader);
     int revoked = replay.revokeAllSessions();
@@ -49,6 +54,6 @@ public class RestoreCommand implements ApplicationRunner {
         result.alreadyHandled(),
         result.missing(),
         revoked);
-    System.exit(SpringApplication.exit(context, () -> 0));
+    return 0;
   }
 }
