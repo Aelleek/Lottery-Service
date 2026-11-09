@@ -142,7 +142,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
             2_000_000_000L,
             10L,
             new byte[32]));
-    for (int i = 0; i < 20 && jobs.runOnce().isPresent(); i++) {}
+    drainJobs();
 
     mvc.perform(get("/api/v1/lotto/rounds/" + ROUND + "/result"))
         .andExpect(status().isOk())
@@ -274,7 +274,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
                 .andReturn())
             .get("operationId")
             .asText();
-    for (int i = 0; i < 20 && jobs.runOnce().isPresent(); i++) {}
+    drainJobs();
     mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(member)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("SUCCEEDED"));
@@ -290,7 +290,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
             2_000_000_000L,
             10L,
             new byte[32]));
-    for (int i = 0; i < 20 && jobs.runOnce().isPresent(); i++) {}
+    drainJobs();
 
     JsonNode items =
         body(mvc.perform(
@@ -329,6 +329,14 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
         .header("X-Command-Token", token)
         .header("Idempotency-Key", UUID.randomUUID().toString())
         .contentType("application/json");
+  }
+
+  private void drainJobs() {
+    int ran = 0;
+    while (ran < 20 && jobs.runOnce().isPresent()) {
+      ran++;
+    }
+    assertThat(ran).isLessThan(20);
   }
 
   private JsonNode body(MvcResult result) throws Exception {
