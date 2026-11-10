@@ -18,6 +18,7 @@ class DhlotteryDrawSourceTest {
   private final AtomicInteger status = new AtomicInteger(200);
   private final AtomicReference<String> body = new AtomicReference<>("");
   private final AtomicReference<String> location = new AtomicReference<>();
+  private final AtomicReference<String> requested = new AtomicReference<>();
   private HttpServer server;
   private DhlotteryDrawSource source;
 
@@ -27,6 +28,7 @@ class DhlotteryDrawSourceTest {
     server.createContext(
         "/",
         exchange -> {
+          requested.set(exchange.getRequestURI().toString());
           if (location.get() != null) {
             exchange.getResponseHeaders().add("Location", location.get());
           }
@@ -40,7 +42,9 @@ class DhlotteryDrawSourceTest {
     server.start();
     source =
         new DhlotteryDrawSource(
-            "http://127.0.0.1:" + server.getAddress().getPort() + "/common.do?drwNo=");
+            "http://127.0.0.1:"
+                + server.getAddress().getPort()
+                + "/lt645/selectPstLt645InfoNew.do?srchDir=center&srchLtEpsd=");
   }
 
   @AfterEach
@@ -49,10 +53,17 @@ class DhlotteryDrawSourceTest {
   }
 
   @Test
-  @DisplayName("200 JSON은 파싱하고, 미발표는 NotAnnounced다")
+  @DisplayName("회차를 주소 끝에 붙여 부르고, 200 JSON은 파싱하며 빈 목록은 NotAnnounced다")
   void parsesBody() {
-    body.set("{\"returnValue\":\"fail\"}");
-    assertThat(source.fetch(1200)).isInstanceOf(ParsedDraw.NotAnnounced.class);
+    body.set(DrawResponseParserTest.ROUND_1249);
+    ParsedDraw parsed = source.fetch(1249);
+
+    assertThat(requested.get())
+        .isEqualTo("/lt645/selectPstLt645InfoNew.do?srchDir=center&srchLtEpsd=1249");
+    assertThat(((ParsedDraw.Valid) parsed).draw().winning().main().key())
+        .isEqualTo("02 11 16 25 34 35");
+    body.set(DrawResponseParserTest.ROUND_1250);
+    assertThat(source.fetch(1250)).isInstanceOf(ParsedDraw.NotAnnounced.class);
   }
 
   @Test
@@ -67,7 +78,7 @@ class DhlotteryDrawSourceTest {
   }
 
   @Test
-  @DisplayName("16KB를 넘는 본문은 다 읽지 않고 SIZE 실패다")
+  @DisplayName("크기 상한(32KB)을 넘는 본문은 다 읽지 않고 SIZE 실패다")
   void oversizedBody() {
     body.set("x".repeat(DrawResponseParser.MAX_BYTES + 100));
     assertThat(source.fetch(1200)).isEqualTo(new ParsedDraw.Invalid("SIZE"));

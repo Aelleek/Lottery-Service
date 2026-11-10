@@ -8,6 +8,7 @@ import com.lottery.lottery_service.common.error.ErrorDetails;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.result.domain.WinningNumbers;
 import com.lottery.lottery_service.result.source.OfficialDraw;
+import com.lottery.lottery_service.result.source.RankPrize;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -67,7 +68,7 @@ public class ResultPublisher {
     Object publishedId = round.get("published_result_id");
     if (publishedId == null) {
       long id = insertResult(draw.roundNo(), draw.winning(), draw, "VERIFIED", "API", null);
-      insertPrizes(id, draw.firstPrizePerGame(), draw.firstWinnerCount());
+      insertPrizes(id, draw);
       publish(draw.roundNo(), id, null);
       return ReceiveOutcome.PUBLISHED;
     }
@@ -81,12 +82,15 @@ public class ResultPublisher {
       if ("MANUAL".equals(current.get("source")) && current.get("api_confirmed_at") == null) {
         jdbc.update("UPDATE draw_result SET api_confirmed_at = NOW(6) WHERE id = ?", published);
       }
-      jdbc.update(
-          "UPDATE draw_prize SET prize_per_game = COALESCE(prize_per_game, ?),"
-              + " winner_count = COALESCE(winner_count, ?) WHERE result_id = ? AND rank_no = 1",
-          draw.firstPrizePerGame(),
-          draw.firstWinnerCount(),
-          published);
+      for (RankPrize prize : draw.upperPrizes()) {
+        jdbc.update(
+            "UPDATE draw_prize SET prize_per_game = COALESCE(prize_per_game, ?),"
+                + " winner_count = COALESCE(winner_count, ?) WHERE result_id = ? AND rank_no = ?",
+            prize.prizePerGame(),
+            prize.winnerCount(),
+            published,
+            prize.rank());
+      }
       return ReceiveOutcome.SAME_AS_PUBLISHED;
     }
     List<Long> quarantined =
@@ -101,7 +105,7 @@ public class ResultPublisher {
       return ReceiveOutcome.ALREADY_QUARANTINED;
     }
     long id = insertResult(draw.roundNo(), draw.winning(), draw, "QUARANTINED", "API", null);
-    insertPrizes(id, draw.firstPrizePerGame(), draw.firstWinnerCount());
+    insertPrizes(id, draw);
     jobs.enqueue(
         JobStore.OPERATOR_ALERT,
         "result-quarantined:" + id,
@@ -154,7 +158,7 @@ public class ResultPublisher {
             throw new BusinessException(ErrorCode.DRAW_NOT_FINISHED, "추첨 전입니다.");
           }
           long id = insertResult(roundNo, winning, null, "VERIFIED", "MANUAL", adminMemberId);
-          insertPrizes(id, null, null);
+          insertPrizes(id, null);
           publish(roundNo, id, null);
           jobs.enqueue(
               JobStore.OPERATOR_ALERT,
@@ -259,11 +263,11 @@ public class ResultPublisher {
         "SELECT id FROM draw_result WHERE public_id = ?", Long.class, bytes(publicId));
   }
 
-  private void insertPrizes(long resultId, Long firstPrize, Long firstWinners) {
+  private void insertPrizes(long resultId, OfficialDraw draw) {
     Object[][] rows = {
-      {1, firstPrize, firstWinners},
-      {2, null, null},
-      {3, null, null},
+      upper(draw, 1),
+      upper(draw, 2),
+      upper(draw, 3),
       {4, prizes.fourth(), null},
       {5, prizes.fifth(), null}
     };
@@ -276,6 +280,14 @@ public class ResultPublisher {
           r[1],
           r[2]);
     }
+  }
+
+  private static Object[] upper(OfficialDraw draw, int rank) {
+    if (draw == null) {
+      return new Object[] {rank, null, null};
+    }
+    RankPrize prize = draw.prize(rank);
+    return new Object[] {rank, prize.prizePerGame(), prize.winnerCount()};
   }
 
   private Map<String, Object> lockRound(int roundNo) {

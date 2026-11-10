@@ -13,6 +13,7 @@ import com.lottery.lottery_service.common.number.LottoNumber;
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.result.domain.WinningNumbers;
 import com.lottery.lottery_service.result.source.OfficialDraw;
+import com.lottery.lottery_service.result.source.RankPrize;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
@@ -97,6 +98,42 @@ class ResultPublisherMySqlTest extends MySqlContainerSupport {
     assertThat(round.get("published_result_id")).isNotNull();
     assertThat(prizes()).containsExactly("1:1000000", "2:null", "3:null", "4:50000", "5:5000");
     assertThat(count("job WHERE job_type = 'EVALUATE_RESULT'")).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("1~3등 금액을 API 값으로 채우고, 처음에 없던 2·3등 금액은 같은 결과를 다시 받을 때 채운다(D-060)")
+  void upperPrizesFromApi() {
+    publisher.receive(
+        new OfficialDraw(
+            ROUND,
+            WIN,
+            List.of(
+                new RankPrize(1, 2_000_000L, 2L),
+                new RankPrize(2, null, 5L),
+                new RankPrize(3, null, null)),
+            new byte[32]));
+    assertThat(prizes()).containsExactly("1:2000000", "2:null", "3:null", "4:50000", "5:5000");
+
+    assertThat(
+            publisher.receive(
+                new OfficialDraw(
+                    ROUND,
+                    WIN,
+                    List.of(
+                        new RankPrize(1, 9_999_999L, 9L),
+                        new RankPrize(2, 50_000_000L, 5L),
+                        new RankPrize(3, 1_300_000L, 300L)),
+                    new byte[32])))
+        .isEqualTo(ReceiveOutcome.SAME_AS_PUBLISHED);
+    assertThat(prizes())
+        .containsExactly("1:2000000", "2:50000000", "3:1300000", "4:50000", "5:5000");
+    assertThat(
+            jdbc.queryForList(
+                "SELECT p.winner_count FROM draw_prize p JOIN lotto_round r"
+                    + " ON r.published_result_id = p.result_id WHERE p.rank_no <= 3"
+                    + " ORDER BY p.rank_no",
+                Long.class))
+        .containsExactly(2L, 5L, 300L);
   }
 
   @Test

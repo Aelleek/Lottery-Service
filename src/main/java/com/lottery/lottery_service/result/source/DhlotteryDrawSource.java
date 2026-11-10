@@ -12,8 +12,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * 동행복권 결과 API({@code common.do?method=getLottoNumber&drwNo=})를 시간 제한을 두고 부른다. 응답은 크기 상한보다 1바이트 더까지만
- * 읽어 큰 본문을 메모리에 다 올리지 않는다. 주소 이동은 따르지 않는다. 주소는 설정으로 바꿀 수 있다.
+ * 동행복권 결과 응답({@code lt645/selectPstLt645InfoNew.do?srchDir=center&srchLtEpsd=})을 시간 제한을 두고 부른다. 응답은
+ * 크기 상한보다 1바이트 더까지만 읽어 큰 본문을 메모리에 다 올리지 않는다. 주소 이동은 따르지 않는다. 주소는 설정으로 바꿀 수 있다.
  */
 @Slf4j
 @Component
@@ -31,7 +31,7 @@ public class DhlotteryDrawSource implements DrawSource {
   /** 주소로 만든다. */
   public DhlotteryDrawSource(
       @Value(
-              "${lottery.result-api.url:https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=}")
+              "${lottery.result-api.url:https://www.dhlottery.co.kr/lt645/selectPstLt645InfoNew.do?srchDir=center&srchLtEpsd=}")
           String baseUrl) {
     this.baseUrl = baseUrl;
   }
