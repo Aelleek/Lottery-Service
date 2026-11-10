@@ -499,6 +499,31 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("예산이 한 건만 남으면 다음 회원은 예산 차단으로 세고, 운영자 알림에 예산 차단과 제공자 실패 건수를 따로 담는다(2026-11-09 Q16)")
+  void budgetBlockedCountedSeparately() {
+    store =
+        new ResultMessageStore(
+            jdbc,
+            new NotificationTargetQuery(jdbc),
+            new MessageBudgetStore(jdbc, new BudgetProperties(200L, 90)),
+            clock);
+
+    SlotResult result = runner(id -> new SendOutcome.Accepted("M")).run(ROUND, slot(true, false));
+
+    assertThat(result.cause()).isEqualTo("BUDGET_EXHAUSTED");
+    assertThat(result.failed()).isEqualTo(1);
+    assertThat(result.budgetBlocked()).isEqualTo(1);
+    assertThat(result.providerFailed()).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT CONCAT(JSON_EXTRACT(payload, '$.budgetBlocked'), ' ',"
+                    + " JSON_EXTRACT(payload, '$.providerFailed')) FROM job"
+                    + " WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .isEqualTo("1 0");
+  }
+
+  @Test
   @DisplayName("일부가 실패하면 PARTIAL_FAILURE, 다음 슬롯은 못 받은 회원에게만 보내고, 마지막 슬롯 실패 때 남은 메시지는 HALTED(T37)")
   void partialFailureThenHalt() {
     SlotResult first =
@@ -510,6 +535,8 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
             .run(ROUND, slot(true, false));
     assertThat(first.cause()).isEqualTo("PARTIAL_FAILURE");
     assertThat(first.failed()).isEqualTo(1);
+    assertThat(first.providerFailed()).isEqualTo(1);
+    assertThat(first.budgetBlocked()).isZero();
     assertThat(
             jdbc.queryForObject(
                 "SELECT CONCAT(JSON_EXTRACT(payload, '$.targets'), ' ',"

@@ -101,6 +101,15 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
                 .format(
                     new ObjectMapper()
                         .readTree(
+                            "{\"kind\":\"SLOT_FAILED\",\"roundNo\":1200,\"targets\":5,"
+                                + "\"cause\":\"BUDGET_EXHAUSTED\",\"failed\":4,\"unknown\":0,"
+                                + "\"budgetBlocked\":3,\"providerFailed\":1}")))
+        .contains("원인 BUDGET_EXHAUSTED, 대상 5명, 미발송 4건(예산 차단 3건, 제공자 미접수·거절 1건)");
+    assertThat(
+            new OperatorAlertJobHandler(sent::add, jdbc)
+                .format(
+                    new ObjectMapper()
+                        .readTree(
                             "{\"kind\":\"SLOT_FAILED\",\"roundNo\":1200,\"targets\":null,"
                                 + "\"cause\":\"RESULT_NOT_PUBLISHED\",\"failed\":0,\"unknown\":0}")))
         .contains("원인 RESULT_NOT_PUBLISHED, 대상 수는 판정 뒤 정해짐, 미발송 0건");

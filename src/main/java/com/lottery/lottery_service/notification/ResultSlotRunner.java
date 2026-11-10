@@ -65,6 +65,10 @@ public class ResultSlotRunner {
                       + result.failed()
                       + ",\"unknown\":"
                       + result.unknown()
+                      + ",\"budgetBlocked\":"
+                      + result.budgetBlocked()
+                      + ",\"providerFailed\":"
+                      + result.providerFailed()
                       + ",\"last\":"
                       + slot.last()
                       + "}",
@@ -91,7 +95,8 @@ public class ResultSlotRunner {
     tx.execute(status -> messages.createMissing(roundNo));
     int failed = 0;
     int sent = 0;
-    boolean budgetShort = false;
+    int budgetBlocked = 0;
+    int providerFailed = 0;
     for (long id : messages.sendable(roundNo)) {
       Boolean ready;
       try {
@@ -104,7 +109,7 @@ public class ResultSlotRunner {
       }
       if (!Boolean.TRUE.equals(ready)) {
         if (stateOf(id).equals("PENDING") || stateOf(id).equals("RETRY_WAIT")) {
-          budgetShort = true;
+          budgetBlocked++;
           failed++;
         }
         continue;
@@ -120,6 +125,9 @@ public class ResultSlotRunner {
       if (outcome instanceof SendOutcome.Accepted) {
         sent++;
       } else {
+        if (outcome instanceof SendOutcome.NotAccepted || outcome instanceof SendOutcome.Rejected) {
+          providerFailed++;
+        }
         failed++;
       }
     }
@@ -133,7 +141,13 @@ public class ResultSlotRunner {
       return new SlotResult(true, null, 0, unknown, sent);
     }
     return new SlotResult(
-        false, budgetShort ? "BUDGET_EXHAUSTED" : "PARTIAL_FAILURE", failed, unknown, sent);
+        false,
+        budgetBlocked > 0 ? "BUDGET_EXHAUSTED" : "PARTIAL_FAILURE",
+        failed,
+        unknown,
+        sent,
+        budgetBlocked,
+        providerFailed);
   }
 
   private boolean evaluationPending(int roundNo) {

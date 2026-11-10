@@ -93,7 +93,15 @@ public class OperatorAlertJobHandler implements JobHandler {
               : payload.has("targets") ? ", 대상 수는 판정 뒤 정해짐" : "")
           + ", 미발송 "
           + payload.path("failed").asInt()
-          + "건, 접수 확인 중 "
+          + "건"
+          + (payload.has("budgetBlocked")
+              ? "(예산 차단 "
+                  + payload.path("budgetBlocked").asInt()
+                  + "건, 제공자 미접수·거절 "
+                  + payload.path("providerFailed").asInt()
+                  + "건)"
+              : "")
+          + ", 접수 확인 중 "
           + payload.path("unknown").asInt()
           + "건."
           + (payload.path("last").asBoolean() ? " 자동 발송을 끝냈습니다. 관리자 화면의 다시 보내기로 보낼 수 있습니다." : "");
