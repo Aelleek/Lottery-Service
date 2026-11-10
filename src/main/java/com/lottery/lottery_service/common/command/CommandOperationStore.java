@@ -77,7 +77,7 @@ public class CommandOperationStore {
     List<Map<String, Object>> rows =
         jdbc.queryForList(
             "SELECT id, public_id, request_hash, state, lease_until, resource_public_id,"
-                + " completion_code FROM command_operation WHERE subject_id = ? AND operation = ?"
+                + " completion_code, token_expires_at FROM command_operation WHERE subject_id = ? AND operation = ?"
                 + " AND token_id = ? AND client_key = ? FOR UPDATE",
             subjectId,
             token.operation(),
@@ -112,7 +112,8 @@ public class CommandOperationStore {
     if ("PROCESSING".equals(state) && leaseUntil != null && leaseUntil.isAfter(now)) {
       return new CommandStart.InProgress(publicId);
     }
-    if (token.expiredAt(now)) {
+    Instant storedExpiry = instant((LocalDateTime) row.get("token_expires_at"));
+    if (token.expiredAt(now) || (storedExpiry != null && !now.isBefore(storedExpiry))) {
       throw expired();
     }
     long id = ((Number) row.get("id")).longValue();

@@ -81,6 +81,7 @@ public class AdminChangeController {
             "ADMIN_NOTIFICATION_RESEND",
             key(idempotencyKey),
             round + "|" + reason,
+            false,
             operationId -> {
               operations.resendNotifications(member.memberId(), round, reason);
               return "{\"dispatchId\":\""
@@ -121,6 +122,7 @@ public class AdminChangeController {
             "ADMIN_RESULT_PUBLISH",
             key(idempotencyKey),
             publicId + "|" + expected + "|" + reason,
+            true,
             operationId -> {
               List<Map<String, Object>> rows =
                   jdbc.queryForList(
@@ -169,6 +171,7 @@ public class AdminChangeController {
                 + expected
                 + "|"
                 + reason,
+            true,
             operationId -> {
               operations.registerManualResult(
                   member.memberId(),
