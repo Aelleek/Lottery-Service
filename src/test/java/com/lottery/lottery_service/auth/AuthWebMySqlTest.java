@@ -15,7 +15,9 @@ import com.lottery.lottery_service.account.MemberLogin;
 import com.lottery.lottery_service.config.SecurityConfig;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import jakarta.servlet.http.Cookie;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import java.util.Base64;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -130,7 +132,7 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("회원 토큰은 그 세션에만 맞고, 로그아웃은 POST와 토큰이 필요하며 auth_version을 올린다")
+  @DisplayName("회원 토큰은 그 세션에만 맞고, 로그아웃은 POST와 토큰이 필요하며 그 세션만 지운다")
   void memberSessionAndLogout() throws Exception {
     MemberLogin login = accounts.login(OAuthProvider.KAKAO, "web-" + System.nanoTime());
     MemberPrincipal principal = MemberPrincipal.of(login, OAuthProvider.KAKAO);
@@ -143,10 +145,13 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
     assertThat(setCookie)
         .startsWith("__Host-lottery_session=")
         .contains("Path=/", "Secure", "HttpOnly", "SameSite=Lax");
-    Cookie session =
-        new Cookie(
-            "__Host-lottery_session",
-            setCookie.substring(setCookie.indexOf('=') + 1, setCookie.indexOf(';')));
+    Cookie session = sessionCookie(setCookie);
+    Cookie otherDevice =
+        sessionCookie(
+            mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(principal)))
+                .andReturn()
+                .getResponse()
+                .getHeader("Set-Cookie"));
 
     mvc.perform(
             post("/api/v1/guest-credentials")
@@ -157,7 +162,8 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
             post("/logout").header("X-CSRF-TOKEN", token).with(oauth2Login().oauth2User(principal)))
         .andExpect(jsonPath("$.code").value("CSRF_REJECTED"));
     mvc.perform(get("/logout").cookie(session).with(oauth2Login().oauth2User(principal)));
-    assertThat(authVersion(login.memberId())).isEqualTo(login.authVersion());
+    assertThat(sessionExists(session)).isTrue();
+    assertThat(sessionExists(otherDevice)).isTrue();
 
     mvc.perform(
             post("/logout")
@@ -165,13 +171,26 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
                 .header("X-CSRF-TOKEN", token)
                 .with(oauth2Login().oauth2User(principal)))
         .andExpect(status().is3xxRedirection());
-    assertThat(authVersion(login.memberId())).isEqualTo(login.authVersion() + 1);
 
+    assertThat(authVersion(login.memberId())).isEqualTo(login.authVersion());
+    assertThat(sessionExists(session)).isFalse();
+    assertThat(sessionExists(otherDevice)).isTrue();
     mvc.perform(
-            post("/api/v1/command-tokens")
-                .header("X-CSRF-TOKEN", token)
-                .with(oauth2Login().oauth2User(principal)))
-        .andExpect(status().isUnauthorized());
+            get("/api/v1/session").cookie(otherDevice).with(oauth2Login().oauth2User(principal)))
+        .andExpect(jsonPath("$.kind").value("MEMBER"));
+  }
+
+  private static Cookie sessionCookie(String setCookie) {
+    return new Cookie(
+        "__Host-lottery_session",
+        setCookie.substring(setCookie.indexOf('=') + 1, setCookie.indexOf(';')));
+  }
+
+  private boolean sessionExists(Cookie cookie) {
+    String id = new String(Base64.getDecoder().decode(cookie.getValue()), StandardCharsets.UTF_8);
+    return jdbc.queryForObject(
+            "SELECT COUNT(*) FROM SPRING_SESSION WHERE SESSION_ID = ?", Long.class, id)
+        == 1;
   }
 
   @Test

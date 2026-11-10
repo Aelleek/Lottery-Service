@@ -10,7 +10,6 @@ import com.lottery.lottery_service.auth.GuestAuthenticationFilter;
 import com.lottery.lottery_service.auth.LoginFailureHandler;
 import com.lottery.lottery_service.auth.LoginSuccessHandler;
 import com.lottery.lottery_service.auth.MemberOAuth2UserService;
-import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.ReauthAuthorizationRequestResolver;
 import com.lottery.lottery_service.auth.SessionRevocationFilter;
 import com.lottery.lottery_service.common.error.BusinessException;
@@ -150,12 +149,6 @@ public class SecurityConfig {
             logout ->
                 logout
                     .logoutRequestMatcher(new AntPathRequestMatcher("/logout", "POST"))
-                    .addLogoutHandler(
-                        (request, response, auth) -> {
-                          if (auth != null && auth.getPrincipal() instanceof MemberPrincipal p) {
-                            accounts.revokeSessions(p.memberId());
-                          }
-                        })
                     .logoutSuccessUrl("/")
                     .invalidateHttpSession(true)
                     .deleteCookies("__Host-lottery_session", "lottery_session"));
