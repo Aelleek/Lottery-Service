@@ -247,6 +247,7 @@ public class WorkerScheduler {
     drain("audit-events", 10_000, housekeeping::deleteExpiredAuditEvents);
     drain("guest-subjects", 1_000, housekeeping::deleteEmptyGuestSubjects);
     drain("message-copies", 10_000, housekeeping::clearMessageCopies);
+    drain("challenge-targets", 10_000, housekeeping::clearChallengeTargets);
     drain("usage-events", 10_000, housekeeping::deleteAggregatedUsageEvents);
     int closed = maintenance.closeNotificationPlans();
     int deleted = maintenance.cleanupRecords(RECORD_CLEANUP_BATCH);

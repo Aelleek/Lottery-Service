@@ -31,6 +31,9 @@ public class HousekeepingCleaner {
   /** 알림 본문과 수신자 사본의 최종 상태 뒤 보관 기간. */
   public static final Duration MESSAGE_COPY_RETENTION = Duration.ofDays(30);
 
+  /** 인증 코드 요청의 대상 암호문을 남기는 기간(사용·만료 후). */
+  public static final Duration CHALLENGE_TARGET_RETENTION = Duration.ofDays(30);
+
   /** 통계 원천 사건 보관 기간. */
   public static final Duration USAGE_EVENT_RETENTION = Duration.ofDays(90);
 
@@ -108,6 +111,21 @@ public class HousekeepingCleaner {
             + " OR payload_hash IS NOT NULL)"
             + " AND COALESCE(finalized_at, last_attempt_at, expires_at) <= ? ORDER BY id LIMIT ?",
         utc(clock.instant().minus(MESSAGE_COPY_RETENTION)),
+        limit);
+  }
+
+  /**
+   * 사용·만료 후 30일이 지난 인증 코드 요청의 대상 번호 암호문을 비운다(02 8절, 2026-11-09 Q21). 행(요청 ID, 상태, 시각, HMAC)은 같은 달
+   * 예산 대조에 쓰는 메시지 행과 함께 남긴다. 기준 시각은 사용한 시각, 없으면 유효기간 끝이다.
+   *
+   * @return 비운 요청 수
+   */
+  public int clearChallengeTargets(int limit) {
+    return jdbc.update(
+        "UPDATE verification_challenge SET target_ciphertext = NULL"
+            + " WHERE target_ciphertext IS NOT NULL AND COALESCE(consumed_at, expires_at) <= ?"
+            + " ORDER BY id LIMIT ?",
+        utc(clock.instant().minus(CHALLENGE_TARGET_RETENTION)),
         limit);
   }
 

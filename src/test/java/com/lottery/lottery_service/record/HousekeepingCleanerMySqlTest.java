@@ -47,6 +47,7 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
             "job",
             "usage_aggregate",
             "delivery_message",
+            "verification_challenge",
             "oauth_account",
             "usage_event",
             "recommendation_seen",
@@ -283,6 +284,53 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
         type,
         key,
         value);
+  }
+
+  @Test
+  @DisplayName("인증 코드 요청은 사용·만료 후 30일이 지나면 대상 암호문만 비우고 행·상태·HMAC은 남긴다(2026-11-09 Q21)")
+  void challengeTargets() {
+    long member = new AccountStore(jdbc, tm, clock).login(OAuthProvider.KAKAO, "v").memberId();
+    long consumed = challenge(member, "CONSUMED", "2026-11-01 00:05:00", "2026-11-01 00:02:00");
+    long expired = challenge(member, "EXPIRED", "2026-11-01 00:05:00", null);
+    long recent = challenge(member, "CONSUMED", "2026-11-10 00:05:00", "2026-11-10 00:02:00");
+    HousekeepingCleaner cleaner = new HousekeepingCleaner(jdbc, clock);
+
+    clock.set(Instant.parse("2026-12-01T00:02:00Z").minusSeconds(1));
+    assertThat(cleaner.clearChallengeTargets(100)).isZero();
+    clock.set(Instant.parse("2026-12-01T00:05:00Z"));
+    assertThat(cleaner.clearChallengeTargets(100)).isEqualTo(2);
+    assertThat(cleaner.clearChallengeTargets(100)).isZero();
+
+    assertThat(
+            jdbc.queryForList(
+                "SELECT id FROM verification_challenge WHERE target_ciphertext IS NULL ORDER BY id",
+                Long.class))
+        .containsExactly(consumed, expired);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM verification_challenge WHERE target_hmac IS NOT NULL",
+                Long.class))
+        .isEqualTo(3);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT target_ciphertext IS NOT NULL FROM verification_challenge WHERE id = ?",
+                Boolean.class,
+                recent))
+        .isTrue();
+  }
+
+  private long challenge(long member, String state, String expiresAt, String consumedAt) {
+    jdbc.update(
+        "INSERT INTO verification_challenge (public_id, member_id, target_hmac, target_ciphertext,"
+            + " key_version, expected_contact_version, state, expires_at, consumed_at)"
+            + " VALUES (UUID_TO_BIN(UUID()), ?, ?, ?, 1, 0, ?, ?, ?)",
+        member,
+        new byte[32],
+        new byte[] {7},
+        state,
+        expiresAt,
+        consumedAt);
+    return jdbc.queryForObject("SELECT MAX(id) FROM verification_challenge", Long.class);
   }
 
   private long message(String login, String state, String finalizedAt, String lastAttemptAt) {
