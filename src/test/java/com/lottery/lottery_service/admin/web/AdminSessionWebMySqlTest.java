@@ -31,7 +31,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
-/** 회원 세션 안의 관리자 세션 시작과 관리자 API 앞 확인을 실제 보안 필터와 MySQL로 확인한다(2026-11-09 Q2). */
+/** 회원 세션 안의 관리자 세션 시작, 관리자 API 앞 확인, 관리자 조회 API를 실제 보안 필터와 MySQL로 확인한다(2026-11-09 Q2). */
 @SpringBootTest
 @AutoConfigureMockMvc
 class AdminSessionWebMySqlTest extends MySqlContainerSupport {
@@ -138,6 +138,37 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
                 .contentType("application/json")
                 .content("{\"operation\":\"WITHDRAW\"}"))
         .andExpect(jsonPath("$.code").value("CSRF_REJECTED"));
+
+    jdbc.update(
+        "INSERT INTO lotto_round (round_no, sales_open_at, sales_close_at, draw_at, schedule_version)"
+            + " VALUES (1200, '2026-11-07 21:00:00', '2026-11-14 11:00:00', '2026-11-14 11:35:00', 1)"
+            + " ON DUPLICATE KEY UPDATE round_no = round_no");
+    mvc.perform(admitted.apply(get("/api/v1/admin/rounds/1200/notification-status")))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"))
+        .andExpect(jsonPath("$.resultState").value("NOT_PUBLISHED"))
+        .andExpect(jsonPath("$.messageCounts.inFlight").value(0))
+        .andExpect(jsonPath("$.messageCounts.retryWait").value(0));
+    mvc.perform(admitted.apply(get("/api/v1/admin/rounds/9999/notification-status")))
+        .andExpect(status().isNotFound());
+    mvc.perform(
+            admitted.apply(
+                get("/api/v1/admin/stats/daily")
+                    .param("from", "2026-11-01")
+                    .param("to", "2026-11-07")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.days.length()").value(7))
+        .andExpect(jsonPath("$.calculationVersion").isString());
+    mvc.perform(
+            admitted.apply(
+                get("/api/v1/admin/stats/daily")
+                    .param("from", "2026-11-x")
+                    .param("to", "2026-11-07")))
+        .andExpect(status().isBadRequest());
+    mvc.perform(admitted.apply(get("/api/v1/admin/stats/rounds/1200")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.rankCounts.losing").value(0))
+        .andExpect(jsonPath("$.calculationVersion").isString());
   }
 
   private Login login(MemberPrincipal member) throws Exception {
