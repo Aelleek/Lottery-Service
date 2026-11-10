@@ -130,7 +130,7 @@ public class SecurityConfig {
                                 null,
                                 new BusinessException(ErrorCode.FORBIDDEN, "권한이 없습니다.")),
                         new AntPathRequestMatcher("/api/**")))
-        .addFilterBefore(new SessionRevocationFilter(accounts), LogoutFilter.class)
+        .addFilterBefore(new SessionRevocationFilter(accounts, clock), LogoutFilter.class)
         .addFilterBefore(
             new GuestAuthenticationFilter(guestCredentials, guestIssuer), LogoutFilter.class)
         .addFilterBefore(new CsrfFilter(csrfTokens, originGuard, errors), LogoutFilter.class)

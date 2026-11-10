@@ -98,6 +98,15 @@ class LoginSuccessHandlerMySqlTest extends MySqlContainerSupport {
 
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM subject_claim", Long.class)).isZero();
     assertThat(response.getRedirectedUrl()).isEqualTo("/");
+    Instant loggedInAt = clock.instant();
+    assertThat(
+            SessionLifetime.expired(
+                request.getSession(false), loggedInAt.plus(SessionLifetime.MAX).minusSeconds(1)))
+        .isFalse();
+    assertThat(
+            SessionLifetime.expired(
+                request.getSession(false), loggedInAt.plus(SessionLifetime.MAX)))
+        .isTrue();
   }
 
   private static OAuth2AuthenticationToken auth(MemberLogin login) {

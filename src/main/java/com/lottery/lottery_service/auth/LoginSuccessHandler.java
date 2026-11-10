@@ -51,6 +51,7 @@ public class LoginSuccessHandler extends SavedRequestAwareAuthenticationSuccessH
     if (Reauthentication.pending(session).isPresent()) {
       Reauthentication.complete(session, clock.instant());
     } else if (authentication.getPrincipal() instanceof MemberPrincipal member) {
+      SessionLifetime.markStarted(request.getSession(), clock.instant());
       String token = GuestAuthenticationFilter.cookieValue(request, issuer.cookieName());
       if (token != null) {
         claimQuietly(token, member);
