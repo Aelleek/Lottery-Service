@@ -155,6 +155,24 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("관리자 역할이 전혀 없는 회원의 부여 시도도 FORBIDDEN이고 그 회원 이름으로 거부 감사가 남는다(2026-11-09 Q17)")
+  void memberWithoutRoleIsAudited() {
+    long plain = member(UUID.randomUUID());
+
+    assertCode(
+        () -> grants.grant(plain, UUID.randomUUID(), AdminRole.ADMIN, "권한 올리기"),
+        ErrorCode.FORBIDDEN);
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM admin_audit_event WHERE actor_member_id = ?"
+                    + " AND action = 'ADMIN_GRANT' AND outcome = 'REJECTED'",
+                Long.class,
+                plain))
+        .isEqualTo(1);
+  }
+
+  @Test
   @DisplayName("ADMIN이 다른 관리자의 인증을 초기화하면 다시 등록할 수 있다")
   void resetOtherMfa() {
     long admin = admin();

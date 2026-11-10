@@ -168,10 +168,12 @@ class ApiExceptionHandlerTest {
         .andExpect(status().isInternalServerError())
         .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
     mockMvc.perform(get("/probe/wrapped-sql")).andExpect(status().isInternalServerError());
+    mockMvc.perform(get("/probe/empty-result")).andExpect(status().isInternalServerError());
 
     assertThat(output.getOut() + output.getErr())
         .contains("type=DataIntegrityViolationException sqlState=23000 errorCode=1062")
         .contains("type=IllegalStateException sqlState=22001 errorCode=1406")
+        .contains("type=EmptyResultDataAccessException sqlState=null errorCode=null")
         .doesNotContain("01 02 03 04 05 06")
         .doesNotContain("010-5821-9734")
         .doesNotContain("SQLIntegrityConstraintViolationException");
@@ -350,6 +352,12 @@ class ApiExceptionHandlerTest {
           "Duplicate entry '01 02 03 04 05 06' for key 'uk_record'",
           new SQLIntegrityConstraintViolationException(
               "Duplicate entry '01 02 03 04 05 06' for key 'uk_record'", "23000", 1062));
+    }
+
+    @GetMapping("/probe/empty-result")
+    String emptyResult() {
+      throw new org.springframework.dao.EmptyResultDataAccessException(
+          "no row for 010-5821-9734", 1);
     }
 
     @GetMapping("/probe/wrapped-sql")

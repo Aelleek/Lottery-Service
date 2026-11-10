@@ -77,6 +77,14 @@ class DrawResponseParserTest {
   }
 
   @Test
+  @DisplayName("요청 회차 항목이 온전하면 다른 항목의 회차 값이 깨져 있어도 읽고, 요청 회차가 없고 깨진 항목이 있으면 실패다")
+  void otherItemsDoNotMatter() {
+    String mixed = "{\"data\":{\"list\":[{\"ltEpsd\":\"x\"}," + ITEM_1249 + "]}}";
+    assertThat(valid(1249, mixed).winning().bonus().value()).isEqualTo(14);
+    assertThat(DrawResponseParser.parse(1250, mixed)).isEqualTo(new ParsedDraw.Invalid("ROUND"));
+  }
+
+  @Test
   @DisplayName("2·3등 금액이 없거나 0이거나 음수면 확인 중이고, 번호는 그대로 읽는다")
   void missingUpperPrizes() {
     String body =

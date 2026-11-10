@@ -17,14 +17,19 @@ import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import jakarta.servlet.http.Cookie;
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.session.Session;
+import org.springframework.session.SessionRepository;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -43,6 +48,7 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
   @Autowired private AdminMfaStore mfa;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private ObjectMapper json;
+  @Autowired private SessionRepository<? extends Session> sessions;
 
   @DynamicPropertySource
   static void database(DynamicPropertyRegistry registry) throws SQLException {
@@ -169,6 +175,62 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.rankCounts.losing").value(0))
         .andExpect(jsonPath("$.calculationVersion").isString());
+
+    sessionAttribute(renewed, "lastRequestAt", Instant.now().minus(Duration.ofMinutes(31)));
+    mvc.perform(admitted.apply(get(probe)))
+        .andExpect(jsonPath("$.code").value("ADMIN_AUTH_REQUIRED"));
+    assertThat(sessionValue(renewed, "authenticatedAt")).isNull();
+  }
+
+  @Test
+  @DisplayName("관리자 세션은 계속 써도 인증한 지 8시간이 되면 실제 세션 저장소를 거친 요청에서 끝난다")
+  void absoluteLimitThroughSessionStore() throws Exception {
+    MemberPrincipal admin =
+        MemberPrincipal.of(accounts.login(OAuthProvider.NAVER, "admin-8h"), OAuthProvider.NAVER);
+    jdbc.update(
+        "INSERT INTO admin_grant (member_id, role, granted_at) VALUES (?, 'OPERATOR', NOW(6))",
+        admin.memberId());
+    byte[] secret = decode(mfa.enroll(admin.memberId()).secret());
+    long step = Totp.step(Instant.now());
+    mfa.confirm(admin.memberId(), Totp.code(secret, step - 1));
+    Login login = login(admin);
+    MvcResult started =
+        mvc.perform(
+                login
+                    .apply(post("/api/v1/admin/session"))
+                    .contentType("application/json")
+                    .content("{\"code\":\"" + Totp.code(secret, step) + "\"}"))
+            .andExpect(status().isOk())
+            .andReturn();
+    Cookie renewed = sessionCookie(started.getResponse().getHeader("Set-Cookie"));
+    Login admitted = new Login(admin, renewed, login.csrf());
+    String probe = "/api/v1/admin/rounds/1200/no-such-admin-api";
+    mvc.perform(admitted.apply(get(probe))).andExpect(status().isNotFound());
+
+    sessionAttribute(
+        renewed, "authenticatedAt", Instant.now().minus(Duration.ofHours(8)).minusSeconds(1));
+    mvc.perform(admitted.apply(get(probe)))
+        .andExpect(jsonPath("$.code").value("ADMIN_AUTH_REQUIRED"));
+  }
+
+  @SuppressWarnings("unchecked")
+  private void sessionAttribute(Cookie cookie, String name, Instant value) {
+    SessionRepository<Session> repository = (SessionRepository<Session>) sessions;
+    Session stored = repository.findById(sessionId(cookie));
+    stored.setAttribute("com.lottery.lottery_service.admin.AdminSession." + name, value);
+    repository.save(stored);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Object sessionValue(Cookie cookie, String name) {
+    SessionRepository<Session> repository = (SessionRepository<Session>) sessions;
+    return repository
+        .findById(sessionId(cookie))
+        .getAttribute("com.lottery.lottery_service.admin.AdminSession." + name);
+  }
+
+  private static String sessionId(Cookie cookie) {
+    return new String(Base64.getDecoder().decode(cookie.getValue()), StandardCharsets.UTF_8);
   }
 
   private Login login(MemberPrincipal member) throws Exception {

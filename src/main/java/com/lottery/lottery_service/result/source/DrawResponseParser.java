@@ -43,16 +43,19 @@ public final class DrawResponseParser {
     }
     JsonNode item = null;
     boolean newerSeen = false;
+    boolean malformed = false;
     for (JsonNode candidate : list) {
       JsonNode round = candidate.path("ltEpsd");
       if (!round.isInt()) {
-        return new ParsedDraw.Invalid("ROUND");
-      }
-      if (round.asInt() == requestedRound) {
+        malformed = true;
+      } else if (round.asInt() == requestedRound) {
         item = candidate;
       } else if (round.asInt() > requestedRound) {
         newerSeen = true;
       }
+    }
+    if (item == null && malformed) {
+      return new ParsedDraw.Invalid("ROUND");
     }
     if (item == null) {
       return newerSeen ? new ParsedDraw.Invalid("ROUND") : new ParsedDraw.NotAnnounced();
