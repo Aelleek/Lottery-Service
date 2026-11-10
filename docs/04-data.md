@@ -38,7 +38,7 @@
 | | `guest_credential` | 비회원 자격 | 쿠키 원문은 저장하지 않고 해시만 둔다 |
 | | `subject_claim` | 비회원 자료를 회원에게 귀속 | 비회원 주체 하나는 한 번만 귀속. `imported_at`이 비었으면 귀속만 되고 아직 가져오지 않은 상태 |
 | 회차 | `lotto_round` | 판매 개시·마감·추첨 시각, 일정 버전, 게시된 결과, 게시 버전, 마감 봉인 상태와 봉인 때 고정한 마감 시각(`cutoff_close_at`), 알림 계획 완료 시각 | 게시된 결과의 정본은 `published_result_id`. 게시 버전(`publication_version`)은 게시 결과가 바뀔 때마다 1 오르고 승인·직접 등록의 충돌 검사에 쓴다. 봉인 상태: OPEN, SEALED. 알림 계획 완료 조건은 [05 8.7](05-flows.md#87-알림-계획-완료) |
-| 명령 | `command_operation` | 같은 요청을 다시 받으면 처음 결과를 돌려주기 위한 기록 | (주체, 명령, 토큰 ID, 클라이언트 키) 유일. 상태: PROCESSING, SUCCEEDED, RETRYABLE, FAILED, EXPIRED |
+| 명령 | `command_operation` | 같은 요청을 다시 받으면 처음 결과를 돌려주기 위한 기록 | (주체, 명령, 토큰 ID, 클라이언트 키) 유일. 상태: PROCESSING, SUCCEEDED, RETRYABLE, FAILED, EXPIRED. 구매 등록은 응답 요약(`response_summary`, 번호 없음)을 남긴다(D-057) |
 | 추천 | `recommendation_request` | 성공한 추천 요청 하나. 생성 방식과 필터 버전을 함께 기록 | 기본 추천은 필터 버전 필수, 조건 추천은 필터 버전 없음 |
 | | `recommendation_item` | 그 요청의 5세트 | 요청당 정확히 5개, 서로 다른 조합 |
 | | `recommendation_seen` | 같은 회차에 이미 추천한 조합 | (주체, 회차, 조합) 유일. 화면 기록과 독립 |

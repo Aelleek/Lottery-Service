@@ -99,6 +99,7 @@ CREATE TABLE lotto_round (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 완료 응답을 받지 못한 요청을 같은 업무로 확인하고 재실행을 막는다.
+-- response_summary는 처음 결과를 다시 돌려주기 위한 번호 없는 요약이다(구매 등록: 항목별 clientItemId·기록 ID·버전·결과, D-057).
 CREATE TABLE command_operation (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   public_id BINARY(16) NOT NULL UNIQUE,
@@ -113,6 +114,7 @@ CREATE TABLE command_operation (
   resource_public_id BINARY(16) NULL,
   completion_code VARCHAR(40) NULL,
   completed_at DATETIME(6) NULL,
+  response_summary JSON NULL,
   lease_token BINARY(16) NULL,
   lease_until DATETIME(6) NULL,
   UNIQUE KEY uq_command_key (subject_id, operation, token_id, client_key),
