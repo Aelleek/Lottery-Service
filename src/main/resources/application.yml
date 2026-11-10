@@ -65,6 +65,12 @@ spring:
 # 세션 쿠키는 Secure, HttpOnly, SameSite=Lax다(03 6.2). local 프로필만 http용으로 secure를 끈다.
 # 세션은 14일 동안 쓰지 않으면 만료된다(02 7.2).
 server:
+  # 앞단 뒤에서는 앞단이 붙인 X-Forwarded-For·X-Forwarded-Proto만 믿는다(07 5절 5번).
+  # 믿을 앞단의 연결 주소를 정규식으로 LOTTERY_TRUSTED_PROXIES에 넣는다. 비어 있으면 헤더를 믿지 않는다.
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: ${LOTTERY_TRUSTED_PROXIES:}
   servlet:
     session:
       timeout: 14d

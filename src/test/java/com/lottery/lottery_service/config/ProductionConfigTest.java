@@ -28,6 +28,16 @@ class ProductionConfigTest {
   }
 
   @Test
+  @DisplayName("전달 헤더는 설정한 앞단에서 온 것만 믿고, 기본값은 아무 앞단도 믿지 않는다(07 5절 5번)")
+  void forwardedHeadersTrustOnlyConfiguredProxies() throws IOException {
+    PropertySource<?> main = load("src/main/resources/application.yml");
+
+    assertThat(main.getProperty("server.forward-headers-strategy")).isEqualTo("native");
+    assertThat(main.getProperty("server.tomcat.remoteip.internal-proxies"))
+        .isEqualTo("${LOTTERY_TRUSTED_PROXIES:}");
+  }
+
+  @Test
   @DisplayName("Secure를 끄는 것은 local 프로필뿐이고 접두어 없는 쿠키 이름을 쓴다")
   void onlyLocalDisablesSecure() throws IOException {
     PropertySource<?> local = load("src/main/resources/application-local.yml");

@@ -17,8 +17,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 /**
- * IP별 요청 제한(D-048, 03 6.5). 넘으면 429 {@code RATE_LIMITED}와 {@code Retry-After}다. IP는 연결 주소에서만 읽고 요청이
- * 보낸 {@code X-Forwarded-For}는 믿지 않는다. 앞단 뒤에 둘 때는 앞단이 붙인 헤더를 쓰도록 서버 설정을 바꾼다.
+ * IP별 요청 제한(D-048, 03 6.5). 넘으면 429 {@code RATE_LIMITED}와 {@code Retry-After}다. IP는 연결 주소({@code
+ * getRemoteAddr})에서 읽는다. 앞단 뒤에서는 설정한 앞단({@code LOTTERY_TRUSTED_PROXIES})이 붙인 {@code
+ * X-Forwarded-For}만 서버가 연결 주소로 바꿔 주고, 다른 곳에서 온 헤더는 믿지 않는다.
  *
  * <ul>
  *   <li>현재 회차·회차 결과 조회: 1분 120회
