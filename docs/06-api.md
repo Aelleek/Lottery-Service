@@ -48,7 +48,7 @@
 | `POST /me/notification-verifications` | 수신 번호 인증 코드 발송 | 발송 간격·하루 횟수([02 6.4](02-policies.md#64-수신-번호와-동의)) 초과 429. 실패해도 사이트는 그대로 쓴다 |
 | `POST /me/notification-verifications/{id}/verify` | 인증 코드 확인 | 만료 410, 시도 초과 429, 연락처 버전이 바뀌었으면 409 |
 | `GET`, `PUT /me/notification-preference` | 알림 수신 설정 조회와 변경 | 켜려면 현재 번호 인증이 필요하다. 끄면 새 발송을 바로 막는다 |
-| `DELETE /me/account` | 탈퇴 | 최근 5분 재인증이 없으면 403. 202로 삭제 접수 |
+| `DELETE /me/account` | 탈퇴 | 본문 없음(인증 버전은 세션의 것). 최근 5분 재인증이 없으면 403. 202로 삭제 접수 |
 
 ### 2.1 내역 조회
 

@@ -608,7 +608,7 @@ paths:
     delete:
       operationId: withdrawAccount
       summary: 접근을 차단하고 계정 삭제 요청
-      description: 접근을 차단하고 계정 삭제 요청
+      description: 접근을 차단하고 계정 삭제 요청. 본문은 없고 서버가 세션의 auth_version을 쓴다. 최근 5분 안 재인증이 필요하다.
       security: *id004
       responses:
         '202':
@@ -639,12 +639,6 @@ paths:
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CommandToken'
       - $ref: '#/components/parameters/CsrfToken'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/VersionInput'
   /admin/rounds/{round}/notification-status:
     get:
       operationId: getRoundNotificationStatus

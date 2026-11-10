@@ -96,9 +96,7 @@ class AccountWebMySqlTest extends MySqlContainerSupport {
                 .with(oauth2Login().oauth2User(member))
                 .header("X-CSRF-TOKEN", csrf)
                 .header("X-Command-Token", token)
-                .header("Idempotency-Key", UUID.randomUUID().toString())
-                .contentType("application/json")
-                .content("{\"expectedVersion\":\"0\"}"))
+                .header("Idempotency-Key", UUID.randomUUID().toString()))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("REAUTH_REQUIRED"));
     assertThat(
@@ -145,9 +143,7 @@ class AccountWebMySqlTest extends MySqlContainerSupport {
                 .with(oauth2Login().oauth2User(member))
                 .header("X-CSRF-TOKEN", csrf)
                 .header("X-Command-Token", token)
-                .header("Idempotency-Key", UUID.randomUUID().toString())
-                .contentType("application/json")
-                .content("{\"expectedVersion\":\"0\"}"))
+                .header("Idempotency-Key", UUID.randomUUID().toString()))
         .andExpect(status().isAccepted())
         .andExpect(header().string("Cache-Control", "no-store"))
         .andExpect(jsonPath("$.status").value("PROCESSING"))
@@ -211,9 +207,7 @@ class AccountWebMySqlTest extends MySqlContainerSupport {
                 .with(oauth2Login().oauth2User(member))
                 .header("X-CSRF-TOKEN", csrf)
                 .header("X-Command-Token", token)
-                .header("Idempotency-Key", UUID.randomUUID().toString())
-                .contentType("application/json")
-                .content("{\"expectedVersion\":\"0\"}"))
+                .header("Idempotency-Key", UUID.randomUUID().toString()))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("REAUTH_REQUIRED"));
     assertThat(

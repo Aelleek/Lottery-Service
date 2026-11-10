@@ -18,14 +18,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 탈퇴({@code DELETE /me/account}). 최근 5분 안의 재인증(서버 세션의 재인증 시각)이 있어야 한다(02 7.2, C-31). 접수하면 접근을 바로 막고
- * 이 세션도 지운다.
+ * 탈퇴({@code DELETE /me/account}). 최근 5분 안의 재인증(서버 세션의 재인증 시각)이 있어야 한다(02 7.2, C-31). 본문은 없고 인증 버전은
+ * 세션의 것을 쓴다. 접수하면 접근을 바로 막고 이 세션도 지운다.
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -47,17 +46,14 @@ public class AccountController {
       Authentication auth,
       HttpServletRequest request,
       @RequestHeader("X-Command-Token") String commandToken,
-      @RequestHeader("Idempotency-Key") String idempotencyKey,
-      @RequestBody Input input) {
+      @RequestHeader("Idempotency-Key") String idempotencyKey) {
     if (auth == null || !(auth.getPrincipal() instanceof MemberPrincipal member)) {
       throw new BusinessException(ErrorCode.UNAUTHENTICATED, "로그인이 필요합니다.");
     }
     UUID key;
-    long version;
     try {
       key = UUID.fromString(idempotencyKey);
-      version = Long.parseLong(input.expectedVersion());
-    } catch (IllegalArgumentException | NullPointerException e) {
+    } catch (IllegalArgumentException e) {
       throw new BusinessException(ErrorCode.VALIDATION_FAILED, "입력 형식을 확인해 주세요.");
     }
     if (commandToken.length() > 4096) {
@@ -71,7 +67,7 @@ public class AccountController {
             member.subjectPublicId(),
             commandToken,
             key,
-            version,
+            member.authVersion(),
             reauthenticatedAt);
     HttpSession session = request.getSession(false);
     if (session != null) {
@@ -91,11 +87,4 @@ public class AccountController {
                 "serverTime",
                 clock.instant()));
   }
-
-  /**
-   * 요청 본문(openapi {@code VersionInput}). 회원 인증 버전이다.
-   *
-   * @param expectedVersion 화면이 본 버전(십진 문자열)
-   */
-  public record Input(String expectedVersion) {}
 }

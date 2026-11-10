@@ -66,7 +66,7 @@ public class WithdrawCommandService {
    * @param memberId 세션의 회원 ID
    * @param subjectId 세션의 회원 주체 ID
    * @param subjectPublicId 그 주체의 외부 ID
-   * @param expectedAuthVersion 본문의 {@code expectedVersion}(회원 인증 버전)
+   * @param expectedAuthVersion 세션이 로그인 때 읽은 회원 인증 버전
    * @param reauthenticatedAt 호출한 쪽이 확인한 마지막 재인증 시각. 없으면 {@code null}
    * @return 멱등 기록 외부 ID(접수 결과 조회용)
    * @throws BusinessException 재인증이 없거나 5분이 지났으면 {@code REAUTH_REQUIRED}, 버전이 다르면 {@code
