@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntUnaryOperator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -228,19 +229,25 @@ public class WorkerScheduler {
     }
   }
 
-  /** 매일 보관 정리. */
+  /** 한 종류 정리가 하루에 도는 최대 묶음 수. */
+  static final int MAX_HOUSEKEEPING_BATCHES = 1_000;
+
+  /**
+   * 매일 보관 정리. 상한이 있는 정리는 묶음마다 커밋하고, 묶음이 가득 찼으면 남은 것이 없을 때까지 다시 한다(2026-11-09 Q24). 고장으로 끝나지 않는 것을
+   * 막으려고 한 종류에 {@value #MAX_HOUSEKEEPING_BATCHES}묶음까지만 돈다.
+   */
   @Scheduled(cron = "0 0 4 * * *", zone = "Asia/Seoul")
   public void dailyHousekeeping() {
     tx.executeWithoutResult(
         status -> {
           housekeeping.deleteFinishedJobs();
           housekeeping.deleteExpiredGuestCredentials();
-          housekeeping.deleteExpiredCommandOperations(10_000);
-          housekeeping.deleteExpiredAuditEvents(10_000);
-          housekeeping.deleteEmptyGuestSubjects(1_000);
-          housekeeping.clearMessageCopies(10_000);
-          housekeeping.deleteAggregatedUsageEvents(10_000);
         });
+    drain("command-operations", 10_000, housekeeping::deleteExpiredCommandOperations);
+    drain("audit-events", 10_000, housekeeping::deleteExpiredAuditEvents);
+    drain("guest-subjects", 1_000, housekeeping::deleteEmptyGuestSubjects);
+    drain("message-copies", 10_000, housekeeping::clearMessageCopies);
+    drain("usage-events", 10_000, housekeeping::deleteAggregatedUsageEvents);
     int closed = maintenance.closeNotificationPlans();
     int deleted = maintenance.cleanupRecords(RECORD_CLEANUP_BATCH);
     Integer delayed = tx.execute(status -> maintenance.alertDelayedCleanup());
@@ -251,5 +258,15 @@ public class WorkerScheduler {
         closed,
         deleted,
         delayed);
+  }
+
+  private void drain(String name, int limit, IntUnaryOperator batch) {
+    for (int i = 0; i < MAX_HOUSEKEEPING_BATCHES; i++) {
+      Integer done = tx.execute(status -> batch.applyAsInt(limit));
+      if (done == null || done < limit) {
+        return;
+      }
+    }
+    log.warn("daily cleanup stopped at batch limit kind={}", name);
   }
 }

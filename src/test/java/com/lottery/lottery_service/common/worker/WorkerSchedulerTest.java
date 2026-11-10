@@ -121,6 +121,22 @@ class WorkerSchedulerTest {
   }
 
   @Test
+  @DisplayName("상한이 있는 매일 정리는 묶음이 가득 차면 남은 것이 없을 때까지 다시 하고, 덜 차면 멈춘다(2026-11-09 Q24)")
+  void housekeepingRepeatsFullBatches() {
+    when(housekeeping.deleteExpiredCommandOperations(10_000)).thenReturn(10_000, 10_000, 3);
+    when(housekeeping.deleteEmptyGuestSubjects(1_000)).thenReturn(1_000, 0);
+    when(housekeeping.clearMessageCopies(10_000)).thenReturn(10_000);
+
+    scheduler().dailyHousekeeping();
+
+    verify(housekeeping, times(3)).deleteExpiredCommandOperations(10_000);
+    verify(housekeeping, times(1)).deleteExpiredAuditEvents(10_000);
+    verify(housekeeping, times(2)).deleteEmptyGuestSubjects(1_000);
+    verify(housekeeping, times(WorkerScheduler.MAX_HOUSEKEEPING_BATCHES))
+        .clearMessageCopies(10_000);
+  }
+
+  @Test
   @DisplayName("추첨이 하루 안팎인 회차만 슬롯과 수집을 계획한다")
   void plansNearRounds() {
     RoundSchedule near =
