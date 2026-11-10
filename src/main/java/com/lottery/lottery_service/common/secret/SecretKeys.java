@@ -25,6 +25,16 @@ public class SecretKeys {
     return ring(properties.guestCredential(), "guest-credential");
   }
 
+  /** 인증 코드 HMAC 키. */
+  public KeyRing verificationCode() {
+    return ring(properties.verificationCode(), "verification-code");
+  }
+
+  /** 연락처 암호화 키. */
+  public KeyRing contact() {
+    return ring(properties.contact(), "contact");
+  }
+
   /** CSRF 토큰 서명 키. */
   public KeyRing csrfToken() {
     return ring(properties.csrfToken(), "csrf-token");

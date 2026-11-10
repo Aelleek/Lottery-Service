@@ -4,6 +4,7 @@ spring:
     - optional:file:./config/oauth-client.yml
     - optional:file:./config/local-db.yml
     - optional:file:./config/secrets.yml
+    - optional:file:./config/integrations.yml
 
   # 스키마는 Flyway가 관리한다. V1은 첫 출시 스키마(docs/contracts/schema.sql)와 같다.
   # 옛 테이블이 남은 DB에는 적용하지 않는다(docker compose down -v로 지우고 다시 만든다).

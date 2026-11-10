@@ -40,6 +40,14 @@ lottery:
       current: 1
       keys:
         1: dGVzdC1ndWVzdC1jcmVkZW50aWFsLWtleS0wMTIzNDU2Nzg=
+    verification-code:
+      current: 1
+      keys:
+        1: dmVyaWZpY2F0aW9uLWNvZGUtdGVzdC1rZXktMDEyMzQ=
+    contact:
+      current: 1
+      keys:
+        1: Y29udGFjdC1jaXBoZXItdGVzdC1rZXktMDEyMzQ1Njc=
     csrf-token:
       current: 1
       keys:

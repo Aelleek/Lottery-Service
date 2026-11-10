@@ -7,6 +7,7 @@ import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.common.secret.SecretKeys;
+import com.lottery.lottery_service.result.query.RoundResultQuery;
 import com.lottery.lottery_service.round.RoundStore;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -38,13 +39,20 @@ public class RecordHistoryQuery {
   private final RoundStore rounds;
   private final SecretKeys secrets;
   private final Clock clock;
+  private final RoundResultQuery results;
 
   /** 조회기를 만든다. */
-  public RecordHistoryQuery(JdbcTemplate jdbc, RoundStore rounds, SecretKeys secrets, Clock clock) {
+  public RecordHistoryQuery(
+      JdbcTemplate jdbc,
+      RoundStore rounds,
+      SecretKeys secrets,
+      Clock clock,
+      RoundResultQuery results) {
     this.jdbc = jdbc;
     this.rounds = rounds;
     this.secrets = secrets;
     this.clock = clock;
+    this.results = results;
   }
 
   /**
@@ -114,6 +122,10 @@ public class RecordHistoryQuery {
                 + " ORDER BY l.id DESC LIMIT ?",
             args.toArray());
     List<RecordView> items = new ArrayList<>();
+    String unpublished =
+        rows.isEmpty() || rows.get(0).get("published_result_id") != null
+            ? "NOT_PUBLISHED"
+            : results.find(selected).map(r -> r.state().name()).orElse("NOT_PUBLISHED");
     for (Map<String, Object> r : rows.subList(0, Math.min(PAGE_SIZE, rows.size()))) {
       items.add(
           new RecordView(
@@ -124,7 +136,7 @@ public class RecordHistoryQuery {
               Boolean.TRUE.equals(r.get("purchased")),
               ((Number) r.get("version")).longValue(),
               instant((LocalDateTime) r.get("expires_at")),
-              evaluation(r)));
+              evaluation(r, unpublished)));
     }
     String next = null;
     if (rows.size() > PAGE_SIZE) {
@@ -157,9 +169,9 @@ public class RecordHistoryQuery {
     throw new BusinessException(ErrorCode.VALIDATION_FAILED, "등수 필터 값이 올바르지 않습니다.");
   }
 
-  private static RecordEvaluation evaluation(Map<String, Object> r) {
+  private static RecordEvaluation evaluation(Map<String, Object> r, String unpublishedState) {
     if (r.get("published_result_id") == null) {
-      return new RecordEvaluation("NOT_PUBLISHED", null, null, null);
+      return new RecordEvaluation(unpublishedState, null, null, null);
     }
     long revision = ((Number) r.get("publication_version")).longValue();
     if (r.get("evaluated") == null) {

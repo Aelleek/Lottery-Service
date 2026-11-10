@@ -105,6 +105,8 @@ public class SecurityConfig {
                         "/js/**",
                         "/images/**",
                         "/api/v1/lotto/context",
+                        "/api/v1/lotto/rounds/*/result",
+                        "/api/v1/lotto/check",
                         "/api/v1/session",
                         "/api/v1/guest-credentials")
                     .permitAll()

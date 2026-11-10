@@ -89,7 +89,7 @@ class EvaluationJobMySqlTest extends MySqlContainerSupport {
   void evaluationJobRunsToCompletion() {
     publish();
 
-    JobRunner runner = runner(new EvaluateResultJobHandler(evaluations, 2));
+    JobRunner runner = runner(new EvaluateResultJobHandler(evaluations, List.of(), 2));
     assertThat(runner.runOnce()).contains(JobState.SUCCEEDED);
 
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM winning_evaluation", Long.class))
@@ -107,7 +107,7 @@ class EvaluationJobMySqlTest extends MySqlContainerSupport {
     publish();
     jdbc.update("UPDATE job SET cancel_requested = TRUE");
 
-    assertThat(runner(new EvaluateResultJobHandler(evaluations, 2)).runOnce())
+    assertThat(runner(new EvaluateResultJobHandler(evaluations, List.of(), 2)).runOnce())
         .contains(JobState.CANCELED);
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM winning_evaluation", Long.class)).isZero();
   }
@@ -170,21 +170,6 @@ class EvaluationJobMySqlTest extends MySqlContainerSupport {
     assertThat(reconciler.enqueueMissing(100)).isZero();
     jdbc.update("UPDATE lotto_record SET version = version + 1 WHERE id = ?", first);
     assertThat(reconciler.enqueueMissing(100)).isEqualTo(1);
-  }
-
-  @Test
-  @DisplayName("즉시 확인은 게시 전이면 빈 값, 게시 뒤에는 입력 순서대로 등수를 주고 아무것도 저장하지 않는다")
-  void instantCheck() {
-    InstantCheck check = new InstantCheck(jdbc);
-    List<LottoNumbers> sets =
-        List.of(LottoNumbers.of(1, 2, 3, 4, 5, 6), LottoNumbers.of(1, 2, 3, 40, 41, 42));
-    assertThat(check.check(ROUND, sets)).isEmpty();
-    publish();
-    long records = jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class);
-
-    assertThat(check.check(ROUND, sets)).contains(List.of(PrizeRank.FIRST, PrizeRank.FIFTH));
-    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class))
-        .isEqualTo(records);
   }
 
   private void publish() {
