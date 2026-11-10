@@ -16,8 +16,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 첫 출시 관리자 변경(06 4절)의 서버 절차. 요청마다 권한을 다시 확인하고(사유 1~500자 필수), 성공한 변경은 같은 트랜잭션에, 거부·실패는 따로 감사 기록에
- * 남긴다. 관리자 다중 요소 인증과 재인증 증명을 확인하는 방식은 아직 정하지 않아(08 6절) 호출한 쪽이 확인하고, 결과 직접 등록은 확인된 재인증 시각을 받아 5분
- * 안인지만 본다.
+ * 남긴다. 관리자 권한이 없는 회원의 시도도 거부로 남긴다(2026-11-09 Q17). 관리자 세션(다중 요소 인증)은 관리자 API 앞의 확인기가 보고, 결과 직접 등록은
+ * 확인된 재인증 시각을 받아 5분 안인지만 본다.
  */
 @Component
 public class AdminOperations {
@@ -160,9 +160,7 @@ public class AdminOperations {
     try {
       return access.require(actor, required);
     } catch (BusinessException e) {
-      if (access.roleOf(actor).isPresent()) {
-        audit.recordIndependently(with(pending, null, AdminAuditOutcome.REJECTED));
-      }
+      audit.recordIndependently(with(pending, null, AdminAuditOutcome.REJECTED));
       throw e;
     }
   }

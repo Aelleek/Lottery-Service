@@ -165,7 +165,8 @@ class AdminOperationsMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("수동 다시 보내기는 OPERATOR가 할 수 있고 실행 뒤 성공 감사, 관리자 아닌 회원은 FORBIDDEN이고 감사를 남기지 않는다")
+  @DisplayName(
+      "수동 다시 보내기는 OPERATOR가 할 수 있고 실행 뒤 성공 감사, 관리자 아닌 회원은 FORBIDDEN이고 거부 감사를 남긴다(2026-11-09 Q17)")
   void resend() {
     when(resend.resend(ROUND, AdminRole.OPERATOR)).thenReturn(new SlotResult(true, null, 0, 0, 0));
 
@@ -173,12 +174,9 @@ class AdminOperationsMySqlTest extends MySqlContainerSupport {
     assertCode(() -> operations.resendNotifications(plain, ROUND, "x"), ErrorCode.FORBIDDEN);
 
     assertThat(audits())
-        .singleElement()
-        .satisfies(
-            r -> {
-              assertThat(r).containsEntry("action", "NOTIFICATION_RESEND");
-              assertThat(r).containsEntry("outcome", "SUCCEEDED");
-            });
+        .extracting(r -> r.get("actor_member_id") + ":" + r.get("action") + ":" + r.get("outcome"))
+        .containsExactly(
+            operator + ":NOTIFICATION_RESEND:SUCCEEDED", plain + ":NOTIFICATION_RESEND:REJECTED");
   }
 
   private List<Map<String, Object>> audits() {
