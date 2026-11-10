@@ -157,6 +157,43 @@ class HistoryImportStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName(
+      "가져오지 않은 귀속 목록은 지우지 않고 기한이 남은 기록 수와 가장 이른 기한을 주고, 다른 회원·가져온 귀속·남은 기록 없는 귀속은 뺀다(2026-11-09 Q20)")
+  void pendingClaims() {
+    GuestClaimQuery query = new GuestClaimQuery(jdbc, Clock.systemUTC());
+    jdbc.update(
+        "UPDATE lotto_record SET expires_at = NOW(6) + INTERVAL 1 DAY"
+            + " WHERE owner_subject_id = ? AND numbers_key = ?",
+        guest,
+        B);
+    LocalDateTime earliest =
+        jdbc.queryForObject(
+            "SELECT expires_at FROM lotto_record WHERE owner_subject_id = ? AND numbers_key = ?",
+            LocalDateTime.class,
+            guest,
+            B);
+
+    List<GuestClaimQuery.GuestClaimView> pending = query.pending(member);
+
+    assertThat(pending).hasSize(1);
+    assertThat(pending.get(0).claimId())
+        .isEqualTo(
+            jdbc.queryForObject(
+                "SELECT BIN_TO_UUID(public_id) FROM subject_claim WHERE id = ?",
+                java.util.UUID.class,
+                claim));
+    assertThat(pending.get(0).recordCount()).isEqualTo(4);
+    assertThat(pending.get(0).expiresAt()).isEqualTo(earliest.toInstant(ZoneOffset.UTC));
+    assertThat(query.pending(guest)).isEmpty();
+
+    jdbc.update("UPDATE lotto_record SET deleted_at = NOW(6) WHERE owner_subject_id = ?", guest);
+    assertThat(query.pending(member)).isEmpty();
+    jdbc.update("UPDATE lotto_record SET deleted_at = NULL WHERE owner_subject_id = ?", guest);
+    tx.execute(s -> store.importBatch(member, claim, 0, 100));
+    assertThat(query.pending(member)).isEmpty();
+  }
+
+  @Test
   @DisplayName("묶음으로 나눠도 결과는 같고, 끝난 뒤 다시 실행해도 아무것도 늘지 않는다")
   void batchesAndRerun() {
     long last = 0;

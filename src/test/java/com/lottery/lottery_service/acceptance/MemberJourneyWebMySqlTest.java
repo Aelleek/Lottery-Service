@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oauth2Login;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -265,11 +266,22 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
             get("/api/v1/guest/lotto/records").param("round", Integer.toString(round)).cookie(lost))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.items.length()").value(0));
-    String claimId =
-        jdbc.queryForObject(
-            "SELECT BIN_TO_UUID(public_id) FROM subject_claim WHERE guest_subject_id = ?",
-            String.class,
-            guestSubject);
+    JsonNode pending =
+        body(mvc.perform(get("/api/v1/me/guest-claims").with(oauth2Login().oauth2User(member)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andReturn())
+            .get("items");
+    assertThat(pending).hasSize(1);
+    assertThat(pending.get(0).get("recordCount").asLong()).isEqualTo(5);
+    assertThat(pending.get(0).get("expiresAt").isTextual()).isTrue();
+    String claimId = pending.get(0).get("claimId").asText();
+    assertThat(claimId)
+        .isEqualTo(
+            jdbc.queryForObject(
+                "SELECT BIN_TO_UUID(public_id) FROM subject_claim WHERE guest_subject_id = ?",
+                String.class,
+                guestSubject));
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
     csrf = body(state).get("csrfToken").asText();
@@ -293,6 +305,8 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
     mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(member)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("SUCCEEDED"));
+    mvc.perform(get("/api/v1/me/guest-claims").with(oauth2Login().oauth2User(member)))
+        .andExpect(jsonPath("$.items.length()").value(0));
 
     jdbc.update(
         "UPDATE lotto_round SET sales_close_at = NOW(6), draw_at = NOW(6) WHERE round_no = ?",

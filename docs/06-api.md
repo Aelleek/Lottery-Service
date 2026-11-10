@@ -44,6 +44,7 @@
 | `POST /me/lotto/records/{id}/cancel-purchase` | 구매 등록 취소 또는 직접 등록 기록 삭제 | 409 `VERSION_CONFLICT`면 다시 조회. 추천·직접 등록에 맞는 확인 문구를 쓴다 |
 | `GET /lotto/rounds/{round}/result` | 회차 결과, 게시본, 등수별 금액, 확인 시각 | 미발표, 수집 지연, 잘못된 원천을 구분한다 |
 | `POST /lotto/check` | 저장 없는 즉시 확인. 최대 5세트 | 입력 번호를 로그나 통계에 남기지 않는다 |
+| `GET /me/guest-claims` | 아직 가져오지 않은 비회원 귀속 목록(귀속 ID, 가져올 기록 수, 가장 이른 기한). 가져올 기록이 남은 귀속만, 최대 50개 | 회원 본인 것만. 내 기록 화면이 가져오기 안내에 쓴다 |
 | `POST /me/guest-claims/{id}/imports` | 비회원 기록 가져오기. 로그인 직후와 나중의 내 기록 화면에서 같은 API를 쓴다(D-036) | 202와 진행 상태. 다른 계정에 귀속됐거나 만료된 자료는 가져올 수 없다. 결과에 판매 마감 뒤에 가져와 알림 대상이 아닌 회차를 담는다 |
 | `POST /me/notification-verifications` | 수신 번호 인증 코드 발송 | 발송 간격·하루 횟수([02 6.4](02-policies.md#64-수신-번호와-동의)) 초과 429. 실패해도 사이트는 그대로 쓴다 |
 | `POST /me/notification-verifications/{id}/verify` | 인증 코드 확인 | 만료 410, 시도 초과 429, 연락처 버전이 바뀌었으면 409 |
