@@ -17,6 +17,8 @@ public enum ErrorCode {
   ORIGIN_REJECTED(HttpStatus.FORBIDDEN, false),
   /** 403. 최근 재인증이 필요함. */
   REAUTH_REQUIRED(HttpStatus.FORBIDDEN, false),
+  /** 403. 관리자 인증(다중 요소)을 마치지 않았거나 관리자 세션이 끝남. */
+  ADMIN_AUTH_REQUIRED(HttpStatus.FORBIDDEN, false),
   /** 403. 권한이나 명령 종류가 허용되지 않음. */
   FORBIDDEN(HttpStatus.FORBIDDEN, false),
   /** 404. 없거나 본인 자원이 아님. */

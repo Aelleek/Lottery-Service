@@ -660,6 +660,39 @@ paths:
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/CommandToken'
       - $ref: '#/components/parameters/CsrfToken'
+  /admin/session:
+    post:
+      operationId: startAdminSession
+      summary: 관리자 인증(다중 요소)으로 관리자 세션 시작
+      description: 관리자 권한(OPERATOR 이상)이 있는 회원이 인증 앱의 6자리 코드나 복구 코드 하나를 낸다. 맞으면 세션 ID를 새로 만들고 새 세션에 맞는 CSRF 토큰을 준다. 틀리면 400, 5번 틀리면 15분 잠겨 429 ATTEMPTS_EXCEEDED, 권한이나 등록이 없으면 403 FORBIDDEN(D-047).
+      security: *id004
+      parameters:
+      - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminSessionInput'
+      responses:
+        '200':
+          description: 관리자 세션 시작
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSessionStarted'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '429':
+          $ref: '#/components/responses/429'
+        '503':
+          $ref: '#/components/responses/503'
+        '500':
+          $ref: '#/components/responses/500'
   /admin/rounds/{round}/notification-status:
     get:
       operationId: getRoundNotificationStatus
@@ -864,8 +897,8 @@ components:
     AdminSession:
       type: apiKey
       in: cookie
-      name: __Host-lottery_admin_session
-      description: 관리자 세션. 다중 요소 인증을 마친 세션만 유효하다. 로그인 유지 없음. 만료 규칙은 ../02-policies.md 7.2.
+      name: __Host-lottery_session
+      description: 회원 세션과 같은 쿠키다(2026-11-09 Q2). 회원 세션 안에 관리자 인증(POST /admin/session)을 마친 시각과 마지막 관리자 요청 시각을 두고, 각각 8시간·30분 안일 때만 관리자 API를 받는다. 아니면 403 ADMIN_AUTH_REQUIRED. 로그인 유지 없음. 만료 규칙은 ../02-policies.md 7.2.
   parameters:
     IdempotencyKey:
       name: Idempotency-Key
@@ -1075,6 +1108,8 @@ components:
             description: 403. Origin·Fetch Metadata 검사 실패
           - const: REAUTH_REQUIRED
             description: 403. 최근 재인증이 필요함
+          - const: ADMIN_AUTH_REQUIRED
+            description: 403. 관리자 인증(다중 요소)을 마치지 않았거나 관리자 세션이 끝남(8시간, 30분 미사용)
           - const: FORBIDDEN
             description: 403. 권한이나 명령 종류가 허용되지 않음
           - const: NOT_FOUND
@@ -1618,6 +1653,43 @@ components:
       required:
       - round
       - items
+    AdminSessionInput:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          pattern: ^[0-9]{6}$
+          description: 인증 앱의 6자리 코드
+        recoveryCode:
+          type: string
+          maxLength: 64
+          description: 복구 코드. 한 번만 쓸 수 있다
+      oneOf:
+      - required:
+        - code
+      - required:
+        - recoveryCode
+    AdminSessionStarted:
+      type: object
+      additionalProperties: false
+      properties:
+        csrfToken:
+          type: string
+          description: 새 세션 ID에 맞는 CSRF 토큰. 앞의 토큰은 더 쓸 수 없다
+        expiresAt:
+          type: string
+          format: date-time
+          description: 관리자 세션 최대 기한(인증 뒤 8시간)
+        idleTimeoutSeconds:
+          type: integer
+          const: 1800
+        serverTime: *id008
+      required:
+      - csrfToken
+      - expiresAt
+      - idleTimeoutSeconds
+      - serverTime
     GuestClaimList:
       type: object
       additionalProperties: false

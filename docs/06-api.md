@@ -75,8 +75,11 @@ Spring Security OAuth2 기본 경로를 쓴다. `/api/v1` 밖이다.
 
 첫 출시에 필요한 최소 범위다. 모두 관리자 세션과 다중 요소 인증이 필요하고, 변경은 `admin_audit_event`에 남는다.
 
+관리자 세션은 회원 세션 안에 둔다(2026-11-09 Q2). `POST /admin/session`으로 다중 요소 인증을 마친 시각과 마지막 관리자 요청 시각을 회원 세션에 적고, 관리자 API는 둘이 각각 8시간·30분 안일 때만 받는다. 아니면 403 `ADMIN_AUTH_REQUIRED`, 관리자 권한이 없으면 403 `FORBIDDEN`이다. 관리자 세션을 시작하면 세션 ID를 새로 만들고 새 CSRF 토큰을 준다.
+
 | API | 하는 일 | 권한 |
 |---|---|---|
+| `POST /admin/session` | 관리자 인증(인증 앱 코드나 복구 코드)으로 관리자 세션 시작. 5번 틀리면 15분 잠김 | OPERATOR 이상 |
 | `GET /admin/rounds/{round}/notification-status` | 회차 알림 현황. 슬롯별 결과와 원인, 상태별 메시지 수 | OPERATOR 이상 |
 | `POST /admin/rounds/{round}/notification-dispatches` | 수동 다시 보내기. 못 보낸 기본 알림과, 정정으로 새로 대상이 된 회원의 기본 알림. 기한은 [02 6.2](02-policies.md#62-발송-시각과-재시도). 사유 필수, `Idempotency-Key` 필요 | OPERATOR 이상 |
 | `POST /admin/draw-results/{resultId}/publication` | 격리된 공식 결과를 새 게시본으로 승인. 현재 게시 버전(`lotto_round.publication_version`)과 사유 필수 | ADMIN |
