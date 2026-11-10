@@ -58,9 +58,21 @@ public class RecordHistoryQuery {
    *     없으면 {@code SCHEDULE_UNAVAILABLE}
    */
   public RecordPage list(long subjectId, Integer round, Boolean purchased, String cursor) {
+    return list(subjectId, round, purchased, null, cursor);
+  }
+
+  /**
+   * 등수 필터를 더해 기록 한 쪽을 읽는다. 등수는 현재 게시본과 현재 기록 버전의 판정이다. 판정이 없는 기록은 낙첨에 넣지 않는다(06 2.1절).
+   *
+   * @param rank {@code "1"}~{@code "5"} 또는 {@code "LOSING"}. 없으면 {@code null}
+   * @throws BusinessException 등수 값이 틀렸으면 {@code VALIDATION_FAILED}. 나머지는 4인자 메서드와 같다
+   */
+  public RecordPage list(
+      long subjectId, Integer round, Boolean purchased, String rank, String cursor) {
+    String rankClause = rankClause(rank);
     int selected =
         round != null ? round : rounds.calendar().contextAt(clock.instant()).currentRound();
-    String filter = selected + "|" + purchased;
+    String filter = selected + "|" + purchased + (rank == null ? "" : "|" + rank);
     long afterId = Long.MAX_VALUE;
     long snapshot;
     if (cursor != null) {
@@ -79,17 +91,27 @@ public class RecordHistoryQuery {
     List<Object> args = new ArrayList<>(List.of(subjectId, selected, afterId, snapshot));
     String purchasedFilter = "";
     if (purchased != null) {
-      purchasedFilter = " AND purchased = ?";
+      purchasedFilter = " AND l.purchased = ?";
       args.add(purchased);
+    }
+    if (rankClause.contains("?")) {
+      args.add(Integer.parseInt(rank));
     }
     args.add(PAGE_SIZE + 1);
     List<Map<String, Object>> rows =
         jdbc.queryForList(
-            "SELECT id, public_id, round_no, numbers_key, recommended_at, purchased, version,"
-                + " expires_at FROM lotto_record WHERE owner_subject_id = ? AND round_no = ?"
-                + " AND deleted_at IS NULL AND id < ? AND id <= ?"
+            "SELECT l.id, l.public_id, l.round_no, l.numbers_key, l.recommended_at, l.purchased,"
+                + " l.version, l.expires_at, r.published_result_id, r.publication_version,"
+                + " e.record_id AS evaluated, e.rank_no, p.prize_per_game"
+                + " FROM lotto_record l JOIN lotto_round r ON r.round_no = l.round_no"
+                + " LEFT JOIN winning_evaluation e ON e.record_id = l.id"
+                + " AND e.result_id = r.published_result_id AND e.record_version = l.version"
+                + " LEFT JOIN draw_prize p ON p.result_id = e.result_id AND p.rank_no = e.rank_no"
+                + " WHERE l.owner_subject_id = ? AND l.round_no = ?"
+                + " AND l.deleted_at IS NULL AND l.id < ? AND l.id <= ?"
                 + purchasedFilter
-                + " ORDER BY id DESC LIMIT ?",
+                + rankClause
+                + " ORDER BY l.id DESC LIMIT ?",
             args.toArray());
     List<RecordView> items = new ArrayList<>();
     for (Map<String, Object> r : rows.subList(0, Math.min(PAGE_SIZE, rows.size()))) {
@@ -101,7 +123,8 @@ public class RecordHistoryQuery {
               r.get("recommended_at") != null,
               Boolean.TRUE.equals(r.get("purchased")),
               ((Number) r.get("version")).longValue(),
-              instant((LocalDateTime) r.get("expires_at"))));
+              instant((LocalDateTime) r.get("expires_at")),
+              evaluation(r)));
     }
     String next = null;
     if (rows.size() > PAGE_SIZE) {
@@ -110,7 +133,7 @@ public class RecordHistoryQuery {
     }
     RecordPage.EmptyReason reason = null;
     if (items.isEmpty() && cursor == null) {
-      if (purchased != null) {
+      if (purchased != null || rank != null) {
         reason = RecordPage.EmptyReason.NO_MATCH;
       } else if (round == null) {
         reason = RecordPage.EmptyReason.NO_CURRENT_RECORDS;
@@ -119,6 +142,33 @@ public class RecordHistoryQuery {
       }
     }
     return new RecordPage(selected, items, next, reason);
+  }
+
+  private static String rankClause(String rank) {
+    if (rank == null) {
+      return "";
+    }
+    if ("LOSING".equals(rank)) {
+      return " AND e.record_id IS NOT NULL AND e.rank_no IS NULL";
+    }
+    if (rank.length() == 1 && rank.charAt(0) >= '1' && rank.charAt(0) <= '5') {
+      return " AND e.rank_no = ?";
+    }
+    throw new BusinessException(ErrorCode.VALIDATION_FAILED, "등수 필터 값이 올바르지 않습니다.");
+  }
+
+  private static RecordEvaluation evaluation(Map<String, Object> r) {
+    if (r.get("published_result_id") == null) {
+      return new RecordEvaluation("NOT_PUBLISHED", null, null, null);
+    }
+    long revision = ((Number) r.get("publication_version")).longValue();
+    if (r.get("evaluated") == null) {
+      return new RecordEvaluation("PENDING", revision, null, null);
+    }
+    Integer rank = r.get("rank_no") == null ? null : ((Number) r.get("rank_no")).intValue();
+    Long prize =
+        r.get("prize_per_game") == null ? null : ((Number) r.get("prize_per_game")).longValue();
+    return new RecordEvaluation("EVALUATED", revision, rank, prize);
   }
 
   private String encode(long subjectId, String filter, long lastId, long snapshot) {

@@ -181,6 +181,23 @@ public class JobStore {
   }
 
   /**
+   * 취소 요청이 있으면 job을 CANCELED로 끝낸다. lease가 자기 것일 때만 바꾼다.
+   *
+   * @return 취소했으면 {@code true}
+   */
+  public boolean cancelIfRequested(JobLease lease) {
+    int changed =
+        jdbc.update(
+            "UPDATE job SET state = 'CANCELED', finished_at = ?, lease_token = NULL,"
+                + " lease_until = NULL WHERE id = ? AND state = 'RUNNING' AND lease_token = ?"
+                + " AND cancel_requested = TRUE",
+            utc(clock.instant()),
+            lease.id(),
+            bytes(lease.token()));
+    return changed == 1;
+  }
+
+  /**
    * lease가 만료된 RUNNING job을 회수한다. 시도 횟수를 늘려 RETRY_WAIT로 돌리고, 상한에 닿으면 DEAD로 두고 운영자 알림 job을 등록한다. 회수와
    * 알림 등록은 한 트랜잭션이다.
    *

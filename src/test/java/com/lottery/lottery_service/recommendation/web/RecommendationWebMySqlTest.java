@@ -153,6 +153,23 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.data.pollUrl").isString());
 
     mvc.perform(
+            get("/api/v1/guest/lotto/records")
+                .cookie(guest)
+                .param("round", Integer.toString(ROUND)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(5))
+        .andExpect(jsonPath("$.items[0].recommended").value(true));
+    MvcResult other = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
+    mvc.perform(
+            get("/api/v1/guest/lotto/records")
+                .cookie(other.getResponse().getCookie("__Host-lottery_guest"))
+                .param("round", Integer.toString(ROUND)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(0));
+    mvc.perform(get("/api/v1/guest/lotto/records").param("round", Integer.toString(ROUND)))
+        .andExpect(status().isUnauthorized());
+
+    mvc.perform(
             post("/api/v1/lotto/recommendations")
                 .cookie(guest)
                 .header("X-CSRF-TOKEN", csrf)

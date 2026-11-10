@@ -144,6 +144,27 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.data.outcome").value("RECORD_DELETED"))
         .andExpect(jsonPath("$.data.completedAt").isString());
 
+    mvc.perform(
+            get("/api/v1/me/lotto/records")
+                .param("round", Integer.toString(ROUND))
+                .with(oauth2Login().oauth2User(member)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.selectedRound").value(ROUND))
+        .andExpect(jsonPath("$.items.length()").value(1))
+        .andExpect(jsonPath("$.items[0].purchased").value(true))
+        .andExpect(jsonPath("$.items[0].version").isString())
+        .andExpect(jsonPath("$.items[0].evaluation.state").value("NOT_PUBLISHED"));
+    mvc.perform(
+            get("/api/v1/me/lotto/records")
+                .param("round", Integer.toString(ROUND))
+                .with(oauth2Login().oauth2User(other)))
+        .andExpect(jsonPath("$.items.length()").value(0));
+    mvc.perform(
+            get("/api/v1/me/lotto/records")
+                .param("rank", "9")
+                .with(oauth2Login().oauth2User(member)))
+        .andExpect(status().isBadRequest());
+
     MvcResult otherState =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(other))).andReturn();
     String otherCsrf = body(otherState).get("csrfToken").asText();
@@ -184,6 +205,12 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
                 .content("{\"round\":" + ROUND + ",\"entries\":[]}"))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("CSRF_REJECTED"));
+
+    mvc.perform(
+            get("/api/v1/guest/lotto/records")
+                .param("round", Integer.toString(ROUND))
+                .with(oauth2Login().oauth2User(member)))
+        .andExpect(status().isUnauthorized());
 
     MvcResult guest = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
     mvc.perform(
