@@ -105,6 +105,8 @@ public class RoundResultController {
    * @param prizes 등수별 금액
    * @param completeness NONE, NUMBERS_ONLY, PARTIAL_PRIZES, COMPLETE
    * @param sourceCheckedAt 원천 확인 시각
+   * @param source 게시본 출처(API, MANUAL). 게시 전이면 {@code null}
+   * @param apiConfirmedAt 직접 등록한 결과를 결과 API로 확인한 시각. MANUAL인데 {@code null}이면 공식 결과 확인 전이다(D-061)
    */
   public record DrawResultResponse(
       int round,
@@ -114,7 +116,9 @@ public class RoundResultController {
       Integer bonus,
       List<PrizeResponse> prizes,
       String completeness,
-      Instant sourceCheckedAt) {
+      Instant sourceCheckedAt,
+      String source,
+      Instant apiConfirmedAt) {
 
     static DrawResultResponse of(RoundResult result) {
       boolean published = result.state() == ResultState.PUBLISHED;
@@ -126,7 +130,9 @@ public class RoundResultController {
           published ? result.winning().bonus().value() : null,
           result.prizes().stream().map(PrizeResponse::of).toList(),
           result.completeness(),
-          result.sourceCheckedAt());
+          result.sourceCheckedAt(),
+          result.source(),
+          result.apiConfirmedAt());
     }
   }
 

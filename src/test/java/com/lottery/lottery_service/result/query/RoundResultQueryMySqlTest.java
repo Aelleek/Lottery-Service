@@ -2,6 +2,8 @@ package com.lottery.lottery_service.result.query;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.lottery.lottery_service.account.AccountStore;
+import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.db.DbValues;
 import com.lottery.lottery_service.common.job.JobProperties;
 import com.lottery.lottery_service.common.job.JobRunner;
@@ -132,6 +134,29 @@ class RoundResultQueryMySqlTest extends MySqlContainerSupport {
     assertThat(result.prizePerGame(PrizeRank.SECOND)).isNull();
     assertThat(result.prizePerGame(PrizeRank.NONE)).isNull();
     assertThat(result.sourceCheckedAt()).isNotNull();
+    assertThat(result.source()).isEqualTo("API");
+    assertThat(result.apiConfirmedAt()).isNull();
+  }
+
+  @Test
+  @DisplayName("직접 등록한 결과는 출처 MANUAL이고 API 확인 전이며, 같은 API 결과가 오면 확인 시각을 준다(D-061)")
+  void manualResultShowsConfirmation() {
+    jdbc.update(
+        "UPDATE lotto_round SET draw_at = NOW(6) - INTERVAL 1 HOUR WHERE round_no = ?", ROUND);
+    long admin =
+        new AccountStore(jdbc, tm, clock)
+            .login(OAuthProvider.GOOGLE, "admin-" + System.nanoTime())
+            .memberId();
+    publisher.registerManual(ROUND, DRAW.winning(), admin, 0);
+
+    RoundResult manual = query.find(ROUND).orElseThrow();
+    assertThat(manual.source()).isEqualTo("MANUAL");
+    assertThat(manual.apiConfirmedAt()).isNull();
+
+    publisher.receive(DRAW);
+    RoundResult confirmed = query.find(ROUND).orElseThrow();
+    assertThat(confirmed.source()).isEqualTo("MANUAL");
+    assertThat(confirmed.apiConfirmedAt()).isNotNull();
   }
 
   @Test

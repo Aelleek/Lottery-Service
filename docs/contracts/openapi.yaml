@@ -1556,6 +1556,19 @@ components:
           anyOf:
           - *id008
           - type: 'null'
+        source:
+          anyOf:
+          - type: string
+            enum:
+            - API
+            - MANUAL
+          - type: 'null'
+          description: 게시본 출처. 게시 전이면 null. MANUAL은 운영자가 직접 등록한 결과다(D-034).
+        apiConfirmedAt:
+          anyOf:
+          - *id008
+          - type: 'null'
+          description: 직접 등록한 결과를 결과 API로 확인한 시각. source=MANUAL인데 null이면 화면은 "공식 결과 확인 전"을 함께 보인다(D-061).
       required:
       - round
       - state
@@ -1565,6 +1578,8 @@ components:
       - prizes
       - completeness
       - sourceCheckedAt
+      - source
+      - apiConfirmedAt
       description: 존재하는 회차의 미발표/수집 지연은 200과 state로 표현. 서버 장애503을 낙첨으로 해석하지 않는다.
     CheckInput:
       type: object

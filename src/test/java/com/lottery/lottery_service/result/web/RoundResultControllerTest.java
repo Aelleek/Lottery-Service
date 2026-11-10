@@ -89,7 +89,44 @@ class RoundResultControllerTest {
         .andExpect(jsonPath("$.prizes[0].winnerCount").value("12"))
         .andExpect(jsonPath("$.prizes[1].prizePerGame").value(nullValue()))
         .andExpect(jsonPath("$.completeness").value("PARTIAL_PRIZES"))
-        .andExpect(jsonPath("$.sourceCheckedAt").value("2026-11-14T11:45:00Z"));
+        .andExpect(jsonPath("$.sourceCheckedAt").value("2026-11-14T11:45:00Z"))
+        .andExpect(jsonPath("$.source").value(nullValue()))
+        .andExpect(jsonPath("$.apiConfirmedAt").value(nullValue()));
+  }
+
+  @Test
+  @DisplayName("직접 등록한 결과는 source MANUAL과 API 확인 시각을 준다(D-061)")
+  void manualSource() throws Exception {
+    when(query.find(1200))
+        .thenReturn(
+            Optional.of(
+                new RoundResult(
+                    1200,
+                    ResultState.PUBLISHED,
+                    3L,
+                    PUBLISHED.winning(),
+                    PUBLISHED.prizes(),
+                    CHECKED,
+                    "MANUAL",
+                    null)));
+    mvc.perform(get("/api/v1/lotto/rounds/1200/result"))
+        .andExpect(jsonPath("$.source").value("MANUAL"))
+        .andExpect(jsonPath("$.apiConfirmedAt").value(nullValue()));
+
+    when(query.find(1200))
+        .thenReturn(
+            Optional.of(
+                new RoundResult(
+                    1200,
+                    ResultState.PUBLISHED,
+                    3L,
+                    PUBLISHED.winning(),
+                    PUBLISHED.prizes(),
+                    CHECKED,
+                    "MANUAL",
+                    CHECKED)));
+    mvc.perform(get("/api/v1/lotto/rounds/1200/result"))
+        .andExpect(jsonPath("$.apiConfirmedAt").value("2026-11-14T11:45:00Z"));
   }
 
   @Test

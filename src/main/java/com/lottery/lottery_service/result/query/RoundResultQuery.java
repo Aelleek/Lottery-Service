@@ -37,7 +37,8 @@ public class RoundResultQuery {
     List<Map<String, Object>> rounds =
         jdbc.queryForList(
             "SELECT r.publication_version, r.published_result_id, d.numbers_key, d.bonus_number,"
-                + " GREATEST(d.fetched_at, COALESCE(d.api_confirmed_at, d.fetched_at)) AS checked_at"
+                + " GREATEST(d.fetched_at, COALESCE(d.api_confirmed_at, d.fetched_at)) AS checked_at,"
+                + " d.source, d.api_confirmed_at"
                 + " FROM lotto_round r LEFT JOIN draw_result d ON d.id = r.published_result_id"
                 + " WHERE r.round_no = ?",
             roundNo);
@@ -70,7 +71,9 @@ public class RoundResultQuery {
             ((Number) row.get("publication_version")).longValue(),
             winning,
             prizes,
-            instant(row.get("checked_at"))));
+            instant(row.get("checked_at")),
+            (String) row.get("source"),
+            instant(row.get("api_confirmed_at"))));
   }
 
   private RoundResult unpublished(int roundNo) {

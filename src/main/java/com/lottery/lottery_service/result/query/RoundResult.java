@@ -14,6 +14,8 @@ import java.util.List;
  * @param winning 게시된 당첨 번호. 게시 전이면 {@code null}
  * @param prizes 게시본의 등수별 금액. 게시 전이면 빈 목록
  * @param sourceCheckedAt 원천을 마지막으로 확인한 시각. 모르면 {@code null}
+ * @param source 게시본의 출처(API, MANUAL). 게시 전이면 {@code null}
+ * @param apiConfirmedAt 직접 등록한 게시본을 결과 API로 확인한 시각. 확인 전이거나 API 게시본이면 {@code null}
  */
 public record RoundResult(
     int round,
@@ -21,7 +23,20 @@ public record RoundResult(
     Long publicationVersion,
     WinningNumbers winning,
     List<Prize> prizes,
-    Instant sourceCheckedAt) {
+    Instant sourceCheckedAt,
+    String source,
+    Instant apiConfirmedAt) {
+
+  /** 출처를 모르는(게시 전) 결과를 만든다. */
+  public RoundResult(
+      int round,
+      ResultState state,
+      Long publicationVersion,
+      WinningNumbers winning,
+      List<Prize> prizes,
+      Instant sourceCheckedAt) {
+    this(round, state, publicationVersion, winning, prizes, sourceCheckedAt, null, null);
+  }
 
   /** 금액을 얼마나 확보했는지(openapi {@code DrawResult.completeness}). */
   public String completeness() {
