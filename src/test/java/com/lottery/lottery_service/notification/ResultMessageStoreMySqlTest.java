@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.lottery.lottery_service.account.AccountStore;
+import com.lottery.lottery_service.admin.AdminRole;
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
@@ -15,6 +16,7 @@ import com.lottery.lottery_service.common.number.LottoNumber;
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.notification.budget.BudgetProperties;
 import com.lottery.lottery_service.notification.budget.MessageBudgetStore;
+import com.lottery.lottery_service.record.HousekeepingCleaner;
 import com.lottery.lottery_service.result.domain.WinningNumbers;
 import com.lottery.lottery_service.result.evaluate.EvaluateResultJobHandler;
 import com.lottery.lottery_service.result.evaluate.EvaluationStore;
@@ -27,6 +29,7 @@ import com.lottery.lottery_service.result.source.ResultCollector;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -305,6 +308,28 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("마지막 시도 뒤 24시간 넘게 UNKNOWN이면 서울 날짜마다 한 번 건수와 가장 오래된 시각으로 알린다")
+  void longUnknownAlert() {
+    UnknownMessageReconciler reconciler = reconciler();
+    unknownMessage(fourthMember);
+    Instant attempted = clock.instant();
+    jdbc.update("DELETE FROM job");
+
+    clock.set(attempted.plus(UnknownMessageReconciler.LONG_UNKNOWN).minusSeconds(1));
+    assertThat(tx.<Boolean>execute(s -> reconciler.alertLongUnresolved())).isFalse();
+    clock.set(attempted.plus(UnknownMessageReconciler.LONG_UNKNOWN));
+    assertThat(tx.<Boolean>execute(s -> reconciler.alertLongUnresolved())).isTrue();
+    assertThat(tx.<Boolean>execute(s -> reconciler.alertLongUnresolved())).isFalse();
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT CAST(payload AS CHAR) FROM job WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .contains("\"count\": 1")
+        .contains("MESSAGE_UNKNOWN_LONG");
+  }
+
+  @Test
   @DisplayName("보낼 때 안내 요약(게시본, 등수, 금액)을 남기고 번호는 담지 않는다")
   void storesCommunicatedSummary() {
     tx.execute(s -> store.createMissing(ROUND));
@@ -514,15 +539,28 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
                   called.add(id);
                   return new SendOutcome.Accepted("M2");
                 }),
+            new JobStore(
+                jdbc,
+                new DataSourceTransactionManager(dataSource),
+                clock,
+                new JobProperties(null, null)),
             new DataSourceTransactionManager(dataSource),
             clock);
+    jdbc.update("DELETE FROM job WHERE job_type = 'OPERATOR_ALERT'");
 
-    assertThat(resend.resend(ROUND).success()).isTrue();
+    assertThat(resend.resend(ROUND, AdminRole.OPERATOR).success()).isTrue();
     assertThat(called).containsExactly(message(fourthMember));
     assertThat(state(fourthMember)).isEqualTo("ACCEPTED");
+    assertThat(
+            jdbc.queryForList(
+                "SELECT CAST(payload AS CHAR) FROM job WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .containsExactly(
+            "{\"kind\": \"MANUAL_RESEND\", \"sent\": 1, \"actor\": \"OPERATOR\", \"failed\": 0,"
+                + " \"roundNo\": 1200, \"unknown\": 0}");
 
     clock.set(published.plus(ResultMessageStore.VALIDITY));
-    assertThatThrownBy(() -> resend.resend(ROUND))
+    assertThatThrownBy(() -> resend.resend(ROUND, AdminRole.OPERATOR))
         .isInstanceOfSatisfying(
             BusinessException.class,
             e -> assertThat(e.getCode()).isEqualTo(ErrorCode.DISPATCH_WINDOW_CLOSED));
@@ -710,6 +748,61 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
                         fourthMember))
                 .resultId())
         .isEqualTo(first);
+  }
+
+  @Test
+  @DisplayName("알림 본문 정리 뒤 정정돼도 안내 요약으로 영향 회원 수를 세고, 다시 보내지 않으며 사본은 되살아나지 않는다(T28)")
+  void correctionAfterCopyCleanup() {
+    tx.execute(s -> store.createMissing(ROUND));
+    for (long member : List.of(fourthMember, thirdMember)) {
+      long id = message(member);
+      inTx(() -> store.startSending(id, 143));
+      tx.executeWithoutResult(s -> store.recordOutcome(id, new SendOutcome.Accepted("M-" + id)));
+    }
+    jdbc.update(
+        "UPDATE delivery_message SET payload_ciphertext = ?, recipient_ciphertext = ?",
+        new byte[] {9},
+        new byte[] {8});
+    clock.set(clock.instant().plus(Duration.ofDays(31)));
+    assertThat(
+            tx.<Integer>execute(s -> new HousekeepingCleaner(jdbc, clock).clearMessageCopies(100)))
+        .isEqualTo(2);
+
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    ResultPublisher publisher =
+        new ResultPublisher(
+            jdbc,
+            tm,
+            new JobStore(jdbc, tm, clock, new JobProperties(null, null)),
+            new PrizeProperties(null, null),
+            clock);
+    publisher.receive(
+        new OfficialDraw(
+            ROUND,
+            new WinningNumbers(LottoNumbers.of(10, 20, 30, 40, 41, 42), LottoNumber.of(43)),
+            null,
+            null,
+            new byte[32]));
+    long corrected =
+        jdbc.queryForObject("SELECT id FROM draw_result WHERE state = 'QUARANTINED'", Long.class);
+    publisher.approve(corrected, 1);
+    tx.execute(s -> new EvaluationStore(jdbc).evaluateBatch(corrected, 0, 100));
+
+    CorrectionImpact.Impact impact =
+        new CorrectionImpact(
+                jdbc,
+                new NotificationTargetQuery(jdbc),
+                new JobStore(jdbc, tm, clock, new JobProperties(null, null)),
+                clock)
+            .measure(ROUND);
+    assertThat(impact).isEqualTo(new CorrectionImpact.Impact(2, 0));
+    assertThat(store.sendable(ROUND)).isEmpty();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'"
+                    + " AND payload_ciphertext IS NULL AND recipient_ciphertext IS NULL",
+                Long.class))
+        .isEqualTo(2);
   }
 
   private ResultSlotRunner runner(MessageSender sender) {

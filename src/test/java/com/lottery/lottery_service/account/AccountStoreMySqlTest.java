@@ -40,6 +40,7 @@ class AccountStoreMySqlTest extends MySqlContainerSupport {
   @BeforeEach
   void setUp() {
     jdbc = new JdbcTemplate(dataSource);
+    jdbc.update("DELETE FROM usage_event");
     jdbc.update("DELETE FROM oauth_account");
     jdbc.update("DELETE FROM actor_subject");
     jdbc.update("DELETE FROM member");
@@ -137,7 +138,7 @@ class AccountStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("같은 소셜 계정의 첫 로그인이 동시에 와도 회원은 하나다")
+  @DisplayName("같은 소셜 계정의 첫 로그인이 동시에 와도 회원은 하나이고 가입 사건도 1건이다")
   void concurrentFirstLoginCreatesOneMember() throws Exception {
     CountDownLatch start = new CountDownLatch(1);
     List<CompletableFuture<MemberLogin>> logins = new ArrayList<>();
@@ -162,6 +163,7 @@ class AccountStoreMySqlTest extends MySqlContainerSupport {
     assertThat(members).containsOnly(members.get(0));
     assertThat(count("member")).isEqualTo(1);
     assertThat(count("actor_subject")).isEqualTo(1);
+    assertThat(count("usage_event")).isEqualTo(1);
   }
 
   @Test

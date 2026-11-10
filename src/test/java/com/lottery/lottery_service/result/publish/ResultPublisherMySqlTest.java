@@ -152,6 +152,11 @@ class ResultPublisherMySqlTest extends MySqlContainerSupport {
     long id = publisher.registerManual(ROUND, WIN, admin, 0);
 
     assertThat(round().get("published_result_id")).isEqualTo(id);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT CAST(payload AS CHAR) FROM job WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .containsExactly("{\"kind\": \"RESULT_MANUAL_REGISTERED\", \"roundNo\": " + ROUND + "}");
     assertThat(prizes()).startsWith("1:null");
     assertThat(publisher.receive(draw(WIN, 3_000_000L)))
         .isEqualTo(ReceiveOutcome.SAME_AS_PUBLISHED);

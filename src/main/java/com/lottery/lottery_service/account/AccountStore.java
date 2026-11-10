@@ -5,6 +5,7 @@ import static com.lottery.lottery_service.common.db.DbValues.utc;
 import static com.lottery.lottery_service.common.db.DbValues.uuid;
 
 import com.lottery.lottery_service.auth.OAuthProvider;
+import com.lottery.lottery_service.stats.UsageEventStore;
 import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -161,6 +162,7 @@ public class AccountStore {
         provider.name(),
         key,
         utc(now));
+    new UsageEventStore(jdbc).recordWithoutSubject(UsageEventStore.MEMBER_REGISTERED, 1, now);
     return new MemberLogin(memberId, memberPublicId, subjectId, subjectPublicId, 0, true);
   }
 

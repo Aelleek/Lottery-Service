@@ -6,6 +6,7 @@ import static com.lottery.lottery_service.common.db.DbValues.utc;
 import com.lottery.lottery_service.admin.mfa.AdminMfaStore;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.job.JobStore;
 import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
@@ -30,6 +31,7 @@ public class AdminGrants {
   private final AdminAccess access;
   private final AdminAuditLog audit;
   private final AdminMfaStore mfa;
+  private final JobStore jobs;
   private final Clock clock;
 
   /** 구성 요소로 만든다. */
@@ -39,12 +41,14 @@ public class AdminGrants {
       AdminAccess access,
       AdminAuditLog audit,
       AdminMfaStore mfa,
+      JobStore jobs,
       Clock clock) {
     this.jdbc = jdbc;
     this.tx = new TransactionTemplate(transactionManager);
     this.access = access;
     this.audit = audit;
     this.mfa = mfa;
+    this.jobs = jobs;
     this.clock = clock;
   }
 
@@ -61,6 +65,7 @@ public class AdminGrants {
           long target = activeMember(memberPublicId);
           upsertGrant(target, role, null);
           audit.record(event(target, "ADMIN_GRANT_BY_COMMAND", target, reason, role));
+          alert("ADMIN_GRANT_BY_COMMAND", role);
         });
   }
 
@@ -124,6 +129,7 @@ public class AdminGrants {
             }
             apply.accept(target);
             audit.record(event(actor, action, target, reason, role));
+            alert(action, role);
           });
     } catch (BusinessException e) {
       audit.recordIndependently(
@@ -138,6 +144,19 @@ public class AdminGrants {
               AdminAuditOutcome.REJECTED));
       throw e;
     }
+  }
+
+  /** 운영자에게 사건 종류와 역할만 알린다(07 2.1). 회원 ID와 사유는 넣지 않는다. */
+  private void alert(String action, AdminRole role) {
+    jobs.enqueue(
+        JobStore.OPERATOR_ALERT,
+        "admin-change:" + UUID.randomUUID(),
+        "{\"kind\":\"ADMIN_CHANGE\",\"action\":\""
+            + action
+            + "\",\"role\":"
+            + (role == null ? "null" : "\"" + role.name() + "\"")
+            + "}",
+        clock.instant());
   }
 
   private static void requireChanged(int rows) {

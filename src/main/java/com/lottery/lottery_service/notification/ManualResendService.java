@@ -2,8 +2,10 @@ package com.lottery.lottery_service.notification;
 
 import static com.lottery.lottery_service.common.db.DbValues.instant;
 
+import com.lottery.lottery_service.admin.AdminRole;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.job.JobStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -16,13 +18,17 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * 수동 다시 보내기(05 8.6절, D-031). 결과 게시 후 7일 안에서만 할 수 있다. HALTED·RETRY_WAIT 메시지를 PENDING으로 되돌리고 슬롯 실행과
  * 같은 절차를 한 번 돈다. 접수됐거나(ACCEPTED·DELIVERED) 접수 확인 중(UNKNOWN)인 메시지와 SUPPRESSED는 건드리지 않는다. 권한·다중 요소
- * 인증·사유 감사는 호출한 쪽에서 한다.
+ * 인증·사유 감사는 호출한 쪽에서 한다. 끝나면 회차, 실행한 역할, 접수·실패·확인 중 건수로 운영자 알림을 등록한다(07 2.1절).
  */
 @Component
 public class ManualResendService {
 
+  /** 운영자 알림 종류. */
+  public static final String ALERT_KIND = "MANUAL_RESEND";
+
   private final JdbcTemplate jdbc;
   private final ResultSlotRunner runner;
+  private final JobStore jobs;
   private final TransactionTemplate tx;
   private final Clock clock;
 
@@ -30,10 +36,12 @@ public class ManualResendService {
   public ManualResendService(
       JdbcTemplate jdbc,
       ResultSlotRunner runner,
+      JobStore jobs,
       PlatformTransactionManager transactionManager,
       Clock clock) {
     this.jdbc = jdbc;
     this.runner = runner;
+    this.jobs = jobs;
     this.tx = new TransactionTemplate(transactionManager);
     this.clock = clock;
   }
@@ -41,9 +49,10 @@ public class ManualResendService {
   /**
    * 다시 보낸다.
    *
+   * @param actor 실행한 관리자의 역할
    * @throws BusinessException 결과가 게시되지 않았거나 기한이 지났으면 {@code DISPATCH_WINDOW_CLOSED}
    */
-  public SlotResult resend(int roundNo) {
+  public SlotResult resend(int roundNo, AdminRole actor) {
     Instant now = clock.instant();
     List<LocalDateTime> published =
         jdbc.queryForList(
@@ -61,6 +70,34 @@ public class ManualResendService {
                 "UPDATE delivery_message SET state = 'PENDING', version = version + 1"
                     + " WHERE round_no = ? AND purpose = 'RESULT' AND state IN ('HALTED','RETRY_WAIT')",
                 roundNo));
-    return runner.run(roundNo, new ResultSlot(now, false, false));
+    long acceptedBefore = accepted(roundNo);
+    SlotResult result = runner.run(roundNo, new ResultSlot(now, false, false));
+    long sent = accepted(roundNo) - acceptedBefore;
+    jobs.enqueue(
+        JobStore.OPERATOR_ALERT,
+        "manual-resend:" + roundNo + ":" + now,
+        "{\"kind\":\""
+            + ALERT_KIND
+            + "\",\"roundNo\":"
+            + roundNo
+            + ",\"actor\":\""
+            + actor
+            + "\",\"sent\":"
+            + sent
+            + ",\"failed\":"
+            + result.failed()
+            + ",\"unknown\":"
+            + result.unknown()
+            + "}",
+        now);
+    return result;
+  }
+
+  private long accepted(int roundNo) {
+    return jdbc.queryForObject(
+        "SELECT COUNT(*) FROM delivery_message WHERE round_no = ? AND purpose = 'RESULT'"
+            + " AND state IN ('ACCEPTED','DELIVERED')",
+        Long.class,
+        roundNo);
   }
 }

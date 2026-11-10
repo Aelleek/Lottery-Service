@@ -4,6 +4,7 @@ import static com.lottery.lottery_service.common.db.DbValues.instant;
 import static com.lottery.lottery_service.common.db.DbValues.utc;
 
 import com.lottery.lottery_service.common.job.JobStore;
+import com.lottery.lottery_service.common.time.SeoulTime;
 import com.lottery.lottery_service.notification.budget.MessageBudgetStore;
 import java.time.Clock;
 import java.time.Duration;
@@ -29,6 +30,9 @@ public class UnknownMessageReconciler {
 
   /** UNKNOWN 대조 기간. */
   public static final Duration RECONCILE_WINDOW = Duration.ofDays(7);
+
+  /** 이만큼 넘게 UNKNOWN이면 장기화로 알린다(07 2.1절, C-16 초기값). */
+  public static final Duration LONG_UNKNOWN = Duration.ofHours(24);
 
   private final JdbcTemplate jdbc;
   private final MessageBudgetStore budget;
@@ -96,6 +100,33 @@ public class UnknownMessageReconciler {
       return "FAILED";
     }
     return "UNKNOWN";
+  }
+
+  /**
+   * 마지막 발송 시도 뒤 24시간 넘게 UNKNOWN인 메시지가 있으면 서울 날짜마다 한 번 운영자 알림을 등록한다(건수와 가장 오래된 시도 시각).
+   *
+   * @return 이번에 등록했으면 {@code true}
+   */
+  public boolean alertLongUnresolved() {
+    Instant now = clock.instant();
+    Map<String, Object> row =
+        jdbc.queryForMap(
+            "SELECT COUNT(*) AS c, MIN(last_attempt_at) AS oldest FROM delivery_message"
+                + " WHERE state = 'UNKNOWN' AND last_attempt_at <= ?",
+            utc(now.minus(LONG_UNKNOWN)));
+    long count = ((Number) row.get("c")).longValue();
+    if (count == 0) {
+      return false;
+    }
+    return jobs.enqueue(
+        JobStore.OPERATOR_ALERT,
+        "message-unknown-long:" + SeoulTime.dateOf(now),
+        "{\"kind\":\"MESSAGE_UNKNOWN_LONG\",\"count\":"
+            + count
+            + ",\"oldest\":\""
+            + instant((LocalDateTime) row.get("oldest"))
+            + "\"}",
+        now);
   }
 
   /**

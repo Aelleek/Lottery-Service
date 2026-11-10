@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -42,12 +43,7 @@ public class MessageBudgetStore {
    */
   public boolean reserve(long messageId, MessagePurpose purpose, long units, Instant at) {
     LocalDate month = SeoulTime.monthOf(at).atDay(1);
-    jdbc.update(
-        "INSERT INTO message_budget (provider, business_month, limit_units) VALUES (?, ?, ?)"
-            + " ON DUPLICATE KEY UPDATE provider = provider",
-        PROVIDER,
-        month,
-        properties.monthlyLimitUnits());
+    ensureMonth(month);
     int counter =
         jdbc.update(
             "UPDATE message_budget SET reserved_units = reserved_units + ?, version = version + 1"
@@ -90,6 +86,38 @@ public class MessageBudgetStore {
    * @return 같으면 {@code true}. 그 달 행이 없고 메시지도 없으면 {@code true}
    */
   public boolean matchesMessages(LocalDate month) {
+    return compare(month).matches();
+  }
+
+  /** 그 달 예산 행이 없으면 설정값으로 만든다(07 1절 예산 월 전환). 이미 있으면 그대로 둔다. */
+  public void ensureMonth(LocalDate month) {
+    jdbc.update(
+        "INSERT INTO message_budget (provider, business_month, limit_units) VALUES (?, ?, ?)"
+            + " ON DUPLICATE KEY UPDATE provider = provider",
+        PROVIDER,
+        month.withDayOfMonth(1),
+        properties.monthlyLimitUnits());
+  }
+
+  /** 그 달 카운터. 행이 없으면 빈 값. */
+  public Optional<BudgetUsage> usage(LocalDate month) {
+    return jdbc
+        .query(
+            "SELECT limit_units, reserved_units, spent_units FROM message_budget WHERE provider = ?"
+                + " AND business_month = ?",
+            (rs, i) ->
+                new BudgetUsage(
+                    rs.getLong("limit_units"),
+                    rs.getLong("reserved_units"),
+                    rs.getLong("spent_units")),
+            PROVIDER,
+            month)
+        .stream()
+        .findFirst();
+  }
+
+  /** 그 달 카운터와 메시지 비용 합계를 함께 읽는다. 그 달 행이 없으면 카운터는 0으로 본다. */
+  public BudgetComparison compare(LocalDate month) {
     Map<String, Object> sums =
         jdbc.queryForMap(
             "SELECT COALESCE(SUM(CASE WHEN cost_state = 'RESERVED' THEN cost_units END), 0) AS r,"
@@ -102,13 +130,16 @@ public class MessageBudgetStore {
                 + " AND business_month = ?",
             PROVIDER,
             month);
-    long reserved = ((Number) sums.get("r")).longValue();
-    long spent = ((Number) sums.get("s")).longValue();
-    if (counter.isEmpty()) {
-      return reserved == 0 && spent == 0;
-    }
-    return ((Number) counter.get(0).get("reserved_units")).longValue() == reserved
-        && ((Number) counter.get(0).get("spent_units")).longValue() == spent;
+    long counterReserved =
+        counter.isEmpty() ? 0 : ((Number) counter.get(0).get("reserved_units")).longValue();
+    long counterSpent =
+        counter.isEmpty() ? 0 : ((Number) counter.get(0).get("spent_units")).longValue();
+    return new BudgetComparison(
+        month,
+        counterReserved,
+        counterSpent,
+        ((Number) sums.get("r")).longValue(),
+        ((Number) sums.get("s")).longValue());
   }
 
   private boolean move(long messageId, String to, String spentClause) {
