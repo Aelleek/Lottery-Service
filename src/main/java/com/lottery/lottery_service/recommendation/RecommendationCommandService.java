@@ -133,7 +133,10 @@ public class RecommendationCommandService implements CommandResultLoader {
     return OPERATION;
   }
 
-  /** 끝난 추천 명령의 처음 5세트. 원본이 지워졌으면 {@code RESPONSE_EXPIRED}, 다른 주체면 {@code NOT_FOUND}. */
+  /**
+   * 끝난 추천 명령의 처음 5세트. 원본이나 추천 기록 하나라도 지워졌으면 {@code RESPONSE_EXPIRED}(2026-11-09 Q8), 다른 주체면 {@code
+   * NOT_FOUND}.
+   */
   @Override
   public RecommendationView load(
       long subjectId, UUID operationPublicId, UUID resourcePublicId, String completionCode) {
@@ -163,6 +166,9 @@ public class RecommendationCommandService implements CommandResultLoader {
     }
     List<UUID> recordIds = new ArrayList<>();
     for (Map<String, Object> row : rows) {
+      if (row.get("record_public_id") == null) {
+        throw new BusinessException(ErrorCode.RESPONSE_EXPIRED, "추천 원본 보관 기간이 지났습니다.");
+      }
       recordIds.add(DbValues.uuid((byte[]) row.get("record_public_id")));
     }
     return new RecommendationView(

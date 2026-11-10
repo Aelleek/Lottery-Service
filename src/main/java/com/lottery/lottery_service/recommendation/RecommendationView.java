@@ -12,7 +12,7 @@ import java.util.UUID;
  * @param publicId 추천 요청 외부 ID
  * @param roundNo 회차
  * @param sets 항목 순서대로 5세트
- * @param recordIds 항목 순서대로 연결한 기록 외부 ID. 기록이 지워졌으면 그 자리는 {@code null}
+ * @param recordIds 항목 순서대로 연결한 기록 외부 ID
  * @param generationMode BASIC 또는 CONDITION
  * @param filterVersion 기본 추천에 쓴 생성 필터 버전. 조건 추천이면 {@code null}
  * @param responseExpiresAt 같은 요청에 이 결과를 다시 줄 수 있는 기한
