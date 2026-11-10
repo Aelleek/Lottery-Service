@@ -25,7 +25,8 @@ import org.springframework.stereotype.Component;
  *   <li>회원 쪽에 같은 조합이 없으면 새 기록(CREATED). 원래 추천 시각을 유지하고 {@code created_at}은 지금이다. 구매 표시는 옮기지 않는다.
  *   <li>있으면 합친다(MERGED). 판매 마감 전 회차면 추천 표시가 없을 때 원래 추천 시각을 붙이고, 마감 뒤 회차면 붙이지 않는다.
  *   <li>회원이 지운 기록과 같은 조합이면 되살리지 않는다(SKIPPED_TARGET_DELETED).
- *   <li>보관 기한이 지난 원본은 가져오지 않는다(SKIPPED_SOURCE_EXPIRED).
+ *   <li>보관 기한이 지난 원본은 가져오지 않는다(SKIPPED_SOURCE_EXPIRED). 기한은 기록의 {@code expires_at}, 없으면 추첨일+30일(02
+ *       8절)이다. 정리기가 아직 지우지 않았어도 기한이 지났으면 가져오지 않는다.
  * </ul>
  */
 @Component
@@ -59,7 +60,8 @@ public class HistoryImportStore {
     long member = ((Number) claim.get("member_subject_id")).longValue();
     List<Map<String, Object>> sources =
         jdbc.queryForList(
-            "SELECT s.id, s.round_no, s.numbers_key, s.recommended_at, s.expires_at,"
+            "SELECT s.id, s.round_no, s.numbers_key, s.recommended_at,"
+                + " COALESCE(s.expires_at, r.draw_at + INTERVAL 30 DAY) AS expires_at,"
                 + " COALESCE(r.cutoff_close_at, r.sales_close_at) AS close_at,"
                 + " r.published_result_id FROM lotto_record s"
                 + " JOIN lotto_round r ON r.round_no = s.round_no"

@@ -37,8 +37,9 @@ public class GuestClaimQuery {
         "SELECT c.public_id, COUNT(s.id) AS record_count,"
             + " MIN(COALESCE(s.expires_at, r.draw_at + INTERVAL 30 DAY)) AS expires_at"
             + " FROM subject_claim c JOIN lotto_record s ON s.owner_subject_id = c.guest_subject_id"
-            + " AND s.deleted_at IS NULL AND (s.expires_at IS NULL OR s.expires_at > ?)"
+            + " AND s.deleted_at IS NULL"
             + " JOIN lotto_round r ON r.round_no = s.round_no"
+            + " AND COALESCE(s.expires_at, r.draw_at + INTERVAL 30 DAY) > ?"
             + " WHERE c.member_subject_id = ? AND c.imported_at IS NULL"
             + " GROUP BY c.id, c.public_id, c.claimed_at ORDER BY c.claimed_at, c.id LIMIT ?",
         (rs, i) ->

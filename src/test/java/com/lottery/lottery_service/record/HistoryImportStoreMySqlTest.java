@@ -194,6 +194,31 @@ class HistoryImportStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("기한이 비어 있는 비회원 기록은 추첨일+30일이 지나면 목록에서 빠지고 가져오지 않는다(02 8절)")
+  void drawPlusThirtyDaysCutoff() {
+    int old = 1100;
+    jdbc.update(
+        "INSERT INTO lotto_round (round_no, sales_open_at, sales_close_at, draw_at, schedule_version)"
+            + " VALUES (?, NOW(6) - INTERVAL 40 DAY, NOW(6) - INTERVAL 31 DAY - INTERVAL 1 HOUR,"
+            + " NOW(6) - INTERVAL 31 DAY, 1)",
+        old);
+    jdbc.update("DELETE FROM lotto_record WHERE owner_subject_id = ?", guest);
+    String key = LottoNumbers.of(7, 8, 9, 10, 11, 12).key();
+    jdbc.update(
+        "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key,"
+            + " recommended_at, created_at) VALUES (UUID_TO_BIN(UUID()), ?, ?, ?, ?, ?)",
+        guest,
+        old,
+        key,
+        RECOMMENDED,
+        RECOMMENDED);
+
+    assertThat(new GuestClaimQuery(jdbc, Clock.systemUTC()).pending(member)).isEmpty();
+    tx.execute(s -> store.importBatch(member, claim, 0, 100));
+    assertThat(outcomes()).containsEntry(key, "SKIPPED_SOURCE_EXPIRED");
+  }
+
+  @Test
   @DisplayName("묶음으로 나눠도 결과는 같고, 끝난 뒤 다시 실행해도 아무것도 늘지 않는다")
   void batchesAndRerun() {
     long last = 0;
