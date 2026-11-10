@@ -4,7 +4,10 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import javax.sql.DataSource;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Tag;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -17,6 +20,14 @@ public abstract class MySqlContainerSupport {
 
   /** 설계 기준 MySQL 이미지. */
   public static final DockerImageName IMAGE = DockerImageName.parse("mysql:8.4");
+
+  /**
+   * 앱 연결과 같은 세션 설정. 시간대는 UTC(D-045, {@code application-local.yml}의 URL), 격리 수준은 READ COMMITTED(04
+   * 4절, {@code application-local.yml}의 Hikari 설정)다.
+   */
+  public static final String SESSION_UTC =
+      "connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
+          + "&sessionVariables=transaction_isolation='READ-COMMITTED'";
 
   protected static final MySQLContainer<?> MYSQL =
       new MySQLContainer<>(IMAGE).withUsername("root").withPassword("test");
@@ -32,6 +43,25 @@ public abstract class MySqlContainerSupport {
       st.execute("DROP DATABASE IF EXISTS `" + name + "`");
       st.execute("CREATE DATABASE `" + name + "`");
     }
+  }
+
+  /** 새 DB를 만들고 제품 migration({@code db/migration})을 적용한 뒤 그 DB의 데이터소스를 돌려준다. */
+  protected static DataSource migratedDatabase(String name) throws SQLException {
+    recreateDatabase(name);
+    Flyway.configure()
+        .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+        .schemas(name)
+        .createSchemas(false)
+        .locations("classpath:db/migration")
+        .load()
+        .migrate();
+    return new DriverManagerDataSource(databaseUrl(name), MYSQL.getUsername(), MYSQL.getPassword());
+  }
+
+  /** 주어진 DB의 JDBC URL. 앱 설정처럼 DB 세션 시간대를 UTC로 고정한다(D-045). */
+  protected static String databaseUrl(String name) {
+    String url = MYSQL.getJdbcUrl().replaceFirst("/[^/?]+(\\?|$)", "/" + name + "$1");
+    return url + (url.contains("?") ? "&" : "?") + SESSION_UTC;
   }
 
   /** 주어진 DB에 연결한다. {@code null}이면 컨테이너 기본 DB다. */

@@ -2,7 +2,7 @@
 -- 설계 계약이며 제품 migration이 아니다. 기존 DB에 그대로 실행하지 않는다.
 -- 시각은 UTC DATETIME(6). FK는 모두 기본값(RESTRICT)이고 삭제는 애플리케이션이 정한 순서로 한다.
 -- 테이블 책임, 불변조건, 삭제 순서: ../04-data.md
--- 세션은 Spring Session JDBC 표준 테이블(SPRING_SESSION, SPRING_SESSION_ATTRIBUTES)을 따로 쓴다.
+-- 세션은 Spring Session JDBC 표준 테이블(SPRING_SESSION, SPRING_SESSION_ATTRIBUTES)을 쓴다. 파일 끝에 있다.
 
 -- 계정 상태를 먼저 차단하고 개인 자료 삭제는 추적 가능한 job으로 진행한다.
 -- 탈퇴가 끝나도 행은 WITHDRAWN 묘비로 남는다. 이름·이메일 같은 개인정보 컬럼은 두지 않는다.
@@ -94,7 +94,8 @@ CREATE TABLE lotto_round (
   CONSTRAINT ck_lotto_round_0 CHECK (round_no > 0),
   CONSTRAINT ck_lotto_round_1 CHECK (sales_open_at < sales_close_at),
   CONSTRAINT ck_lotto_round_2 CHECK (cutoff_state IN ('OPEN','SEALED')),
-  CONSTRAINT ck_lotto_round_3 CHECK ((cutoff_state='OPEN' AND cutoff_close_at IS NULL) OR (cutoff_state='SEALED' AND cutoff_close_at IS NOT NULL))
+  CONSTRAINT ck_lotto_round_3 CHECK ((cutoff_state='OPEN' AND cutoff_close_at IS NULL) OR (cutoff_state='SEALED' AND cutoff_close_at IS NOT NULL)),
+  CONSTRAINT ck_lotto_round_4 CHECK (cleanup_held IN (0,1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 완료 응답을 받지 못한 요청을 같은 업무로 확인하고 재실행을 막는다.
@@ -409,7 +410,8 @@ CREATE TABLE job (
   UNIQUE KEY uq_job_key (job_type, dedupe_key),
   KEY ix_job_due (state, available_at, id),
   KEY ix_job_lease (state, lease_until),
-  CONSTRAINT ck_job_0 CHECK (state IN ('READY','RUNNING','SUCCEEDED','RETRY_WAIT','DEAD','CANCELED'))
+  CONSTRAINT ck_job_0 CHECK (state IN ('READY','RUNNING','SUCCEEDED','RETRY_WAIT','DEAD','CANCELED')),
+  CONSTRAINT ck_job_1 CHECK (cancel_requested IN (0,1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 숫자/전화번호를 복제하지 않고 발행량 사건을 보관한다.
@@ -444,15 +446,25 @@ CREATE TABLE usage_aggregate (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 관리자 권한. 역할마다 할 수 있는 일은 ../06-api.md 4절.
+-- 관리자 다중 요소 인증(D-047)은 mfa_* 컬럼에 둔다. 앱 비밀값은 키 버전과 함께 암호화하고, 복구 코드는 해시만 남긴다.
 CREATE TABLE admin_grant (
   member_id BIGINT NOT NULL PRIMARY KEY,
   role VARCHAR(16) NOT NULL,
   granted_at DATETIME(6) NOT NULL,
   granted_by_member_id BIGINT NULL,
   revoked_at DATETIME(6) NULL,
+  mfa_secret VARBINARY(256) NULL,
+  mfa_key_version INT NULL,
+  mfa_enrolled_at DATETIME(6) NULL,
+  mfa_last_step BIGINT NULL,
+  mfa_failed_count INT NOT NULL DEFAULT 0,
+  mfa_locked_until DATETIME(6) NULL,
+  mfa_recovery_hashes JSON NULL,
   CONSTRAINT fk_admin_grant_0 FOREIGN KEY (member_id) REFERENCES member (id),
   CONSTRAINT fk_admin_grant_1 FOREIGN KEY (granted_by_member_id) REFERENCES member (id),
-  CONSTRAINT ck_admin_grant_0 CHECK (role IN ('OPERATOR','ADMIN'))
+  CONSTRAINT ck_admin_grant_0 CHECK (role IN ('OPERATOR','ADMIN')),
+  CONSTRAINT ck_admin_grant_1 CHECK (mfa_failed_count >= 0),
+  CONSTRAINT ck_admin_grant_2 CHECK ((mfa_secret IS NULL) = (mfa_key_version IS NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 관리자 변경 감사. 1년 보관. 비밀값과 개인정보 원문은 넣지 않는다.
@@ -473,3 +485,26 @@ CREATE TABLE admin_audit_event (
   CONSTRAINT fk_admin_audit_event_0 FOREIGN KEY (actor_member_id) REFERENCES member (id),
   CONSTRAINT ck_admin_audit_event_0 CHECK (outcome IN ('SUCCEEDED','REJECTED','FAILED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
+
+-- 회원 세션 저장소. Spring Session JDBC 표준 테이블 2개다(C-10). 표준 이름 그대로 대문자다. 이 두 개는 설계 테이블 26개에 세지 않는다.
+CREATE TABLE SPRING_SESSION (
+  primary_id CHAR(36) NOT NULL,
+  session_id CHAR(36) NOT NULL,
+  creation_time BIGINT NOT NULL,
+  last_access_time BIGINT NOT NULL,
+  max_inactive_interval INT NOT NULL,
+  expiry_time BIGINT NOT NULL,
+  principal_name VARCHAR(100) NULL,
+  CONSTRAINT spring_session_pk PRIMARY KEY (primary_id),
+  UNIQUE KEY spring_session_ix1 (session_id),
+  KEY spring_session_ix2 (expiry_time),
+  KEY spring_session_ix3 (principal_name)
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
+
+CREATE TABLE SPRING_SESSION_ATTRIBUTES (
+  session_primary_id CHAR(36) NOT NULL,
+  attribute_name VARCHAR(200) NOT NULL,
+  attribute_bytes BLOB NOT NULL,
+  CONSTRAINT spring_session_attributes_pk PRIMARY KEY (session_primary_id, attribute_name),
+  CONSTRAINT spring_session_attributes_fk FOREIGN KEY (session_primary_id) REFERENCES SPRING_SESSION (primary_id) ON DELETE CASCADE
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;

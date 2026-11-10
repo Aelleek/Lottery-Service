@@ -7,57 +7,33 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Component;
 
 /**
- * Kakao OAuth2User attributes → OAuthUserInfo 변환기.
- *
- * <p>- supportsRegistrationId(): 이 추출기가 처리하는 provider id ("kakao") - extract(): Kakao 응답의 중첩 구조를
- * 안전하게 파싱하여 표준 DTO로 변환
- *
- * <p>Kakao 사용자 정보 구조(요지): { "id": 1234567890, "kakao_account": { "email": "...", // 동의 시 제공
- * "profile": { "nickname": "...", "profile_image_url": "..." } } }
+ * Kakao 사용자 정보를 {@link OAuthUserInfo}로 바꾼다. 응답 구조는 {@code {"id": 123, "kakao_account": {"email":
+ * ..., "profile": {"nickname": ..., "profile_image_url": ...}}}}이다.
  */
 @Component
 public class KakaoUserInfoExtractor implements OAuth2UserInfoExtractor {
 
-  /** 이 추출기가 처리하는 registrationId (application.yml의 키) */
   @Override
   public String supportsRegistrationId() {
     return "kakao";
   }
 
-  /**
-   * Kakao attributes에서 표준화된 사용자 정보를 추출한다. - 누락/비동의 필드는 null 허용 - Java 17의 instanceof 패턴 매칭으로 안전 캐스팅
-   */
+  /** {@code id}가 제공자 식별자다. 없는 값은 {@code null}로 둔다. */
   @Override
-  @SuppressWarnings("unchecked")
   public OAuthUserInfo extract(OAuth2User user) {
     Map<String, Object> attrs = user.getAttributes();
-
-    // 필수로 기대하는 식별자
-    String id = String.valueOf(attrs.get("id"));
-
     String email = null;
-    String name = null; // Kakao는 보통 nickname 중심, name은 없을 수 있음
+    String name = null;
     String nickname = null;
     String profileImage = null;
-
-    Object accountObj = attrs.get("kakao_account");
-    if (accountObj instanceof Map<?, ?> account) {
-      Object emailObj = account.get("email");
-      if (emailObj instanceof String e) email = e;
-
-      Object profileObj = account.get("profile");
-      if (profileObj instanceof Map<?, ?> profile) {
-        Object nickObj = profile.get("nickname");
-        if (nickObj instanceof String n) nickname = n;
-
-        Object nameObj = profile.get("name"); // 제공 안 될 수 있음
-        if (nameObj instanceof String nm) name = nm;
-
-        Object imgObj = profile.get("profile_image_url");
-        if (imgObj instanceof String url) profileImage = url;
+    if (attrs.get("kakao_account") instanceof Map<?, ?> account) {
+      email = Attributes.string(account, "email");
+      if (account.get("profile") instanceof Map<?, ?> profile) {
+        nickname = Attributes.string(profile, "nickname");
+        name = Attributes.string(profile, "name");
+        profileImage = Attributes.string(profile, "profile_image_url");
       }
     }
-
-    return new OAuthUserInfo(id, email, name, nickname, profileImage);
+    return new OAuthUserInfo(Attributes.string(attrs, "id"), email, name, nickname, profileImage);
   }
 }

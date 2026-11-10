@@ -28,7 +28,7 @@
 
 ## 2. 테이블
 
-26개다(D-040). 이 밖에 세션 저장용 Spring Session JDBC 표준 테이블 2개를 쓴다 **[미확인]**.
+26개다(D-040). 이 밖에 세션 저장용 Spring Session JDBC 표준 테이블 2개(`SPRING_SESSION`, `SPRING_SESSION_ATTRIBUTES`)를 쓴다 **[미확인]**. 두 테이블도 `schema.sql`과 V1에 있다.
 
 | 묶음 | 테이블 | 하는 일 | 꼭 지키는 규칙 |
 |---|---|---|---|
@@ -56,7 +56,7 @@
 | 비동기 작업 | `job` | worker가 처리할 일. 업무 트랜잭션 안에서 바로 등록해 후속 작업 기록을 대신한다(C-28). 발송 슬롯, 운영자 알림, 판정, 탈퇴 삭제도 job이다 | (종류, 중복 키) 유일. 마지막 오류 코드를 남긴다. 상태: READY, RUNNING(lease 보유), SUCCEEDED, RETRY_WAIT(다음 시도 시각까지 대기), DEAD(시도 상한 초과, 운영자 확인 필요), CANCELED. job의 RETRY_WAIT는 메시지의 RETRY_WAIT와 다른 상태다. lease 회수는 [03 4](03-architecture.md#4-비동기-처리) |
 | 통계 | `usage_event` | 활동 원천 이벤트 | 번호·연락처 없음 |
 | | `usage_aggregate` | 일·월·회차 집계. 원천에서 다시 계산해 덮어쓴다 | 개인 차원 없음. 기간 만료 없음. 상태: BUILDING, VERIFIED(보정 기간 뒤 원천과 대조를 마침), FAILED |
-| 관리자 | `admin_grant` | 관리자 권한 | 역할: OPERATOR, ADMIN |
+| 관리자 | `admin_grant` | 관리자 권한과 다중 요소 인증 | 역할: OPERATOR, ADMIN. 인증 앱 비밀값은 암호문과 키 버전, 마지막으로 받은 시간 단위, 실패 수, 잠금 시각, 복구 코드 해시(D-047, 03 6.3) |
 | | `admin_audit_event` | 관리자 변경 감사 기록 | 대상, 사유, 전후 값, 결과. 비밀값과 개인정보 원문 제외 |
 
 ## 3. 꼭 지키는 불변조건
