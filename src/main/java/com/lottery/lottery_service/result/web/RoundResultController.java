@@ -120,7 +120,8 @@ public class RoundResultController {
       String source,
       Instant apiConfirmedAt) {
 
-    static DrawResultResponse of(RoundResult result) {
+    /** 조회 값으로 응답을 만든다. */
+    public static DrawResultResponse of(RoundResult result) {
       boolean published = result.state() == ResultState.PUBLISHED;
       return new DrawResultResponse(
           result.round(),

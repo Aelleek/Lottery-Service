@@ -87,6 +87,8 @@ Spring Security OAuth2 기본 경로를 쓴다. `/api/v1` 밖이다.
 | `GET /admin/stats/daily` | 기간별 기본 지표 | OPERATOR 이상 |
 | `GET /admin/stats/rounds/{round}` | 회차별 기본 지표 | OPERATOR 이상 |
 
+변경 API의 `Idempotency-Key`는 회원 명령과 같은 멱등 기록(`command_operation`)을 쓴다. 관리자 API는 명령 토큰을 받지 않아 명령 종류마다 고정한 토큰 ID를 쓴다. 같은 키·같은 본문은 처음 응답을 주고(승인·직접 등록은 그 회차의 지금 결과), 다른 본문은 409 `IDEMPOTENCY_CONFLICT`, 확정 실패는 같은 실패다. 재인증이 필요했던 실패는 재인증 뒤 같은 키로 다시 할 수 있다.
+
 관리자 권한 부여 절차는 [03 6.3](03-architecture.md#63-인증과-관리자)에 있다(C-33). 관리자 화면 구성은 아직 정하지 않았다.
 
 ## 5. 기존 API 전환
