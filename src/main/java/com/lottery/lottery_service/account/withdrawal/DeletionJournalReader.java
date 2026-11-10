@@ -17,8 +17,9 @@ public interface DeletionJournalReader {
   /**
    * 삭제 기록 한 건.
    *
+   * @param scope 지우는 범위
    * @param memberPublicId 탈퇴한 회원 외부 ID
    * @param requestedAt 탈퇴 요청 시각
    */
-  record Entry(UUID memberPublicId, Instant requestedAt) {}
+  record Entry(DeletionScope scope, UUID memberPublicId, Instant requestedAt) {}
 }

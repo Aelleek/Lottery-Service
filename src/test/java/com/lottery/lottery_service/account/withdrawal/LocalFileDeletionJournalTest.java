@@ -17,7 +17,7 @@ class LocalFileDeletionJournalTest {
   @TempDir Path dir;
 
   @Test
-  @DisplayName("한 줄씩 덧붙이고 앞 기록을 지우지 않는다. 회원 외부 ID와 요청 시각만 남긴다")
+  @DisplayName("한 줄씩 덧붙이고 앞 기록을 지우지 않는다. 범위, 회원 외부 ID, 요청 시각만 남긴다")
   void appendsLines() throws Exception {
     Path file = dir.resolve("nested/journal.jsonl");
     LocalFileDeletionJournal journal = new LocalFileDeletionJournal(file);
@@ -29,12 +29,16 @@ class LocalFileDeletionJournalTest {
 
     assertThat(Files.readAllLines(file))
         .containsExactly(
-            "{\"memberPublicId\":\"" + a + "\",\"requestedAt\":\"2026-11-08T15:00:00Z\"}",
-            "{\"memberPublicId\":\"" + b + "\",\"requestedAt\":\"2026-11-08T15:01:00Z\"}");
+            "{\"scope\":\"MEMBER\",\"memberPublicId\":\""
+                + a
+                + "\",\"requestedAt\":\"2026-11-08T15:00:00Z\"}",
+            "{\"scope\":\"MEMBER\",\"memberPublicId\":\""
+                + b
+                + "\",\"requestedAt\":\"2026-11-08T15:01:00Z\"}");
   }
 
   @Test
-  @DisplayName("남은 기록을 순서대로 읽고, 파일이 없으면 빈 목록, 깨진 줄은 예외로 멈춘다")
+  @DisplayName("남은 기록을 순서대로 읽고, 파일이 없으면 빈 목록, 깨진 줄·범위 없는 줄·모르는 범위는 예외로 멈춘다")
   void readsBack() throws Exception {
     Path file = dir.resolve("journal.jsonl");
     LocalFileDeletionJournal journal = new LocalFileDeletionJournal(file);
@@ -43,8 +47,21 @@ class LocalFileDeletionJournalTest {
     journal.append(a, Instant.parse("2026-11-08T15:00:00Z"));
 
     assertThat(journal.readAll())
-        .containsExactly(new DeletionJournalReader.Entry(a, Instant.parse("2026-11-08T15:00:00Z")));
-    Files.writeString(file, "garbage\n", java.nio.file.StandardOpenOption.APPEND);
+        .containsExactly(
+            new DeletionJournalReader.Entry(
+                DeletionScope.MEMBER, a, Instant.parse("2026-11-08T15:00:00Z")));
+    Files.writeString(
+        file,
+        "{\"scope\":\"ROUND\",\"memberPublicId\":\""
+            + a
+            + "\",\"requestedAt\":\"2026-11-08T15:00:00Z\"}\n",
+        java.nio.file.StandardOpenOption.APPEND);
+    assertThatThrownBy(journal::readAll).isInstanceOf(IllegalStateException.class);
+    Files.writeString(file, "");
+    Files.writeString(
+        file, "{\"memberPublicId\":\"" + a + "\",\"requestedAt\":\"2026-11-08T15:00:00Z\"}\n");
+    assertThatThrownBy(journal::readAll).isInstanceOf(IllegalStateException.class);
+    Files.writeString(file, "garbage\n");
     assertThatThrownBy(journal::readAll).isInstanceOf(IllegalStateException.class);
   }
 

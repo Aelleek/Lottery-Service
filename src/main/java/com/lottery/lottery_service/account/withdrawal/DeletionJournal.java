@@ -10,7 +10,7 @@ import java.util.UUID;
 public interface DeletionJournal {
 
   /**
-   * 회원 삭제 기록을 남기고 저장 확인을 받는다.
+   * 회원 삭제 기록(범위 {@link DeletionScope#MEMBER})을 남기고 저장 확인을 받는다.
    *
    * @throws RuntimeException 저장을 확인하지 못했을 때. 탈퇴 차단은 유지되고 job이 다시 시도한다
    */

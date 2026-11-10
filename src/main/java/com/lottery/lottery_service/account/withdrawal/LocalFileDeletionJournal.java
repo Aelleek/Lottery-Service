@@ -22,7 +22,8 @@ import org.springframework.stereotype.Component;
  * 개발·테스트용 삭제 기록 저장소(D-052). 파일 끝에 한 줄씩 덧붙이고 디스크 기록을 확인({@code force})한 뒤에야 성공으로 본다. local·test
  * 프로필에서만 켜진다. 운영 저장소는 호스팅을 정할 때 고른다.
  *
- * <p>한 줄은 {@code {"memberPublicId":"…","requestedAt":"…"}}이다. 회원 외부 ID 밖의 개인 자료는 넣지 않는다.
+ * <p>한 줄은 {@code {"scope":"MEMBER","memberPublicId":"…","requestedAt":"…"}}이다. 회원 외부 ID 밖의 개인 자료는
+ * 넣지 않는다. 모르는 범위가 적힌 줄은 깨진 줄로 본다.
  */
 @Component
 @Profile({"local", "test"})
@@ -30,7 +31,8 @@ public class LocalFileDeletionJournal implements DeletionJournal, DeletionJourna
 
   private static final Pattern LINE =
       Pattern.compile(
-          "^\\{\"memberPublicId\":\"([0-9a-f-]{36})\",\"requestedAt\":\"([^\"]+)\"\\}$");
+          "^\\{\"scope\":\"([A-Z_]+)\",\"memberPublicId\":\"([0-9a-f-]{36})\","
+              + "\"requestedAt\":\"([^\"]+)\"\\}$");
 
   private final Path file;
 
@@ -43,7 +45,13 @@ public class LocalFileDeletionJournal implements DeletionJournal, DeletionJourna
   @Override
   public synchronized void append(UUID memberPublicId, Instant requestedAt) {
     String line =
-        "{\"memberPublicId\":\"" + memberPublicId + "\",\"requestedAt\":\"" + requestedAt + "\"}\n";
+        "{\"scope\":\""
+            + DeletionScope.MEMBER
+            + "\",\"memberPublicId\":\""
+            + memberPublicId
+            + "\",\"requestedAt\":\""
+            + requestedAt
+            + "\"}\n";
     try {
       Path parent = file.toAbsolutePath().getParent();
       if (parent != null) {
@@ -81,7 +89,13 @@ public class LocalFileDeletionJournal implements DeletionJournal, DeletionJourna
         if (!m.matches()) {
           throw new IllegalStateException("deletion journal line is invalid");
         }
-        entries.add(new Entry(UUID.fromString(m.group(1)), Instant.parse(m.group(2))));
+        DeletionScope scope;
+        try {
+          scope = DeletionScope.valueOf(m.group(1));
+        } catch (IllegalArgumentException e) {
+          throw new IllegalStateException("deletion journal scope is unknown", e);
+        }
+        entries.add(new Entry(scope, UUID.fromString(m.group(2)), Instant.parse(m.group(3))));
       }
       return entries;
     } catch (IOException e) {
