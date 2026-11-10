@@ -13,6 +13,8 @@ import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.common.web.RequestIdFilter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import java.sql.SQLException;
+import java.sql.SQLIntegrityConstraintViolationException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -20,6 +22,10 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
@@ -35,6 +41,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+@ExtendWith(OutputCaptureExtension.class)
 class ApiExceptionHandlerTest {
 
   private static final Instant NOW = Instant.parse("2026-11-07T10:59:00Z");
@@ -151,6 +158,23 @@ class ApiExceptionHandlerTest {
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("VERSION_CONFLICT"))
         .andExpect(jsonPath("$.details.currentVersion").value("9007199254740993"));
+  }
+
+  @Test
+  @DisplayName("DB 예외는 500이고, 로그에는 종류와 SQL 상태만 남고 메시지와 원인 체인의 값은 남지 않는다(2026-11-09 Q10)")
+  void databaseErrorsLogOnlyTypeAndSqlState(CapturedOutput output) throws Exception {
+    mockMvc
+        .perform(get("/probe/db"))
+        .andExpect(status().isInternalServerError())
+        .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+    mockMvc.perform(get("/probe/wrapped-sql")).andExpect(status().isInternalServerError());
+
+    assertThat(output.getOut() + output.getErr())
+        .contains("type=DataIntegrityViolationException sqlState=23000 errorCode=1062")
+        .contains("type=IllegalStateException sqlState=22001 errorCode=1406")
+        .doesNotContain("01 02 03 04 05 06")
+        .doesNotContain("010-5821-9734")
+        .doesNotContain("SQLIntegrityConstraintViolationException");
   }
 
   @Test
@@ -318,6 +342,20 @@ class ApiExceptionHandlerTest {
     @GetMapping("/probe/bad-credentials")
     String badCredentials() {
       throw new BadCredentialsException("bad");
+    }
+
+    @GetMapping("/probe/db")
+    String db() {
+      throw new DataIntegrityViolationException(
+          "Duplicate entry '01 02 03 04 05 06' for key 'uk_record'",
+          new SQLIntegrityConstraintViolationException(
+              "Duplicate entry '01 02 03 04 05 06' for key 'uk_record'", "23000", 1062));
+    }
+
+    @GetMapping("/probe/wrapped-sql")
+    String wrappedSql() {
+      throw new IllegalStateException(
+          "wrapped 010-5821-9734", new SQLException("value 010-5821-9734", "22001", 1406));
     }
 
     @GetMapping("/probe/boom")

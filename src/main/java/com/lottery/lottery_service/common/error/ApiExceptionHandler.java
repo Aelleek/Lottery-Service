@@ -5,6 +5,7 @@ import com.lottery.lottery_service.common.web.RequestIdFilter;
 import com.lottery.lottery_service.common.web.SecuritySignals;
 import com.lottery.lottery_service.recommendation.CommandInProgressException;
 import jakarta.servlet.http.HttpServletRequest;
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -14,6 +15,7 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -144,7 +146,7 @@ public class ApiExceptionHandler {
       ErrorCode code = clientErrorCode(declared);
       return respond(code, declared, clientMessage(code), false, ErrorDetails.empty(), request);
     }
-    log.error("unhandled error requestId={}", RequestIdFilter.requestIdOf(request), e);
+    logUnexpected(e, request);
     return respond(
         ErrorCode.INTERNAL_ERROR,
         ErrorCode.INTERNAL_ERROR.status(),
@@ -152,6 +154,36 @@ public class ApiExceptionHandler {
         false,
         ErrorDetails.empty(),
         request);
+  }
+
+  /**
+   * DB 예외는 메시지와 원인 체인에 SQL 값(번호 조합, 전화번호 암호문 등)이 실릴 수 있어 종류와 SQL 상태 코드만 남긴다(2026-11-09 Q10). 원인은
+   * requestId와 SQL 상태로 찾는다.
+   */
+  private static void logUnexpected(Exception e, HttpServletRequest request) {
+    String requestId = RequestIdFilter.requestIdOf(request);
+    SQLException sql = sqlCause(e);
+    if (e instanceof DataAccessException || sql != null) {
+      log.error(
+          "unhandled db error requestId={} type={} sqlState={} errorCode={}",
+          requestId,
+          e.getClass().getSimpleName(),
+          sql == null ? null : sql.getSQLState(),
+          sql == null ? null : sql.getErrorCode());
+      return;
+    }
+    log.error("unhandled error requestId={}", requestId, e);
+  }
+
+  private static SQLException sqlCause(Throwable e) {
+    Throwable current = e;
+    for (int depth = 0; current != null && depth < 16; depth++) {
+      if (current instanceof SQLException sql) {
+        return sql;
+      }
+      current = current.getCause();
+    }
+    return null;
   }
 
   private static HttpStatusCode declaredStatus(Exception e) {
