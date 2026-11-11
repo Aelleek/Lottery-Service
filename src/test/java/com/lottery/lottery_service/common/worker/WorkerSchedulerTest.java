@@ -16,6 +16,7 @@ import com.lottery.lottery_service.notification.RoundJobPlanner;
 import com.lottery.lottery_service.notification.UnknownMessageReconciler;
 import com.lottery.lottery_service.notification.UnknownMessageSweep;
 import com.lottery.lottery_service.notification.budget.BudgetReconciler;
+import com.lottery.lottery_service.notification.verify.VerificationMessageStore;
 import com.lottery.lottery_service.record.HousekeepingCleaner;
 import com.lottery.lottery_service.record.RoundMaintenance;
 import com.lottery.lottery_service.result.evaluate.EvaluationReconciler;
@@ -50,6 +51,8 @@ class WorkerSchedulerTest {
   private final BudgetReconciler budget = mock(BudgetReconciler.class);
   private final UnknownMessageReconciler unknown = mock(UnknownMessageReconciler.class);
   private final UnknownMessageSweep sweep = mock(UnknownMessageSweep.class);
+  private final VerificationMessageStore verificationMessages =
+      mock(VerificationMessageStore.class);
   private final ExpiryWatch expiry = mock(ExpiryWatch.class);
   private final SecuritySignals signals = new SecuritySignals();
   private final Clock clock = Clock.fixed(Instant.parse("2026-11-14T12:00:00Z"), ZoneOffset.UTC);
@@ -70,6 +73,7 @@ class WorkerSchedulerTest {
         budget,
         unknown,
         sweep,
+        verificationMessages,
         expiry,
         signals,
         clock,

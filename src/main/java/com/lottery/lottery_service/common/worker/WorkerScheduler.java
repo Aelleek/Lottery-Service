@@ -9,6 +9,7 @@ import com.lottery.lottery_service.notification.RoundJobPlanner;
 import com.lottery.lottery_service.notification.UnknownMessageReconciler;
 import com.lottery.lottery_service.notification.UnknownMessageSweep;
 import com.lottery.lottery_service.notification.budget.BudgetReconciler;
+import com.lottery.lottery_service.notification.verify.VerificationMessageStore;
 import com.lottery.lottery_service.record.HousekeepingCleaner;
 import com.lottery.lottery_service.record.RoundMaintenance;
 import com.lottery.lottery_service.result.evaluate.EvaluationReconciler;
@@ -73,6 +74,7 @@ public class WorkerScheduler {
   private final BudgetReconciler budget;
   private final UnknownMessageReconciler unknown;
   private final UnknownMessageSweep sweep;
+  private final VerificationMessageStore verificationMessages;
   private final ExpiryWatch expiry;
   private final SecuritySignals signals;
   private final Clock clock;
@@ -92,6 +94,7 @@ public class WorkerScheduler {
       BudgetReconciler budget,
       UnknownMessageReconciler unknown,
       UnknownMessageSweep sweep,
+      VerificationMessageStore verificationMessages,
       ExpiryWatch expiry,
       SecuritySignals signals,
       Clock clock,
@@ -108,6 +111,7 @@ public class WorkerScheduler {
     this.budget = budget;
     this.unknown = unknown;
     this.sweep = sweep;
+    this.verificationMessages = verificationMessages;
     this.expiry = expiry;
     this.signals = signals;
     this.clock = clock;
@@ -172,6 +176,10 @@ public class WorkerScheduler {
   /** 접수 여부를 모르는 메시지를 제공자에 조회해 반영한다. 기본 10분 간격이다(07 1절, 초기 설정값). */
   @Scheduled(fixedDelayString = "${lottery.worker.unknown-sweep-ms:600000}")
   public void reconcileUnknownMessages() {
+    Integer stale = tx.execute(status -> verificationMessages.markStaleInFlightUnknown());
+    if (stale != null && stale > 0) {
+      log.warn("verification messages left in flight count={}", stale);
+    }
     int resolved = sweep.run(UnknownMessageSweep.MAX_LOOKUPS);
     if (resolved > 0) {
       log.info("resolved unknown messages count={}", resolved);
