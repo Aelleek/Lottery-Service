@@ -139,7 +139,7 @@ dependencies {
 /* -------- Tests -------- */
 tasks.named('test') {
   useJUnitPlatform {
-    excludeTags 'mysql'
+    excludeTags 'mysql', 'load'
   }
 }
 
@@ -151,8 +151,33 @@ tasks.register('mysqlTest', Test) {
   classpath = sourceSets.test.runtimeClasspath
   useJUnitPlatform {
     includeTags 'mysql'
+    excludeTags 'load'
   }
   shouldRunAfter tasks.named('test')
+}
+
+/* -------- Load test (07 3절 목표, 로컬 MySQL 컨테이너. -Dload.seconds 등으로 조정) -------- */
+tasks.register('loadTest', Test) {
+  description = 'Runs the local load test against a MySQL 8.4 container.'
+  group = 'verification'
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+  useJUnitPlatform {
+    includeTags 'load'
+  }
+  systemProperties System.properties.findAll { it.key.toString().startsWith('load.') }
+  testLogging {
+    showStandardStreams = true
+  }
+}
+
+/* -------- Load run against a running app (-Dload.baseUrl=...) -------- */
+tasks.register('loadRun', JavaExec) {
+  description = 'Runs the load driver against -Dload.baseUrl.'
+  group = 'verification'
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'com.lottery.lottery_service.load.LoadDriver'
+  systemProperties System.properties.findAll { it.key.toString().startsWith('load.') }
 }
 
 /* -------- Ensure spotlessCheck is part of 'check' pipeline -------- */
