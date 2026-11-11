@@ -54,9 +54,10 @@ class SolapiClientTest {
               query != null && query.contains("startKey=")
                   ? query.substring(query.indexOf("startKey=") + 9)
                   : "";
-          byte[] out =
-              pages.getOrDefault(startKey, responseBody.get()).getBytes(StandardCharsets.UTF_8);
-          exchange.sendResponseHeaders(status.get(), out.length == 0 ? -1 : out.length);
+          String chosen = pages.getOrDefault(startKey, responseBody.get());
+          int code = "ERROR".equals(chosen) ? 500 : status.get();
+          byte[] out = ("ERROR".equals(chosen) ? "{}" : chosen).getBytes(StandardCharsets.UTF_8);
+          exchange.sendResponseHeaders(code, out.length == 0 ? -1 : out.length);
           if (out.length > 0) {
             exchange.getResponseBody().write(out);
           }
@@ -182,6 +183,12 @@ class SolapiClientTest {
     assertThat(paths.get(1)).contains("&limit=500&startKey=K2");
 
     pages.put("K2", "{\"startKey\":\"K2\",\"messageList\":{}}");
+    paths.clear();
+    assertThat(lookup.lookup(new MessageLookup.UnknownMessage(1, key, null, at)))
+        .isInstanceOf(ProviderStatus.NotFound.class);
+    assertThat(paths).hasSize(2);
+
+    pages.put("K2", "ERROR");
     paths.clear();
     assertThat(lookup.lookup(new MessageLookup.UnknownMessage(1, key, null, at)))
         .isInstanceOf(ProviderStatus.NotFound.class);

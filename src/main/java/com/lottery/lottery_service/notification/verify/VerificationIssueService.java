@@ -8,6 +8,7 @@ import com.lottery.lottery_service.common.command.CommandToken;
 import com.lottery.lottery_service.common.command.CommandTokenCodec;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.error.ErrorDetails;
 import com.lottery.lottery_service.common.secret.SecretKeys;
 import com.lottery.lottery_service.notification.SendOutcome;
 import com.lottery.lottery_service.recommendation.CommandInProgressException;
@@ -28,7 +29,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * 인증 코드 발급 명령(06 1절 {@code POST /me/notification-verifications}, 명령 REQUEST_VERIFICATION). 한 트랜잭션에서
  * 연락처 버전 확인, 발송 간격·하루 횟수 확인, 인증 요청과 메시지 생성, 인증 코드 몫 예산 예약을 하고, 커밋한 뒤 바로 보낸다(05 8.8절). 제공자가 받지 않은 것이
- * 확실하면 그 요청을 무효로 하고 503으로 답한다. 접수 여부를 모르면 성공으로 답하고 조회로 대조한다. 멱등 기록에는 번호 원문 대신 HMAC만 남긴다.
+ * 확실하면 그 요청을 무효로 하고 503으로 답한다. 발송 결과는 처리 권한과 상관없이 따로 커밋하고, 보내기 직전에 처리 권한을 늘려 발송 중 다른 재시도가 넘겨받지 않게
+ * 한다. 접수 여부를 모르면 성공으로 답하고 조회로 대조한다. 멱등 기록에는 번호 원문 대신 HMAC만 남긴다.
  */
 @Component
 public class VerificationIssueService {
@@ -134,15 +136,24 @@ public class VerificationIssueService {
                     "UPDATE verification_challenge SET state = 'REVOKED', code_hmac = NULL"
                         + " WHERE id = ? AND state = 'ACTIVE'",
                     challenge.challengeId());
-              } else {
-                operations.succeed(started, challenge.publicId(), s);
               }
               return s;
             });
     if ("FAILED".equals(state)) {
       operations.markRetryable(started, ErrorCode.TEMPORARILY_UNAVAILABLE.name());
       throw new BusinessException(
-          ErrorCode.TEMPORARILY_UNAVAILABLE, "인증 코드를 보내지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+          ErrorCode.TEMPORARILY_UNAVAILABLE,
+          "인증 코드를 보내지 못했습니다. 잠시 뒤 다시 시도해 주세요.",
+          ErrorDetails.retryAt(resendAt(challenge.expiresAt())));
+    }
+    try {
+      tx.executeWithoutResult(status -> operations.succeed(started, challenge.publicId(), state));
+    } catch (IllegalStateException e) {
+      log.warn("verification command lease lost after send: message={}", prepared.messageId());
+      throw new BusinessException(
+          ErrorCode.TEMPORARILY_UNAVAILABLE,
+          "요청을 처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요.",
+          ErrorDetails.retryAt(resendAt(challenge.expiresAt())));
     }
     return new Requested(
         started.publicId(),
@@ -174,6 +185,9 @@ public class VerificationIssueService {
     if (message.isEmpty()) {
       throw new BusinessException(
           ErrorCode.TEMPORARILY_UNAVAILABLE, "지금은 인증 코드를 보낼 수 없습니다. 잠시 뒤 다시 시도해 주세요.");
+    }
+    if (!operations.renewLease(started)) {
+      throw new IllegalStateException("command lease lost before send: " + started.publicId());
     }
     return new Prepared(challenge, message.getAsLong());
   }

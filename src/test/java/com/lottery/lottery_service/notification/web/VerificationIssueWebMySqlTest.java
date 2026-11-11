@@ -58,10 +58,12 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
     final List<String> codes = new ArrayList<>();
     final AtomicReference<SendOutcome> next =
         new AtomicReference<>(new SendOutcome.Accepted("M-1"));
+    final AtomicReference<Runnable> during = new AtomicReference<>(() -> {});
 
     @Override
     public synchronized SendOutcome send(long messageId, String code) {
       codes.add(code);
+      during.get().run();
       return next.get();
     }
   }
@@ -98,7 +100,39 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
   void reset() {
     sender.codes.clear();
     sender.next.set(new SendOutcome.Accepted("M-1"));
+    sender.during.set(() -> {});
     jdbc.update("UPDATE message_budget SET limit_units = 300000");
+  }
+
+  @Test
+  @DisplayName(
+      "발송 중 다른 재시도가 처리 권한을 넘겨받아도 발송 결과는 남고 503과 Retry-After로 답한다. 같은 키는 처리 중으로 답하고 다시 보내지 않는다")
+  void leaseLostAfterSend() throws Exception {
+    Client mine = client("issue-lease");
+    UUID key = UUID.randomUUID();
+    String token = mine.token("REQUEST_VERIFICATION");
+    sender.during.set(
+        () ->
+            jdbc.update(
+                "UPDATE command_operation SET lease_token = UUID_TO_BIN(UUID()),"
+                    + " lease_until = DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE)"
+                    + " WHERE client_key = UUID_TO_BIN(?)",
+                key.toString()));
+
+    mine.request("+821012120000", "0", key, token)
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(header().exists("Retry-After"))
+        .andExpect(jsonPath("$.code").value("TEMPORARILY_UNAVAILABLE"));
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT state, cost_state FROM delivery_message WHERE member_id = ?",
+                mine.member.memberId()))
+        .containsEntry("state", "ACCEPTED")
+        .containsEntry("cost_state", "SPENT");
+
+    sender.during.set(() -> {});
+    mine.request("+821012120000", "0", key, token).andExpect(status().isAccepted());
+    assertThat(sender.codes).hasSize(1);
   }
 
   @Test
@@ -146,6 +180,7 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
 
     mine.request("+821011112222", "0", UUID.randomUUID())
         .andExpect(status().isTooManyRequests())
+        .andExpect(header().exists("Retry-After"))
         .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
     assertThat(sender.codes).hasSize(1);
 
@@ -162,6 +197,7 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
     refused
         .request("+821033334444", "0", UUID.randomUUID())
         .andExpect(status().isServiceUnavailable())
+        .andExpect(header().exists("Retry-After"))
         .andExpect(jsonPath("$.code").value("TEMPORARILY_UNAVAILABLE"));
     Map<String, Object> failed =
         jdbc.queryForMap(

@@ -175,6 +175,20 @@ public class VerificationStore {
     return VerificationResult.VERIFIED;
   }
 
+  /**
+   * 기한이 지난 ACTIVE 인증 요청을 EXPIRED로 바꾸고 코드 HMAC을 지운다(05 8.8절). 확인 요청이 오지 않은 요청도 남기지 않으려는 것이다. 접수 대조
+   * 주기에 부른다.
+   *
+   * @return 바꾼 수
+   */
+  public int expireDue(int limit) {
+    return jdbc.update(
+        "UPDATE verification_challenge SET state = 'EXPIRED', code_hmac = NULL"
+            + " WHERE state = 'ACTIVE' AND expires_at <= ? ORDER BY expires_at LIMIT ?",
+        utc(clock.instant()),
+        limit);
+  }
+
   private void consume(String scope, byte[] scopeHmac, LocalDate day, Instant now) {
     jdbc.update(
         "INSERT INTO verification_rate_bucket (scope_type, scope_hmac, business_date, send_count,"

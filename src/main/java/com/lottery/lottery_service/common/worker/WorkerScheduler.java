@@ -10,6 +10,7 @@ import com.lottery.lottery_service.notification.UnknownMessageReconciler;
 import com.lottery.lottery_service.notification.UnknownMessageSweep;
 import com.lottery.lottery_service.notification.budget.BudgetReconciler;
 import com.lottery.lottery_service.notification.verify.VerificationMessageStore;
+import com.lottery.lottery_service.notification.verify.VerificationStore;
 import com.lottery.lottery_service.record.HousekeepingCleaner;
 import com.lottery.lottery_service.record.RoundMaintenance;
 import com.lottery.lottery_service.result.evaluate.EvaluationReconciler;
@@ -59,6 +60,9 @@ public class WorkerScheduler {
 
   static final int RECORD_CLEANUP_BATCH = 500;
 
+  /** 한 번에 만료 처리하는 인증 요청 수. */
+  static final int MAX_EXPIRED_CHALLENGES = 1_000;
+
   /** 보안 신호 알림 기준. 10분 동안 한 종류가 이 수를 넘으면 알린다(07 2.1절, 초기 설정값). */
   static final long SECURITY_SIGNAL_THRESHOLD = 1_000;
 
@@ -75,6 +79,7 @@ public class WorkerScheduler {
   private final UnknownMessageReconciler unknown;
   private final UnknownMessageSweep sweep;
   private final VerificationMessageStore verificationMessages;
+  private final VerificationStore verifications;
   private final ExpiryWatch expiry;
   private final SecuritySignals signals;
   private final Clock clock;
@@ -95,6 +100,7 @@ public class WorkerScheduler {
       UnknownMessageReconciler unknown,
       UnknownMessageSweep sweep,
       VerificationMessageStore verificationMessages,
+      VerificationStore verifications,
       ExpiryWatch expiry,
       SecuritySignals signals,
       Clock clock,
@@ -112,6 +118,7 @@ public class WorkerScheduler {
     this.unknown = unknown;
     this.sweep = sweep;
     this.verificationMessages = verificationMessages;
+    this.verifications = verifications;
     this.expiry = expiry;
     this.signals = signals;
     this.clock = clock;
@@ -173,9 +180,13 @@ public class WorkerScheduler {
     }
   }
 
-  /** 접수 여부를 모르는 메시지를 제공자에 조회해 반영한다. 기본 10분 간격이다(07 1절, 초기 설정값). */
+  /**
+   * 기한이 지난 인증 요청의 코드 HMAC을 지우고, 멈춘 인증 메시지를 UNKNOWN으로 넘긴 뒤, 접수 여부를 모르는 메시지를 제공자에 조회해 반영한다. 기본 10분
+   * 간격이다(07 1절, 초기 설정값).
+   */
   @Scheduled(fixedDelayString = "${lottery.worker.unknown-sweep-ms:600000}")
   public void reconcileUnknownMessages() {
+    tx.executeWithoutResult(status -> verifications.expireDue(MAX_EXPIRED_CHALLENGES));
     Integer stale = tx.execute(status -> verificationMessages.markStaleInFlightUnknown());
     if (stale != null && stale > 0) {
       log.warn("verification messages left in flight count={}", stale);

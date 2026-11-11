@@ -17,6 +17,7 @@ import com.lottery.lottery_service.notification.UnknownMessageReconciler;
 import com.lottery.lottery_service.notification.UnknownMessageSweep;
 import com.lottery.lottery_service.notification.budget.BudgetReconciler;
 import com.lottery.lottery_service.notification.verify.VerificationMessageStore;
+import com.lottery.lottery_service.notification.verify.VerificationStore;
 import com.lottery.lottery_service.record.HousekeepingCleaner;
 import com.lottery.lottery_service.record.RoundMaintenance;
 import com.lottery.lottery_service.result.evaluate.EvaluationReconciler;
@@ -53,6 +54,7 @@ class WorkerSchedulerTest {
   private final UnknownMessageSweep sweep = mock(UnknownMessageSweep.class);
   private final VerificationMessageStore verificationMessages =
       mock(VerificationMessageStore.class);
+  private final VerificationStore verifications = mock(VerificationStore.class);
   private final ExpiryWatch expiry = mock(ExpiryWatch.class);
   private final SecuritySignals signals = new SecuritySignals();
   private final Clock clock = Clock.fixed(Instant.parse("2026-11-14T12:00:00Z"), ZoneOffset.UTC);
@@ -74,6 +76,7 @@ class WorkerSchedulerTest {
         unknown,
         sweep,
         verificationMessages,
+        verifications,
         expiry,
         signals,
         clock,
@@ -168,10 +171,14 @@ class WorkerSchedulerTest {
   }
 
   @Test
-  @DisplayName("접수 대조는 제공자 조회 제한 안의 건수로 UNKNOWN 메시지를 조회한다")
+  @DisplayName("접수 대조는 기한 지난 인증 요청을 만료시키고 멈춘 인증 메시지를 넘긴 뒤 제공자 조회 제한 안의 건수로 UNKNOWN 메시지를 조회한다")
   void reconcilesUnknownMessages() {
+    when(verificationMessages.markStaleInFlightUnknown()).thenReturn(2);
+
     scheduler().reconcileUnknownMessages();
 
+    verify(verifications).expireDue(WorkerScheduler.MAX_EXPIRED_CHALLENGES);
+    verify(verificationMessages).markStaleInFlightUnknown();
     verify(sweep).run(UnknownMessageSweep.MAX_LOOKUPS);
   }
 

@@ -9,9 +9,14 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
@@ -104,6 +109,56 @@ class MessageBudgetStoreMySqlTest extends MySqlContainerSupport {
     inTx(() -> store.release(last));
     assertThat(reserve(verification(), MessagePurpose.VERIFICATION, 1_000)).isTrue();
     assertThat(budget(NOV_MONTH)).containsEntry("reserved_units", 80_000L);
+    assertThat(store.matchesMessages(NOV_MONTH)).isTrue();
+  }
+
+  @Test
+  @DisplayName("동시에 예약해도 인증 코드 합계는 10%, 기본 알림을 더한 전체 합계는 90%를 넘지 않고 카운터와 메시지 합계가 같다")
+  void concurrentReservationsStayUnderCaps() throws Exception {
+    List<Long> verificationIds = new ArrayList<>();
+    List<Long> resultIds = new ArrayList<>();
+    for (int i = 0; i < 20; i++) {
+      verificationIds.add(verification());
+      resultIds.add(message());
+    }
+    store.ensureMonth(NOV_MONTH);
+    ExecutorService pool = Executors.newFixedThreadPool(8);
+    CountDownLatch go = new CountDownLatch(1);
+    List<Future<Boolean>> verificationResults = new ArrayList<>();
+    List<Future<Boolean>> resultResults = new ArrayList<>();
+    for (int i = 0; i < 20; i++) {
+      long v = verificationIds.get(i);
+      long r = resultIds.get(i);
+      verificationResults.add(
+          pool.submit(
+              () -> {
+                go.await();
+                return reserve(v, MessagePurpose.VERIFICATION, 2_000);
+              }));
+      resultResults.add(
+          pool.submit(
+              () -> {
+                go.await();
+                return reserve(r, MessagePurpose.RESULT, 15_000);
+              }));
+    }
+    go.countDown();
+    long verificationOk = 0;
+    long resultOk = 0;
+    for (int i = 0; i < 20; i++) {
+      verificationOk += verificationResults.get(i).get() ? 1 : 0;
+      resultOk += resultResults.get(i).get() ? 1 : 0;
+    }
+    pool.shutdown();
+
+    assertThat(verificationOk).isEqualTo(15);
+    assertThat(verificationOk * 2_000 + resultOk * 15_000).isLessThanOrEqualTo(300_000);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT SUM(cost_units) FROM delivery_message WHERE purpose = 'VERIFICATION'"
+                    + " AND cost_state = 'RESERVED'",
+                Long.class))
+        .isEqualTo(30_000L);
     assertThat(store.matchesMessages(NOV_MONTH)).isTrue();
   }
 

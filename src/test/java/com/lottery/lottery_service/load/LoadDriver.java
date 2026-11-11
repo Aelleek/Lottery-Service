@@ -52,7 +52,8 @@ public final class LoadDriver {
    * @param users 동시 사용자 수
    * @param requestsPerSecond 전체 초당 동작 수. 추천 한 번은 요청 둘(토큰, 저장)이다
    * @param duration 측정 시간
-   * @param forwardedPrefix 사용자 IP로 쓸 앞 세 자리(예: {@code 198.18.0}). {@code null}이면 헤더를 넣지 않는다
+   * @param forwardedPrefix 사용자 IP로 쓸 앞 세 자리(예: {@code 198.18.0}). 마지막 자리는 1~250이라 사용자는 250명까지다.
+   *     {@code null}이면 헤더를 넣지 않는다
    * @param recommendPercent 동작 중 추천 비율(0~100)
    */
   public record Settings(
@@ -155,8 +156,17 @@ public final class LoadDriver {
           .build();
   private final Map<Kind, List<long[]>> samples = new EnumMap<>(Kind.class);
 
-  /** 설정으로 만든다. */
+  /**
+   * 설정으로 만든다.
+   *
+   * @throws IllegalArgumentException 사용자별 IP를 쓰는데 사용자가 250명을 넘을 때(마지막 자리가 겹친다)
+   */
   public LoadDriver(Settings settings) {
+    if (settings.forwardedPrefix() != null
+        && !settings.forwardedPrefix().isBlank()
+        && settings.users() > 250) {
+      throw new IllegalArgumentException("users must be 250 or fewer with a forwarded prefix");
+    }
     this.settings = settings;
     for (Kind kind : Kind.values()) {
       samples.put(kind, new ArrayList<>());
@@ -194,8 +204,14 @@ public final class LoadDriver {
       pool.execute(() -> loop(user, round, scheduleVersion, start + offset, intervalNanos, end));
     }
     pool.shutdown();
-    if (!pool.awaitTermination(settings.duration().toSeconds() + 120, TimeUnit.SECONDS)) {
-      pool.shutdownNow();
+    try {
+      if (!pool.awaitTermination(settings.duration().toSeconds() + 120, TimeUnit.SECONDS)) {
+        pool.shutdownNow();
+      }
+    } finally {
+      if (!pool.isTerminated()) {
+        pool.shutdownNow();
+      }
     }
     return report(Duration.ofNanos(System.nanoTime() - start));
   }
@@ -285,7 +301,7 @@ public final class LoadDriver {
     if (settings.forwardedPrefix() == null || settings.forwardedPrefix().isBlank()) {
       return null;
     }
-    return settings.forwardedPrefix() + "." + (index % 250 + 1);
+    return settings.forwardedPrefix() + "." + (index + 1);
   }
 
   private Call get(String path, User user) {

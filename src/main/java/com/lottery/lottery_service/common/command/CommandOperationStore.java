@@ -194,6 +194,21 @@ public class CommandOperationStore {
     }
   }
 
+  /**
+   * 호출한 쪽 트랜잭션 안에서 처리 권한을 지금부터 {@link #LEASE}만큼 늘린다. 외부 호출 직전에 불러 그 호출이 끝나기 전에 다른 재시도가 넘겨받지 않게 한다.
+   *
+   * @return 권한을 아직 갖고 있어 늘렸으면 {@code true}
+   */
+  public boolean renewLease(CommandStart.Started started) {
+    return jdbc.update(
+            "UPDATE command_operation SET lease_until = ? WHERE id = ? AND state = 'PROCESSING'"
+                + " AND lease_token = ?",
+            utc(clock.instant().plus(LEASE)),
+            started.operationId(),
+            bytes(started.leaseToken()))
+        == 1;
+  }
+
   /** 끝난 명령의 응답 요약. 없으면 빈 값. */
   public Optional<String> summary(UUID operationPublicId) {
     return jdbc
