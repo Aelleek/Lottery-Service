@@ -40,6 +40,9 @@ public class SolapiClient {
   private static final Duration TIMEOUT = Duration.ofSeconds(5);
   private static final int MAX_BODY = 256 * 1024;
 
+  /** 요청 키로 찾을 때 따라가는 조회 쪽 수 상한(쪽마다 500건). */
+  static final int MAX_LOOKUP_PAGES = 10;
+
   private final SolapiProperties properties;
   private final Clock clock;
   private final HttpClient http;
@@ -119,21 +122,37 @@ public class SolapiClient {
 
   /** 제공자 메시지 ID로 상태를 조회한다({@code GET /messages/v4/list?messageId=}). */
   public ProviderStatus findByMessageId(String messageId) throws IOException {
-    return firstMatch(query("messageId=" + encode(messageId)), null);
+    return firstMatch(query("messageId=" + encode(messageId)).path("messageList"), null);
   }
 
-  /** 호출 시각 범위에서 {@code customFields}의 요청 키가 같은 메시지를 찾는다. */
+  /**
+   * 호출 시각 범위에서 {@code customFields}의 요청 키가 같은 메시지를 찾는다. 한 쪽(500건)에 없으면 {@code nextKey}로 다음 쪽을
+   * {@link #MAX_LOOKUP_PAGES}쪽까지 본다. 상한을 넘으면 찾지 못했다고 단정하지 않고 실패로 던진다.
+   */
   public ProviderStatus findByRequestKey(String requestKey, Instant from, Instant until)
       throws IOException {
     DateTimeFormatter format = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
-    return firstMatch(
-        query(
-            "dateType=CREATED&startDate="
-                + encode(format.format(from.atOffset(ZoneOffset.UTC)))
-                + "&endDate="
-                + encode(format.format(until.atOffset(ZoneOffset.UTC)))
-                + "&limit=500"),
-        requestKey);
+    String range =
+        "dateType=CREATED&startDate="
+            + encode(format.format(from.atOffset(ZoneOffset.UTC)))
+            + "&endDate="
+            + encode(format.format(until.atOffset(ZoneOffset.UTC)))
+            + "&limit=500";
+    String startKey = null;
+    for (int page = 0; page < MAX_LOOKUP_PAGES; page++) {
+      JsonNode body = query(startKey == null ? range : range + "&startKey=" + encode(startKey));
+      ProviderStatus found = firstMatch(body.path("messageList"), requestKey);
+      if (!(found instanceof ProviderStatus.NotFound)) {
+        return found;
+      }
+      JsonNode nextKey = body.path("nextKey");
+      String next = nextKey.isTextual() ? nextKey.asText() : "";
+      if (next.isEmpty() || next.equals(startKey)) {
+        return found;
+      }
+      startKey = next;
+    }
+    throw new IOException("solapi lookup page limit");
   }
 
   private JsonNode query(String parameters) throws IOException {
@@ -141,7 +160,7 @@ public class SolapiClient {
     if (response.status() != 200) {
       throw new IOException("solapi lookup status " + response.status());
     }
-    return response.body().path("messageList");
+    return response.body();
   }
 
   private static ProviderStatus firstMatch(JsonNode list, String requestKey) {

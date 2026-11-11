@@ -32,6 +32,7 @@ class SolapiClientTest {
 
   private final AtomicInteger status = new AtomicInteger(200);
   private final AtomicReference<String> responseBody = new AtomicReference<>("{}");
+  private final Map<String, String> pages = new java.util.concurrent.ConcurrentHashMap<>();
   private final List<String> requests = new ArrayList<>();
   private final List<String> paths = new ArrayList<>();
   private final List<String> auth = new ArrayList<>();
@@ -48,7 +49,13 @@ class SolapiClientTest {
           auth.add(exchange.getRequestHeaders().getFirst("Authorization"));
           requests.add(
               new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-          byte[] out = responseBody.get().getBytes(StandardCharsets.UTF_8);
+          String query = exchange.getRequestURI().getRawQuery();
+          String startKey =
+              query != null && query.contains("startKey=")
+                  ? query.substring(query.indexOf("startKey=") + 9)
+                  : "";
+          byte[] out =
+              pages.getOrDefault(startKey, responseBody.get()).getBytes(StandardCharsets.UTF_8);
           exchange.sendResponseHeaders(status.get(), out.length == 0 ? -1 : out.length);
           if (out.length > 0) {
             exchange.getResponseBody().write(out);
@@ -152,6 +159,57 @@ class SolapiClientTest {
     status.set(500);
     assertThat(lookup.lookup(new MessageLookup.UnknownMessage(1, key, "M4V1", at)))
         .isInstanceOf(ProviderStatus.NotFound.class);
+  }
+
+  @Test
+  @DisplayName("요청 키가 첫 쪽에 없으면 nextKey로 다음 쪽을 보고, 마지막 쪽까지 없으면 찾지 못함")
+  void lookupFollowsNextKey() {
+    SolapiMessageLookup lookup = new SolapiMessageLookup(client);
+    byte[] key = {(byte) 0xab, 0x12};
+    Instant at = Instant.parse("2026-11-08T12:31:00Z");
+    pages.put(
+        "",
+        "{\"nextKey\":\"K2\",\"messageList\":{\"M1\":{\"messageId\":\"M1\",\"statusCode\":\"4000\","
+            + "\"customFields\":{\"requestKey\":\"ffff\"}}}}");
+    pages.put(
+        "K2",
+        "{\"startKey\":\"K2\",\"nextKey\":null,\"messageList\":{\"M2\":{\"messageId\":\"M2\","
+            + "\"statusCode\":\"3000\",\"customFields\":{\"requestKey\":\"ab12\"}}}}");
+
+    assertThat(lookup.lookup(new MessageLookup.UnknownMessage(1, key, null, at)))
+        .isEqualTo(new ProviderStatus.Accepted("M2"));
+    assertThat(paths).hasSize(2);
+    assertThat(paths.get(1)).contains("&limit=500&startKey=K2");
+
+    pages.put("K2", "{\"startKey\":\"K2\",\"messageList\":{}}");
+    paths.clear();
+    assertThat(lookup.lookup(new MessageLookup.UnknownMessage(1, key, null, at)))
+        .isInstanceOf(ProviderStatus.NotFound.class);
+    assertThat(paths).hasSize(2);
+  }
+
+  @Test
+  @DisplayName("다음 쪽이 끝없이 이어지면 상한에서 멈추고 찾지 못함으로 답한다. 같은 nextKey가 되풀이되면 바로 멈춘다")
+  void lookupPageLimit(CapturedOutput output) {
+    SolapiMessageLookup lookup = new SolapiMessageLookup(client);
+    byte[] key = {(byte) 0xab, 0x12};
+    Instant at = Instant.parse("2026-11-08T12:31:00Z");
+    for (int i = 0; i <= SolapiClient.MAX_LOOKUP_PAGES; i++) {
+      pages.put(i == 0 ? "" : "K" + i, "{\"nextKey\":\"K" + (i + 1) + "\",\"messageList\":{}}");
+    }
+
+    assertThat(lookup.lookup(new MessageLookup.UnknownMessage(1, key, null, at)))
+        .isInstanceOf(ProviderStatus.NotFound.class);
+    assertThat(paths).hasSize(SolapiClient.MAX_LOOKUP_PAGES);
+    assertThat(output.getAll()).contains("solapi lookup page limit");
+
+    pages.clear();
+    paths.clear();
+    pages.put("", "{\"nextKey\":\"K1\",\"messageList\":{}}");
+    pages.put("K1", "{\"nextKey\":\"K1\",\"messageList\":{}}");
+    assertThat(lookup.lookup(new MessageLookup.UnknownMessage(1, key, null, at)))
+        .isInstanceOf(ProviderStatus.NotFound.class);
+    assertThat(paths).hasSize(2);
   }
 
   @Test
