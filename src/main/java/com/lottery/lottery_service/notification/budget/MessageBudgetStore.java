@@ -15,7 +15,8 @@ import org.springframework.stereotype.Component;
  * 반영되지 않는다.
  *
  * <ul>
- *   <li>IN_FLIGHT가 될 때 예약(RESERVED). 상한을 넘으면 예약하지 않는다.
+ *   <li>IN_FLIGHT가 될 때 예약(RESERVED). 상한을 넘으면 예약하지 않는다. 기본 알림은 전체 합계가 월 예산의 90% 이하, 인증 코드는 전체 합계가 월
+ *       예산 이하이면서 인증 코드 합계가 10% 이하여야 한다(02 6.5절, 2026-11-09 Q14).
  *   <li>접수되면 확정 사용(SPENT). 확정 미접수·확실한 거절이면 반환(RELEASED). 접수 여부를 모르면 예약 그대로 둔다.
  * </ul>
  */
@@ -44,6 +45,22 @@ public class MessageBudgetStore {
   public boolean reserve(long messageId, MessagePurpose purpose, long units, Instant at) {
     LocalDate month = SeoulTime.monthOf(at).atDay(1);
     ensureMonth(month);
+    jdbc.queryForList(
+        "SELECT version FROM message_budget WHERE provider = ? AND business_month = ? FOR UPDATE",
+        PROVIDER,
+        month);
+    if (purpose != MessagePurpose.RESULT) {
+      Long used =
+          jdbc.queryForObject(
+              "SELECT COALESCE(SUM(cost_units), 0) FROM delivery_message WHERE budget_month = ?"
+                  + " AND purpose = ? AND cost_state IN ('RESERVED', 'SPENT')",
+              Long.class,
+              month,
+              purpose.name());
+      if (used + units > properties.shareCapFor(purpose)) {
+        return false;
+      }
+    }
     int counter =
         jdbc.update(
             "UPDATE message_budget SET reserved_units = reserved_units + ?, version = version + 1"

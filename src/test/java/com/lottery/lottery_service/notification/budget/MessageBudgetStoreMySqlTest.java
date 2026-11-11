@@ -47,6 +47,7 @@ class MessageBudgetStoreMySqlTest extends MySqlContainerSupport {
     for (String t :
         List.of(
             "delivery_message",
+            "verification_challenge",
             "message_budget",
             "lotto_round",
             "oauth_account",
@@ -85,8 +86,34 @@ class MessageBudgetStoreMySqlTest extends MySqlContainerSupport {
     assertThat(reserve(message(), MessagePurpose.RESULT, 135_000)).isTrue();
     assertThat(reserve(message(), MessagePurpose.RESULT, 135_000)).isTrue();
     assertThat(reserve(message(), MessagePurpose.RESULT, 1)).isFalse();
-    assertThat(reserve(message(), MessagePurpose.VERIFICATION, 30_000)).isTrue();
-    assertThat(reserve(message(), MessagePurpose.VERIFICATION, 1)).isFalse();
+    assertThat(reserve(verification(), MessagePurpose.VERIFICATION, 30_000)).isTrue();
+    assertThat(reserve(verification(), MessagePurpose.VERIFICATION, 1)).isFalse();
+  }
+
+  @Test
+  @DisplayName("기본 알림이 10% 넘게 써도 인증 코드는 자기 몫 10%를 쓸 수 있고, 그 몫을 넘지 못한다(2026-11-09 Q14)")
+  void verificationShareIsOwnSum() {
+    assertThat(reserve(message(), MessagePurpose.RESULT, 50_000)).isTrue();
+
+    assertThat(reserve(verification(), MessagePurpose.VERIFICATION, 29_000)).isTrue();
+    long last = verification();
+    assertThat(reserve(last, MessagePurpose.VERIFICATION, 1_001)).isFalse();
+    assertThat(reserve(last, MessagePurpose.VERIFICATION, 1_000)).isTrue();
+    assertThat(reserve(verification(), MessagePurpose.VERIFICATION, 1)).isFalse();
+
+    inTx(() -> store.release(last));
+    assertThat(reserve(verification(), MessagePurpose.VERIFICATION, 1_000)).isTrue();
+    assertThat(budget(NOV_MONTH)).containsEntry("reserved_units", 80_000L);
+    assertThat(store.matchesMessages(NOV_MONTH)).isTrue();
+  }
+
+  @Test
+  @DisplayName("인증 코드를 쓴 만큼 기본 알림의 90% 합계 상한에 들어간다")
+  void resultCapCountsVerification() {
+    assertThat(reserve(verification(), MessagePurpose.VERIFICATION, 30_000)).isTrue();
+
+    assertThat(reserve(message(), MessagePurpose.RESULT, 240_000)).isTrue();
+    assertThat(reserve(message(), MessagePurpose.RESULT, 1)).isFalse();
   }
 
   @Test
@@ -150,6 +177,29 @@ class MessageBudgetStoreMySqlTest extends MySqlContainerSupport {
         memberId,
         round,
         key);
+    return jdbc.queryForObject(
+        "SELECT id FROM delivery_message WHERE provider_request_key = UUID_TO_BIN(?)",
+        Long.class,
+        key);
+  }
+
+  private long verification() {
+    String challenge = UUID.randomUUID().toString();
+    jdbc.update(
+        "INSERT INTO verification_challenge (public_id, member_id, target_hmac, key_version,"
+            + " expected_contact_version, state, expires_at) VALUES (UUID_TO_BIN(?), ?,"
+            + " UNHEX(SHA2('t', 256)), 1, 0, 'ACTIVE', '2026-11-14 13:05:00')",
+        challenge,
+        memberId);
+    String key = UUID.randomUUID().toString();
+    jdbc.update(
+        "INSERT INTO delivery_message (public_id, purpose, member_id, challenge_id, state,"
+            + " provider_request_key, expires_at) SELECT UUID_TO_BIN(UUID()), 'VERIFICATION', ?,"
+            + " id, 'PENDING', UUID_TO_BIN(?), '2026-11-14 13:05:00' FROM verification_challenge"
+            + " WHERE public_id = UUID_TO_BIN(?)",
+        memberId,
+        key,
+        challenge);
     return jdbc.queryForObject(
         "SELECT id FROM delivery_message WHERE provider_request_key = UUID_TO_BIN(?)",
         Long.class,

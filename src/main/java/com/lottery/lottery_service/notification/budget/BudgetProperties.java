@@ -24,10 +24,17 @@ public record BudgetProperties(Long monthlyLimitUnits, Integer resultSharePercen
     }
   }
 
-  /** 용도별 사용 상한. 기본 알림은 월 예산의 정해진 비율, 인증 코드는 월 예산 전체다. */
+  /** 전체 합계 상한. 기본 알림은 월 예산의 정해진 비율, 인증 코드는 월 예산 전체다. */
   public long capFor(MessagePurpose purpose) {
     return purpose == MessagePurpose.RESULT
         ? monthlyLimitUnits * resultSharePercent / 100
         : monthlyLimitUnits;
+  }
+
+  /** 그 용도 메시지만의 합계 상한. 기본 알림은 전체 합계로 보므로 월 예산 전체, 인증 코드는 기본 알림 몫을 뺀 나머지다. */
+  public long shareCapFor(MessagePurpose purpose) {
+    return purpose == MessagePurpose.RESULT
+        ? monthlyLimitUnits
+        : monthlyLimitUnits - monthlyLimitUnits * resultSharePercent / 100;
   }
 }
