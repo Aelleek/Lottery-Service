@@ -24,6 +24,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.logout.LogoutFilter;
+import org.springframework.security.web.firewall.RequestRejectedHandler;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.security.web.header.writers.StaticHeadersWriter;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
@@ -153,6 +154,20 @@ public class SecurityConfig {
                     .invalidateHttpSession(true)
                     .deleteCookies("__Host-lottery_session", "lottery_session"));
     return http.build();
+  }
+
+  /**
+   * 방화벽(StrictHttpFirewall)이 거른 요청(경로의 {@code ;}, 인코딩한 {@code /} 등)도 openapi 오류 형식 400으로 답한다. 기본
+   * 처리기는 본문 없이 400을 준다.
+   */
+  @Bean
+  public RequestRejectedHandler requestRejectedHandler() {
+    return (request, response, ex) ->
+        errors.resolveException(
+            request,
+            response,
+            null,
+            new BusinessException(ErrorCode.VALIDATION_FAILED, "요청 형식을 확인해 주세요."));
   }
 
   private static HttpSessionRequestCache pageRequestCache() {
