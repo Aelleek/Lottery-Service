@@ -54,19 +54,17 @@ public class RecordController {
     return page(RequestSubject.member(auth), round, purchased, rank, cursor);
   }
 
-  /** 비회원 본인의 기록 한 쪽. 회원 세션이면 401이다(회원 자료는 회원 API로 본다). */
+  /** 비회원 본인의 기록 한 쪽. 회차와 cursor만 받고, 회원 세션이면 401이다(회원 자료는 회원 API로 본다). */
   @GetMapping("/guest/lotto/records")
   public ResponseEntity<Page> guest(
       Authentication auth,
       @RequestParam(name = "round", required = false) Integer round,
-      @RequestParam(name = "purchased", required = false) Boolean purchased,
-      @RequestParam(name = "rank", required = false) String rank,
       @RequestParam(name = "cursor", required = false) String cursor) {
     RequestSubject subject = RequestSubject.any(auth);
     if (subject.member()) {
       throw new BusinessException(ErrorCode.UNAUTHENTICATED, "비회원 자격이 필요합니다.");
     }
-    return page(subject, round, purchased, rank, cursor);
+    return page(subject, round, null, null, cursor);
   }
 
   private ResponseEntity<Page> page(
