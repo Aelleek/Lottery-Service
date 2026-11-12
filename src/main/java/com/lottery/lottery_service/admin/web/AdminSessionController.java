@@ -81,12 +81,11 @@ public class AdminSessionController {
                     "idleTimeoutSeconds", AdminSession.IDLE.toSeconds(),
                     "serverTime", now));
       }
-      case LOCKED -> throw mfa.lockedUntil(member.memberId())
-          .map(
-              until ->
-                  new BusinessException(
-                      ErrorCode.ATTEMPTS_EXCEEDED, "잠시 뒤 다시 시도해 주세요.", ErrorDetails.retryAt(until)))
-          .orElseGet(() -> new BusinessException(ErrorCode.ATTEMPTS_EXCEEDED, "잠시 뒤 다시 시도해 주세요."));
+      case LOCKED -> {
+        Instant until = mfa.lockedUntil(member.memberId()).orElseGet(clock::instant);
+        throw new BusinessException(
+            ErrorCode.ATTEMPTS_EXCEEDED, "잠시 뒤 다시 시도해 주세요.", ErrorDetails.retryAt(until));
+      }
       case INVALID -> throw new BusinessException(ErrorCode.VALIDATION_FAILED, "인증 코드를 확인해 주세요.");
       default -> throw new BusinessException(ErrorCode.FORBIDDEN, "허용되지 않은 요청입니다.");
     }
