@@ -12,6 +12,7 @@ import com.lottery.lottery_service.common.error.ApiExceptionHandler;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.round.domain.RoundCalendar;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
+import com.lottery.lottery_service.support.OpenApiContract;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -45,6 +46,7 @@ class LottoContextControllerTest {
   private MockMvc mvc(Instant now) {
     Clock clock = Clock.fixed(now, ZoneOffset.UTC);
     return MockMvcBuilders.standaloneSetup(new LottoContextController(rounds, clock))
+        .alwaysDo(new OpenApiContract())
         .setControllerAdvice(
             new ApiExceptionHandler(
                 clock, new com.lottery.lottery_service.common.web.SecuritySignals()))

@@ -20,6 +20,7 @@ import com.lottery.lottery_service.result.query.Prize;
 import com.lottery.lottery_service.result.query.ResultState;
 import com.lottery.lottery_service.result.query.RoundResult;
 import com.lottery.lottery_service.result.query.RoundResultQuery;
+import com.lottery.lottery_service.support.OpenApiContract;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -60,6 +61,7 @@ class RoundResultControllerTest {
     Clock clock = Clock.fixed(CHECKED, ZoneOffset.UTC);
     mvc =
         MockMvcBuilders.standaloneSetup(new RoundResultController(query, new InstantCheck(query)))
+            .alwaysDo(new OpenApiContract())
             .setControllerAdvice(
                 new ApiExceptionHandler(
                     clock, new com.lottery.lottery_service.common.web.SecuritySignals()))
