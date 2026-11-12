@@ -11,6 +11,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.lottery.lottery_service.account.AccountStore;
+import com.lottery.lottery_service.admin.mfa.AdminMfaStore;
+import com.lottery.lottery_service.admin.mfa.Totp;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.round.RoundStore;
@@ -18,13 +20,16 @@ import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.OpenApiContract;
 import jakarta.servlet.http.Cookie;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -40,6 +45,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.session.SessionRepository;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -85,6 +91,8 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
   @Autowired private RoundStore rounds;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private ObjectMapper json;
+  @Autowired private AdminMfaStore mfa;
+  @Autowired private SessionRepository<? extends org.springframework.session.Session> sessions;
 
   @DynamicPropertySource
   static void database(DynamicPropertyRegistry registry) throws SQLException {
@@ -165,8 +173,92 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
                 "CHANGE_PREFERENCE",
                 "{\"enabled\":true,\"expectedVersion\":\"0\",\"verifiedContactVersion\":\"0\","
                     + "\"policyVersion\":\"2026-11\"}"));
-    JsonNode spec = spec();
     Map<String, Long> before = stateCounts();
+    int sent =
+        sweep(
+            targets,
+            (target, r) -> {
+              r.cookie(session.cookie())
+                  .with(oauth2Login().oauth2User(member))
+                  .header("X-CSRF-TOKEN", session.csrf());
+              if (target.operation() != null) {
+                r.header("X-Command-Token", commandToken(session, member, target.operation()));
+              }
+            });
+    assertThat(sent).isGreaterThan(40);
+    assertThat(stateCounts()).isEqualTo(before);
+  }
+
+  @Test
+  @DisplayName("관리자 operation의 요청 스키마 제약을 하나씩 어기면 모두 400·422이고 감사·결과·job은 그대로다")
+  void everyDeclaredAdminLimitIsEnforced() throws Exception {
+    int adminRound = ROUND + 1;
+    jdbc.update(
+        "INSERT INTO lotto_round (round_no, sales_open_at, sales_close_at, draw_at, schedule_version)"
+            + " VALUES (?, NOW(6) - INTERVAL 7 DAY, NOW(6) - INTERVAL 2 HOUR,"
+            + " NOW(6) - INTERVAL 1 HOUR, 1)",
+        adminRound);
+    MemberPrincipal admin =
+        MemberPrincipal.of(
+            accounts.login(OAuthProvider.GOOGLE, "input-admin"), OAuthProvider.GOOGLE);
+    jdbc.update(
+        "INSERT INTO admin_grant (member_id, role, granted_at) VALUES (?, 'ADMIN', NOW(6))",
+        admin.memberId());
+    byte[] secret = decode(mfa.enroll(admin.memberId()).secret());
+    long step = Totp.step(Instant.now());
+    mfa.confirm(admin.memberId(), Totp.code(secret, step - 1));
+    Session member = session(admin);
+    MvcResult started =
+        mvc.perform(
+                post("/api/v1/admin/session")
+                    .cookie(member.cookie())
+                    .with(oauth2Login().oauth2User(admin))
+                    .header("X-CSRF-TOKEN", member.csrf())
+                    .contentType("application/json")
+                    .content("{\"code\":\"" + Totp.code(secret, step) + "\"}"))
+            .andReturn();
+    assertThat(started.getResponse().getStatus()).isEqualTo(200);
+    Session session =
+        new Session(
+            cookie(started.getResponse().getHeader("Set-Cookie")),
+            body(started).get("csrfToken").asText());
+    reauthenticate(session.cookie());
+    String round = Integer.toString(adminRound);
+    List<Target> targets =
+        List.of(
+            new Target(
+                HttpMethod.POST,
+                "/admin/rounds/{round}/notification-dispatches",
+                "/admin/rounds/" + round + "/notification-dispatches",
+                null,
+                "{\"reason\":\"확인\"}"),
+            new Target(
+                HttpMethod.POST,
+                "/admin/draw-results/{resultId}/publication",
+                "/admin/draw-results/" + UUID.randomUUID() + "/publication",
+                null,
+                "{\"expectedPublicationVersion\":\"0\",\"reason\":\"확인\"}"),
+            new Target(
+                HttpMethod.POST,
+                "/admin/rounds/{round}/draw-results",
+                "/admin/rounds/" + round + "/draw-results",
+                null,
+                "{\"numbers\":[1,2,3,4,5,6],\"bonus\":7,\"expectedPublicationVersion\":\"0\","
+                    + "\"reason\":\"확인\"}"));
+    Map<String, Long> before = adminStateCounts();
+    int sent =
+        sweep(
+            targets,
+            (target, r) ->
+                r.cookie(session.cookie())
+                    .with(oauth2Login().oauth2User(admin))
+                    .header("X-CSRF-TOKEN", session.csrf()));
+    assertThat(sent).isGreaterThan(15);
+    assertThat(adminStateCounts()).isEqualTo(before);
+  }
+
+  private int sweep(List<Target> targets, Authenticator authenticate) throws Exception {
+    JsonNode spec = spec();
     int sent = 0;
     List<String> failures = new ArrayList<>();
     for (Target target : targets) {
@@ -186,17 +278,11 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
       for (Mutation mutation : mutations) {
         MockHttpServletRequestBuilder r =
             request(target.method(), "/api/v1" + target.url())
-                .cookie(session.cookie())
-                .with(oauth2Login().oauth2User(member))
-                .header("X-CSRF-TOKEN", session.csrf())
                 .header("Idempotency-Key", UUID.randomUUID().toString())
                 .contentType("application/json")
                 .content(json.writeValueAsString(mutation.body()));
-        if (target.operation() != null) {
-          r.header("X-Command-Token", commandToken(session, member, target.operation()));
-        }
+        authenticate.apply(target, r);
         MvcResult result = mvc.perform(r).andReturn();
-        String label = target.template() + " " + mutation.description();
         int status = result.getResponse().getStatus();
         String code = body(result).path("code").asText();
         boolean rejected = (status == 400 || status == 422) && REJECTED.contains(code);
@@ -205,14 +291,60 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
                 && "FORBIDDEN".equals(code)
                 && FORBIDDEN_FIELDS.contains(target.template() + " " + mutation.field());
         if (!rejected && !forbidden) {
-          failures.add(label + " -> " + status + " " + code);
+          failures.add(
+              target.template() + " " + mutation.description() + " -> " + status + " " + code);
         }
         sent++;
       }
     }
     assertThat(failures).isEmpty();
-    assertThat(sent).isGreaterThan(40);
-    assertThat(stateCounts()).isEqualTo(before);
+    return sent;
+  }
+
+  private Map<String, Long> adminStateCounts() {
+    Map<String, Long> counts = new TreeMap<>();
+    for (String table : List.of("admin_audit_event", "draw_result", "job", "command_operation")) {
+      counts.put(table, jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Long.class));
+    }
+    return counts;
+  }
+
+  @SuppressWarnings("unchecked")
+  private void reauthenticate(Cookie session) {
+    String id = new String(Base64.getDecoder().decode(session.getValue()), StandardCharsets.UTF_8);
+    SessionRepository<org.springframework.session.Session> repository =
+        (SessionRepository<org.springframework.session.Session>) sessions;
+    org.springframework.session.Session stored = repository.findById(id);
+    stored.setAttribute(
+        "com.lottery.lottery_service.auth.Reauthentication.completedAt", Instant.now());
+    repository.save(stored);
+  }
+
+  private static Cookie cookie(String setCookie) {
+    return new Cookie(
+        "__Host-lottery_session",
+        setCookie.substring(setCookie.indexOf('=') + 1, setCookie.indexOf(';')));
+  }
+
+  private static byte[] decode(String base32) {
+    String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    int buffer = 0;
+    int bits = 0;
+    for (char c : base32.toCharArray()) {
+      buffer = (buffer << 5) | alphabet.indexOf(c);
+      bits += 5;
+      if (bits >= 8) {
+        out.write((buffer >> (bits - 8)) & 0xff);
+        bits -= 8;
+      }
+    }
+    return out.toByteArray();
+  }
+
+  @FunctionalInterface
+  private interface Authenticator {
+    void apply(Target target, MockHttpServletRequestBuilder request) throws Exception;
   }
 
   private void mutate(
