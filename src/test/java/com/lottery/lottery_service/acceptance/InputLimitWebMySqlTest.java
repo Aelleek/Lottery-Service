@@ -55,8 +55,9 @@ import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * openapi 요청 스키마의 상한·형식(개수, 범위, 길이, 패턴, 허용 값, 중복, 필수)을 하나씩 어긴 본문을 회원 operation에 보내 서버가 400·422로
- * 거절하고 아무것도 바꾸지 않는지 확인한다(03 6.4, 화면 검사만 믿지 않는다). 각 요청은 유효한 세션·CSRF·명령 토큰을 갖춰 입력 검사까지 닿게 한다.
+ * openapi 요청 스키마의 상한·형식(JSON 타입, 개수, 범위, 길이, 패턴, 허용 값, 중복, 필수)을 하나씩 어긴 본문을 회원 operation에 보내 서버가
+ * 400·422로 거절하고 아무것도 바꾸지 않는지 확인한다(03 6.4, 화면 검사만 믿지 않는다). 각 요청은 유효한 세션·CSRF·명령 토큰을 갖춰 입력 검사까지 닿게
+ * 한다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -431,6 +432,13 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
     JsonNode value = pointer.isEmpty() ? root : root.at(pointer);
     if (value.isMissingNode()) {
       return;
+    }
+    if (!pointer.isEmpty() && schema.has("type")) {
+      JsonNode wrong =
+          "string".equals(schema.path("type").asText())
+              ? json.createObjectNode().put("x", 1)
+              : json.getNodeFactory().textNode("x");
+      out.add(replace(root, pointer, wrong, "type"));
     }
     if (schema.has("maxLength")) {
       out.add(
