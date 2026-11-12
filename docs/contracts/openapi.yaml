@@ -27,6 +27,8 @@ paths:
           $ref: '#/components/responses/400'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
   /session:
     get:
       operationId: getSession
@@ -43,6 +45,8 @@ paths:
                 $ref: '#/components/schemas/SessionState'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
   /guest-credentials:
     post:
       operationId: createGuestCredential
@@ -101,6 +105,8 @@ paths:
           $ref: '#/components/responses/400'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
       parameters:
       - $ref: '#/components/parameters/CsrfToken'
       requestBody:
@@ -180,6 +186,8 @@ paths:
           $ref: '#/components/responses/400'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
       parameters:
       - $ref: '#/components/parameters/round'
       - $ref: '#/components/parameters/cursor'
@@ -215,6 +223,8 @@ paths:
           $ref: '#/components/responses/422'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
       parameters:
       - $ref: '#/components/parameters/operationId'
   /me/lotto/records:
@@ -241,6 +251,8 @@ paths:
           $ref: '#/components/responses/400'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
       parameters:
       - $ref: '#/components/parameters/round'
       - $ref: '#/components/parameters/purchased'
@@ -364,6 +376,8 @@ paths:
           $ref: '#/components/responses/400'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
       parameters:
       - $ref: '#/components/parameters/roundPath'
   /lotto/check:
@@ -387,6 +401,8 @@ paths:
           $ref: '#/components/responses/422'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
       requestBody:
         required: true
         content:
@@ -414,6 +430,8 @@ paths:
           $ref: '#/components/responses/403'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
   /me/guest-claims/{claimId}/imports:
     post:
       operationId: importGuestRecords
@@ -579,6 +597,8 @@ paths:
           $ref: '#/components/responses/400'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
     put:
       operationId: changeNotificationPreference
       summary: 알림 수신 동의 또는 철회
@@ -717,6 +737,8 @@ paths:
           $ref: '#/components/responses/404'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
   /admin/rounds/{round}/notification-dispatches:
     post:
       operationId: dispatchRoundNotifications
@@ -754,6 +776,8 @@ paths:
           $ref: '#/components/responses/409'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
   /admin/draw-results/{resultId}/publication:
     post:
       operationId: publishQuarantinedResult
@@ -791,6 +815,8 @@ paths:
           $ref: '#/components/responses/409'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
   /admin/rounds/{round}/draw-results:
     post:
       operationId: registerManualResult
@@ -830,6 +856,8 @@ paths:
           $ref: '#/components/responses/422'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
   /admin/stats/daily:
     get:
       operationId: getDailyStats
@@ -855,6 +883,8 @@ paths:
           $ref: '#/components/responses/403'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
   /admin/stats/rounds/{round}:
     get:
       operationId: getRoundStats
@@ -879,6 +909,8 @@ paths:
           $ref: '#/components/responses/404'
         '500':
           $ref: '#/components/responses/500'
+        '429':
+          $ref: '#/components/responses/429'
 components:
   # 재인증은 헤더 증명 없이 서버 세션의 재인증 시각으로 확인한다(03 6.3, C-31). 로그인 시작
   # /oauth2/authorization/{provider}?reauth=true로 다시 인증하고, 민감한 API는 그 시각이 5분 안인지 본다.
@@ -1050,7 +1082,7 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
     '429':
-      description: 요청 간격/동시 처리/인증 시도 제한
+      description: 요청 간격/동시 처리/인증 시도 제한, IP별 요청 한도(03 6.5)
       content:
         application/json:
           schema:
