@@ -75,9 +75,48 @@ class OpenApiContractTest {
         .doesNotThrowAnyException();
   }
 
+  @Test
+  @DisplayName("서버가 2xx로 받아들인 요청은 본문이 요청 스키마를 따라야 하고, 거절한 요청은 보지 않는다")
+  void acceptedRequestBodyChecked() {
+    String token = "{\"token\":\"t\",\"expiresAt\":\"2026-11-13T14:00:00Z\"}";
+    assertThatCode(
+            () ->
+                CONTRACT.handle(
+                    result(
+                        "POST",
+                        "/api/v1/command-tokens",
+                        "{\"operation\":\"WITHDRAW\"}",
+                        200,
+                        token)))
+        .doesNotThrowAnyException();
+    assertThatThrownBy(
+            () ->
+                CONTRACT.handle(
+                    result(
+                        "POST", "/api/v1/command-tokens", "{\"operation\":\"NOPE\"}", 200, token)))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("요청");
+    assertThatCode(
+            () ->
+                CONTRACT.handle(
+                    result(
+                        "POST",
+                        "/api/v1/command-tokens",
+                        "{\"operation\":\"NOPE\"}",
+                        400,
+                        UNAUTHENTICATED.replace("UNAUTHENTICATED", "VALIDATION_FAILED"))))
+        .doesNotThrowAnyException();
+  }
+
   private static MvcResult result(String method, String uri, int status, String body)
       throws Exception {
+    return result(method, uri, "", status, body);
+  }
+
+  private static MvcResult result(
+      String method, String uri, String requestBody, int status, String body) throws Exception {
     MockHttpServletRequest request = new MockHttpServletRequest(method, uri);
+    request.setContent(requestBody.getBytes(StandardCharsets.UTF_8));
     MockHttpServletResponse response = new MockHttpServletResponse();
     response.setStatus(status);
     response.setCharacterEncoding(StandardCharsets.UTF_8.name());

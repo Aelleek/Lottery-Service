@@ -114,6 +114,20 @@ public final class OpenApiContract implements ResultHandler {
     if (body.isEmpty()) {
       throw new AssertionError(operation + " 응답 " + status + "에 JSON 본문이 없다");
     }
+    validate(pointer, body, operation + " 응답 " + status);
+    String requestBody =
+        request.getContentAsByteArray() == null
+            ? ""
+            : new String(request.getContentAsByteArray(), StandardCharsets.UTF_8);
+    String requestPointer = "/paths/" + escape(route.template()) + "/" + method + "/requestBody";
+    if (response.getStatus() < 300
+        && !requestBody.isBlank()
+        && !spec.at(requestPointer + "/content/" + escape("application/json")).isMissingNode()) {
+      validate(requestPointer, requestBody, operation + " 요청(" + status + "으로 받아들임)");
+    }
+  }
+
+  private void validate(String pointer, String body, String label) throws IOException {
     String schemaPointer = pointer + "/content/" + escape("application/json") + "/schema";
     JsonSchema schema =
         schemas.computeIfAbsent(
@@ -121,9 +135,7 @@ public final class OpenApiContract implements ResultHandler {
     Set<ValidationMessage> errors = schema.validate(json.readTree(body));
     if (!errors.isEmpty()) {
       throw new AssertionError(
-          operation
-              + " 응답 "
-              + status
+          label
               + "이(가) openapi 스키마와 다르다: "
               + errors.stream()
                   .map(ValidationMessage::getMessage)
