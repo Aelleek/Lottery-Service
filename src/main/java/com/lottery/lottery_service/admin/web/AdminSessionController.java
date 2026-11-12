@@ -8,6 +8,7 @@ import com.lottery.lottery_service.auth.CsrfTokens;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.error.ErrorDetails;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Clock;
 import java.time.Instant;
@@ -80,7 +81,12 @@ public class AdminSessionController {
                     "idleTimeoutSeconds", AdminSession.IDLE.toSeconds(),
                     "serverTime", now));
       }
-      case LOCKED -> throw new BusinessException(ErrorCode.ATTEMPTS_EXCEEDED, "잠시 뒤 다시 시도해 주세요.");
+      case LOCKED -> throw mfa.lockedUntil(member.memberId())
+          .map(
+              until ->
+                  new BusinessException(
+                      ErrorCode.ATTEMPTS_EXCEEDED, "잠시 뒤 다시 시도해 주세요.", ErrorDetails.retryAt(until)))
+          .orElseGet(() -> new BusinessException(ErrorCode.ATTEMPTS_EXCEEDED, "잠시 뒤 다시 시도해 주세요."));
       case INVALID -> throw new BusinessException(ErrorCode.VALIDATION_FAILED, "인증 코드를 확인해 주세요.");
       default -> throw new BusinessException(ErrorCode.FORBIDDEN, "허용되지 않은 요청입니다.");
     }

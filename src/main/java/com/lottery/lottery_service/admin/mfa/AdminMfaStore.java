@@ -161,6 +161,19 @@ public class AdminMfaStore {
         });
   }
 
+  /** 지금 잠겨 있으면 잠금이 풀리는 시각. 잠금 응답의 다시 시도할 시각에 쓴다. */
+  public Optional<Instant> lockedUntil(long memberId) {
+    Instant now = clock.instant();
+    return jdbc
+        .query(
+            "SELECT mfa_locked_until FROM admin_grant WHERE member_id = ? AND revoked_at IS NULL",
+            (rs, n) -> toInstant(rs.getObject(1, LocalDateTime.class)),
+            memberId)
+        .stream()
+        .filter(until -> until != null && now.isBefore(until))
+        .findFirst();
+  }
+
   /**
    * 등록을 지운다. 기기를 잃었거나 복구 코드를 다 썼을 때 ADMIN이 사유와 감사 기록을 남기며 부른다(C-33).
    *

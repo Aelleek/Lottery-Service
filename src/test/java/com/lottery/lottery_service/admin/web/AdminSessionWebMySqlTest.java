@@ -216,6 +216,49 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.code").value("ADMIN_AUTH_REQUIRED"));
   }
 
+  @Test
+  @DisplayName(
+      "인증 앱 코드를 5번 틀려 잠기면 429 ATTEMPTS_EXCEEDED와 잠금이 풀리는 시각까지의 Retry-After를 주고, 맞는 코드도 받지 않는다")
+  void lockGivesRetryAfter() throws Exception {
+    MemberPrincipal admin =
+        MemberPrincipal.of(accounts.login(OAuthProvider.KAKAO, "admin-lock"), OAuthProvider.KAKAO);
+    jdbc.update(
+        "INSERT INTO admin_grant (member_id, role, granted_at) VALUES (?, 'OPERATOR', NOW(6))",
+        admin.memberId());
+    byte[] secret = decode(mfa.enroll(admin.memberId()).secret());
+    long step = Totp.step(Instant.now());
+    mfa.confirm(admin.memberId(), Totp.code(secret, step - 1));
+    Login login = login(admin);
+    String wrong = "000000";
+    while (wrong.equals(Totp.code(secret, step))
+        || wrong.equals(Totp.code(secret, step + 1))
+        || wrong.equals(Totp.code(secret, step - 1))) {
+      wrong = String.format("%06d", Integer.parseInt(wrong) + 1);
+    }
+    for (int i = 0; i < 4; i++) {
+      mvc.perform(
+              login
+                  .apply(post("/api/v1/admin/session"))
+                  .contentType("application/json")
+                  .content("{\"code\":\"" + wrong + "\"}"))
+          .andExpect(status().isBadRequest());
+    }
+    for (String code : new String[] {wrong, Totp.code(secret, step + 1)}) {
+      MvcResult locked =
+          mvc.perform(
+                  login
+                      .apply(post("/api/v1/admin/session"))
+                      .contentType("application/json")
+                      .content("{\"code\":\"" + code + "\"}"))
+              .andExpect(status().isTooManyRequests())
+              .andExpect(jsonPath("$.code").value("ATTEMPTS_EXCEEDED"))
+              .andExpect(jsonPath("$.details.retryAt").isString())
+              .andReturn();
+      assertThat(Long.parseLong(locked.getResponse().getHeader("Retry-After")))
+          .isBetween(AdminMfaStore.LOCK.toSeconds() - 60, AdminMfaStore.LOCK.toSeconds());
+    }
+  }
+
   @SuppressWarnings("unchecked")
   private void sessionAttribute(Cookie cookie, String name, Instant value) {
     SessionRepository<Session> repository = (SessionRepository<Session>) sessions;
