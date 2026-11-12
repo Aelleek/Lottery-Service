@@ -84,6 +84,19 @@ class ApiExceptionHandlerTest {
   }
 
   @Test
+  @DisplayName("조회 변수의 타입이 맞지 않으면 500이 아니라 400 VALIDATION_FAILED이고, 보낸 값은 응답과 로그에 없다")
+  void typeMismatchIsValidationFailure(CapturedOutput output) throws Exception {
+    MvcResult result =
+        mockMvc
+            .perform(get("/probe/typed").param("round", "x01058219734"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+            .andReturn();
+    assertThat(result.getResponse().getContentAsString()).doesNotContain("01058219734");
+    assertThat(output.getAll()).doesNotContain("01058219734");
+  }
+
+  @Test
   @DisplayName("429에 재시도 시각이 있으면 Retry-After 초를 올림해서 준다")
   void retryAfterForTooManyRequests() throws Exception {
     mockMvc
@@ -325,6 +338,11 @@ class ApiExceptionHandlerTest {
 
   @RestController
   static class ProbeController {
+
+    @GetMapping("/probe/typed")
+    String typed(@RequestParam("round") Integer round) {
+      return "ok " + round;
+    }
 
     @GetMapping("/probe/unauthorized")
     String unauthorized() {

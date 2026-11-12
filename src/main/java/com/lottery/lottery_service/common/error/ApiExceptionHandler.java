@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
@@ -109,6 +110,19 @@ public class ApiExceptionHandler {
   @ExceptionHandler(HttpMessageNotReadableException.class)
   public ResponseEntity<ErrorResponse> handleUnreadable(
       HttpMessageNotReadableException e, HttpServletRequest request) {
+    return respond(
+        ErrorCode.VALIDATION_FAILED,
+        HttpStatus.BAD_REQUEST,
+        VALIDATION_MESSAGE,
+        false,
+        ErrorDetails.empty(),
+        request);
+  }
+
+  /** 조회 변수·경로 변수의 타입이 맞지 않음(예: 회차에 숫자가 아닌 값). 보낸 값은 응답과 로그에 싣지 않는다. */
+  @ExceptionHandler(TypeMismatchException.class)
+  public ResponseEntity<ErrorResponse> handleTypeMismatch(
+      TypeMismatchException e, HttpServletRequest request) {
     return respond(
         ErrorCode.VALIDATION_FAILED,
         HttpStatus.BAD_REQUEST,
