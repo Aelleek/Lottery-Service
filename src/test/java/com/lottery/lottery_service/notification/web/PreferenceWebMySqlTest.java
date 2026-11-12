@@ -10,12 +10,14 @@ import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.notification.verify.ContactCipher;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.OpenApiContract;
 import java.sql.SQLException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -24,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 /** 알림 설정 조회가 가린 번호와 같은 두 버전을 주는지 확인한다(D-059). */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(OpenApiContract.Config.class)
 class PreferenceWebMySqlTest extends MySqlContainerSupport {
 
   private static final String DB = "preference_web";

@@ -18,6 +18,7 @@ import com.lottery.lottery_service.common.web.SecuritySignals;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.OpenApiContract;
 import jakarta.servlet.http.Cookie;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -32,6 +33,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -41,6 +43,7 @@ import org.springframework.test.web.servlet.MvcResult;
 /** 보안 수용 시나리오(08 5절 T58~T61)를 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(OpenApiContract.Config.class)
 @ExtendWith(OutputCaptureExtension.class)
 class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
 

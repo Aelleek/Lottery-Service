@@ -130,6 +130,7 @@ dependencies {
   testImplementation 'org.springframework.security:spring-security-test'
   testImplementation 'org.testcontainers:junit-jupiter'
   testImplementation 'org.testcontainers:mysql'
+  testImplementation 'com.networknt:json-schema-validator:1.5.6' // openapi 응답 계약 검사
   testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
   // pmd-java 런타임 의존성 (플러그인이 알아서 받는 경우도 있으나 명시해둠)

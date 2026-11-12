@@ -15,6 +15,7 @@ import com.lottery.lottery_service.admin.mfa.Totp;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.OpenApiContract;
 import jakarta.servlet.http.Cookie;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.session.Session;
 import org.springframework.session.SessionRepository;
@@ -39,6 +41,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 /** 회원 세션 안의 관리자 세션 시작, 관리자 API 앞 확인, 관리자 조회 API를 실제 보안 필터와 MySQL로 확인한다(2026-11-09 Q2). */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(OpenApiContract.Config.class)
 class AdminSessionWebMySqlTest extends MySqlContainerSupport {
 
   private static final String DB = "admin_session_web";

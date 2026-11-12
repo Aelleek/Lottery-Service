@@ -21,6 +21,7 @@ import com.lottery.lottery_service.result.domain.WinningNumbers;
 import com.lottery.lottery_service.result.publish.ResultPublisher;
 import com.lottery.lottery_service.result.source.OfficialDraw;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.OpenApiContract;
 import jakarta.servlet.http.Cookie;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.session.Session;
 import org.springframework.session.SessionRepository;
@@ -47,6 +49,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 /** 관리자 변경 API(다시 보내기, 승인, 직접 등록)의 요청 키 재전송·재인증·감사를 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(OpenApiContract.Config.class)
 class AdminChangeWebMySqlTest extends MySqlContainerSupport {
 
   private static final String DB = "admin_change_web";

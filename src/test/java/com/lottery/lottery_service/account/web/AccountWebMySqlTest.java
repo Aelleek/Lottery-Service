@@ -14,6 +14,7 @@ import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.OpenApiContract;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.session.Session;
 import org.springframework.session.SessionRepository;
@@ -36,6 +38,7 @@ import org.springframework.test.web.servlet.MvcResult;
 /** 탈퇴 API가 최근 재인증 없이는 받지 않는지 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(OpenApiContract.Config.class)
 class AccountWebMySqlTest extends MySqlContainerSupport {
 
   private static final String DB = "account_web";

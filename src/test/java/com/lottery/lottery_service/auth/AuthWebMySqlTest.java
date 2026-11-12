@@ -14,6 +14,7 @@ import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.MemberLogin;
 import com.lottery.lottery_service.config.SecurityConfig;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.OpenApiContract;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -32,6 +34,7 @@ import org.springframework.test.web.servlet.MvcResult;
 /** 비회원 자격·세션 조회·CSRF·로그아웃을 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(OpenApiContract.Config.class)
 class AuthWebMySqlTest extends MySqlContainerSupport {
 
   private static final String DB = "auth_web";

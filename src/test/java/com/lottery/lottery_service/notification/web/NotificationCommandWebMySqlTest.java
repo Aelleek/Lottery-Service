@@ -16,6 +16,7 @@ import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.notification.verify.IssuedChallenge;
 import com.lottery.lottery_service.notification.verify.VerificationStore;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.OpenApiContract;
 import jakarta.servlet.http.Cookie;
 import java.sql.SQLException;
 import java.util.UUID;
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -35,6 +37,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /** 인증 코드 확인과 알림 수신 동의·철회 API를 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(OpenApiContract.Config.class)
 class NotificationCommandWebMySqlTest extends MySqlContainerSupport {
 
   private static final String DB = "notification_command_web";

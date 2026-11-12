@@ -17,6 +17,7 @@ import com.lottery.lottery_service.notification.SendOutcome;
 import com.lottery.lottery_service.notification.verify.VerificationMessageStore;
 import com.lottery.lottery_service.notification.verify.VerificationSender;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.OpenApiContract;
 import jakarta.servlet.http.Cookie;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -37,6 +38,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -48,6 +50,7 @@ import org.springframework.test.web.servlet.ResultActions;
 /** 인증 코드 발급 API를 실제 보안 필터, MySQL, 가짜 발송기로 확인한다(06 1절, 02 6.4·6.5절, 05 8.8절). */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(OpenApiContract.Config.class)
 @ExtendWith(OutputCaptureExtension.class)
 class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
 
