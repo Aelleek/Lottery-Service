@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,7 +19,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 이전 명령의 결과 조회({@code GET /operations/{id}}). 다른 주체의 명령은 404, 처리 중은 202, 확정 실패는 그 오류 응답이다(06 1.1절).
+ * 이전 명령의 결과 조회({@code GET /operations/{id}}). 다른 주체의 명령은 404, 처리 중은 200과 {@code PROCESSING}(openapi
+ * {@code OperationResult}의 {@code Accepted}), 확정 실패는 그 오류 응답이다(06 1.1절).
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -49,7 +49,7 @@ public class OperationController {
     }
     OperationQuery.Outcome outcome = operations.find(subject.subjectId(), id);
     if (outcome instanceof OperationQuery.Outcome.Processing) {
-      return ResponseEntity.status(HttpStatus.ACCEPTED)
+      return ResponseEntity.ok()
           .cacheControl(CacheControl.noStore())
           .body(
               Map.of(

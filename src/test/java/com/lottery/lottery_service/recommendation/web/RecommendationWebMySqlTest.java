@@ -18,6 +18,7 @@ import com.lottery.lottery_service.common.command.CommandTokenCodec;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import com.lottery.lottery_service.support.OpenApiContract;
 import jakarta.servlet.http.Cookie;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -38,6 +40,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 /** 비회원이 자격·토큰을 받아 추천을 받고, 같은 요청을 다시 보내면 같은 결과를 받는지 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(OpenApiContract.Config.class)
 class RecommendationWebMySqlTest extends MySqlContainerSupport {
 
   private static final String DB = "recommendation_web";
@@ -148,7 +151,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
             new byte[32]);
     mvc.perform(
             get("/api/v1/operations/" + ((CommandStart.Started) started).publicId()).cookie(guest))
-        .andExpect(status().isAccepted())
+        .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("PROCESSING"))
         .andExpect(jsonPath("$.data.pollUrl").isString());
 
