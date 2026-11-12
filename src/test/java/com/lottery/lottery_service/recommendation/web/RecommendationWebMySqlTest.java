@@ -68,7 +68,8 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("비회원 추천은 5세트와 기록 ID를 주고, 같은 토큰·키·본문을 다시 보내면 같은 결과다. 토큰 없이는 400")
+  @DisplayName(
+      "비회원 추천은 5세트와 기록 ID를 주고, 같은 토큰·키·본문을 다시 보내면 같은 결과다. 토큰 없이는 400. 다른 비회원·회원은 그 명령을 404로, 기록을 0건으로 본다")
   void guestRecommendation() throws Exception {
     Instant now = rounds.dbNow();
     rounds.register(
@@ -131,6 +132,25 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
             .andExpect(jsonPath("$.status").value("SUCCEEDED"))
             .andReturn();
     assertThat(body(found).get("data")).isEqualTo(body(first).get("data"));
+    Cookie otherGuest =
+        mvc.perform(post("/api/v1/guest-credentials"))
+            .andReturn()
+            .getResponse()
+            .getCookie("__Host-lottery_guest");
+    mvc.perform(get("/api/v1/operations/" + operationId).cookie(otherGuest))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    MemberPrincipal stranger =
+        MemberPrincipal.of(
+            accounts.login(OAuthProvider.KAKAO, "rec-op-stranger"), OAuthProvider.KAKAO);
+    mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(stranger)))
+        .andExpect(status().isNotFound());
+    mvc.perform(
+            get("/api/v1/guest/lotto/records")
+                .cookie(otherGuest)
+                .param("round", Integer.toString(ROUND)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(0));
 
     long guestSubject =
         jdbc.queryForObject(
