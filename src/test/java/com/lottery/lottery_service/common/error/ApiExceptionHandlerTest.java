@@ -3,6 +3,7 @@ package com.lottery.lottery_service.common.error;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.matchesPattern;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -94,6 +95,17 @@ class ApiExceptionHandlerTest {
             .andReturn();
     assertThat(result.getResponse().getContentAsString()).doesNotContain("01058219734");
     assertThat(output.getAll()).doesNotContain("01058219734");
+  }
+
+  @Test
+  @DisplayName("요청이 JSON을 받지 않겠다고 해도(Accept: text/plain) 오류는 JSON 형식으로 답한다")
+  void errorIsJsonWhateverAccept() throws Exception {
+    mockMvc
+        .perform(
+            get("/probe/business").param("code", "ROUND_CHANGED").header("Accept", "text/plain"))
+        .andExpect(status().isConflict())
+        .andExpect(header().string("Content-Type", startsWith("application/json")))
+        .andExpect(jsonPath("$.code").value("ROUND_CHANGED"));
   }
 
   @Test

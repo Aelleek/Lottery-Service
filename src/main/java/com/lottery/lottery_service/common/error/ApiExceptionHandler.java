@@ -20,6 +20,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -31,7 +32,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /**
- * 업무 예외와 입력 오류를 openapi {@code Error} 형식으로 바꾼다. 429와 503에 재시도 시각이 있으면 {@code Retry-After}를 붙인다.
+ * 업무 예외와 입력 오류를 openapi {@code Error} 형식으로 바꾼다. 429와 503에 재시도 시각이 있으면 {@code Retry-After}를 붙인다. 요청의
+ * {@code Accept}와 상관없이 JSON으로 답한다.
  *
  * <p>그 밖의 예외는 상태가 정해진 4xx면 그 상태로, 나머지는 500 {@code INTERNAL_ERROR}로 답한다. 인증·인가 예외는 Spring Security가
  * 처리하도록 다시 던진다.
@@ -66,12 +68,12 @@ public class ApiExceptionHandler {
         request);
   }
 
-  /** 요청 본문 검증 실패. 위치와 제약 이름만 돌려준다. */
   /** 같은 요청이 처리 중이면 202와 본인 작업 조회 주소를 준다(06 1.1절, openapi {@code Accepted}). */
   @ExceptionHandler(CommandInProgressException.class)
   public ResponseEntity<Map<String, Object>> handleInProgress(CommandInProgressException e) {
     String id = e.operationPublicId().toString();
     return ResponseEntity.status(HttpStatus.ACCEPTED)
+        .contentType(MediaType.APPLICATION_JSON)
         .body(
             Map.of(
                 "operationId",
@@ -84,6 +86,7 @@ public class ApiExceptionHandler {
                 clock.instant().toString()));
   }
 
+  /** 요청 본문 검증 실패. 위치와 제약 이름만 돌려준다. */
   @ExceptionHandler(MethodArgumentNotValidException.class)
   public ResponseEntity<ErrorResponse> handleInvalidBody(
       MethodArgumentNotValidException e, HttpServletRequest request) {
@@ -236,7 +239,8 @@ public class ApiExceptionHandler {
       HttpServletRequest request) {
     ErrorResponse body =
         new ErrorResponse(code, message, retryable, RequestIdFilter.requestIdOf(request), details);
-    ResponseEntity.BodyBuilder builder = ResponseEntity.status(status);
+    ResponseEntity.BodyBuilder builder =
+        ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON);
     if ((status.value() == HttpStatus.TOO_MANY_REQUESTS.value()
             || status.value() == HttpStatus.SERVICE_UNAVAILABLE.value())
         && details != null
