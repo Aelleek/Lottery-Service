@@ -39,9 +39,12 @@ import java.util.TreeMap;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -62,6 +65,7 @@ import org.yaml.snakeyaml.Yaml;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(OpenApiContract.Config.class)
+@ExtendWith(OutputCaptureExtension.class)
 class InputLimitWebMySqlTest extends MySqlContainerSupport {
 
   private static final String DB = "input_limit";
@@ -110,7 +114,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
 
   @Test
   @DisplayName("회원 operation의 요청 스키마 제약을 하나씩 어기면 모두 400·422이고 상태 테이블은 그대로다")
-  void everyDeclaredLimitIsEnforced() throws Exception {
+  void everyDeclaredLimitIsEnforced(CapturedOutput output) throws Exception {
     registerRound();
     MemberPrincipal member =
         MemberPrincipal.of(accounts.login(OAuthProvider.KAKAO, "input-limit"), OAuthProvider.KAKAO);
@@ -185,11 +189,12 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
             });
     assertThat(sent).isGreaterThan(40);
     assertThat(stateCounts()).isEqualTo(before);
+    assertQuietLogs(output);
   }
 
   @Test
   @DisplayName("관리자 operation의 요청 스키마 제약을 하나씩 어기면 모두 400·422이고 감사·결과·job은 그대로다")
-  void everyDeclaredAdminLimitIsEnforced() throws Exception {
+  void everyDeclaredAdminLimitIsEnforced(CapturedOutput output) throws Exception {
     int adminRound = ROUND + 1;
     jdbc.update(
         "INSERT INTO lotto_round (round_no, sales_open_at, sales_close_at, draw_at, schedule_version)"
@@ -253,11 +258,12 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
                     .header("X-CSRF-TOKEN", session.csrf()));
     assertThat(sent).isGreaterThan(15);
     assertThat(adminStateCounts()).isEqualTo(before);
+    assertQuietLogs(output);
   }
 
   @Test
   @DisplayName("조회 변수와 경로 회차, 명령 헤더가 openapi 형식·범위를 벗어나면 400 VALIDATION_FAILED다")
-  void parameterLimitsAreEnforced() throws Exception {
+  void parameterLimitsAreEnforced(CapturedOutput output) throws Exception {
     registerRound();
     MemberPrincipal member =
         MemberPrincipal.of(
@@ -313,6 +319,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
           failures);
     }
     assertThat(failures).isEmpty();
+    assertQuietLogs(output);
   }
 
   private void expectValidation(MvcResult result, String label, List<String> failures)
@@ -322,6 +329,14 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
     if (status != 400 || !"VALIDATION_FAILED".equals(code)) {
       failures.add(label + " -> " + status + " " + code);
     }
+  }
+
+  private static void assertQuietLogs(CapturedOutput output) {
+    assertThat(output.getAll())
+        .as("거절한 요청은 error 로그를 남기지 않고, 보낸 전화번호와 코드를 로그에 싣지 않는다")
+        .doesNotContain(" ERROR ")
+        .doesNotContain("821012345678")
+        .doesNotContain("1012345678");
   }
 
   private int sweep(List<Target> targets, Authenticator authenticate) throws Exception {
