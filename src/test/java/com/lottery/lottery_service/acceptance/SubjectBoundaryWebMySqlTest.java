@@ -28,9 +28,12 @@ import java.util.TreeMap;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -49,6 +52,7 @@ import org.yaml.snakeyaml.Yaml;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(OpenApiContract.Config.class)
+@ExtendWith(OutputCaptureExtension.class)
 class SubjectBoundaryWebMySqlTest extends MySqlContainerSupport {
 
   private static final String DB = "subject_boundary";
@@ -84,7 +88,7 @@ class SubjectBoundaryWebMySqlTest extends MySqlContainerSupport {
 
   @Test
   @DisplayName("주체가 필요한 operation은 주체 없이 부르면 모두 401 UNAUTHENTICATED이다")
-  void anonymousRejected() throws Exception {
+  void anonymousRejected(CapturedOutput output) throws Exception {
     List<Operation> protectedOps =
         operations().stream().filter(o -> !o.schemes().isEmpty()).toList();
     assertThat(protectedOps).hasSizeGreaterThan(20);
@@ -93,11 +97,12 @@ class SubjectBoundaryWebMySqlTest extends MySqlContainerSupport {
       expect(mvc.perform(withBody(request(op.method(), op.url()))).andReturn(), op, 401);
     }
     assertThat(stateCounts()).isEqualTo(before);
+    assertThat(output.getAll()).as("거절은 error 로그를 남기지 않는다").doesNotContain(" ERROR ");
   }
 
   @Test
   @DisplayName("회원·관리자 전용 operation은 유효한 비회원 자격과 CSRF 토큰으로 불러도 401이고 아무것도 바뀌지 않는다")
-  void guestRejectedFromMemberOperations() throws Exception {
+  void guestRejectedFromMemberOperations(CapturedOutput output) throws Exception {
     MvcResult issued = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
     Cookie guest = issued.getResponse().getCookie("__Host-lottery_guest");
     String csrf = body(issued).get("csrfToken").asText();
@@ -113,11 +118,12 @@ class SubjectBoundaryWebMySqlTest extends MySqlContainerSupport {
       expect(mvc.perform(r).andReturn(), op, 401);
     }
     assertThat(stateCounts()).isEqualTo(before);
+    assertThat(output.getAll()).as("거절은 error 로그를 남기지 않는다").doesNotContain(" ERROR ");
   }
 
   @Test
   @DisplayName("비회원 전용 operation은 회원 세션으로 부르면 401이다")
-  void memberRejectedFromGuestOperations() throws Exception {
+  void memberRejectedFromGuestOperations(CapturedOutput output) throws Exception {
     MemberPrincipal member = member("boundary-guest-only");
     Session session = session(member);
     List<Operation> guestOnly =
@@ -132,11 +138,12 @@ class SubjectBoundaryWebMySqlTest extends MySqlContainerSupport {
               session.csrf());
       expect(mvc.perform(r).andReturn(), op, 401);
     }
+    assertThat(output.getAll()).as("거절은 error 로그를 남기지 않는다").doesNotContain(" ERROR ");
   }
 
   @Test
   @DisplayName("관리자 operation은 관리자 역할이 없는 회원이 부르면 403 FORBIDDEN이고 아무것도 바뀌지 않는다")
-  void memberWithoutRoleRejectedFromAdminOperations() throws Exception {
+  void memberWithoutRoleRejectedFromAdminOperations(CapturedOutput output) throws Exception {
     MemberPrincipal member = member("boundary-no-role");
     Session session = session(member);
     List<Operation> adminOps =
@@ -153,6 +160,7 @@ class SubjectBoundaryWebMySqlTest extends MySqlContainerSupport {
       expect(mvc.perform(r).andReturn(), op, 403);
     }
     assertThat(stateCounts()).isEqualTo(before);
+    assertThat(output.getAll()).as("거절은 error 로그를 남기지 않는다").doesNotContain(" ERROR ");
   }
 
   private void expect(MvcResult result, Operation op, int status) throws Exception {
