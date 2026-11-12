@@ -109,6 +109,16 @@ class ApiExceptionHandlerTest {
   }
 
   @Test
+  @DisplayName("처리 중 202 응답도 Accept와 상관없이 JSON이다")
+  void inProgressIsJsonWhateverAccept() throws Exception {
+    mockMvc
+        .perform(get("/probe/in-progress").header("Accept", "text/plain"))
+        .andExpect(status().isAccepted())
+        .andExpect(header().string("Content-Type", startsWith("application/json")))
+        .andExpect(jsonPath("$.status").value("PROCESSING"));
+  }
+
+  @Test
   @DisplayName("429에 재시도 시각이 있으면 Retry-After 초를 올림해서 준다")
   void retryAfterForTooManyRequests() throws Exception {
     mockMvc
@@ -350,6 +360,12 @@ class ApiExceptionHandlerTest {
 
   @RestController
   static class ProbeController {
+
+    @GetMapping("/probe/in-progress")
+    String inProgress() {
+      throw new com.lottery.lottery_service.recommendation.CommandInProgressException(
+          java.util.UUID.fromString("6f1c2a52-6a0e-4c43-9b8f-0a1d2e3f4a5b"));
+    }
 
     @GetMapping("/probe/typed")
     String typed(@RequestParam("round") Integer round) {

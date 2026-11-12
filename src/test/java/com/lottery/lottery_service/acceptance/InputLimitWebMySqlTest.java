@@ -262,7 +262,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("조회 변수와 경로 회차, 명령 헤더가 openapi 형식·범위를 벗어나면 400 VALIDATION_FAILED다")
+  @DisplayName("조회 변수·경로 회차·명령 헤더(명령 operation 모두)가 형식·범위를 벗어나면 400, 표준 형식이 아닌 경로 ID는 404다")
   void parameterLimitsAreEnforced(CapturedOutput output) throws Exception {
     registerRound();
     MemberPrincipal member =
@@ -317,6 +317,109 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
           result,
           "POST purchases key=" + headers[0].length() + " token=" + token.length(),
           failures);
+    }
+    String shortId = UUID.randomUUID().toString().substring(1);
+    String[][] commands = {
+      {
+        "POST",
+        "/lotto/recommendations",
+        "RECOMMEND",
+        "{\"round\":" + ROUND + ",\"scheduleVersion\":\"1\",\"include\":[],\"exclude\":[]}"
+      },
+      {
+        "POST",
+        "/me/lotto/records/" + UUID.randomUUID() + "/cancel-purchase",
+        "CANCEL_PURCHASE",
+        "{\"expectedVersion\":\"0\"}"
+      },
+      {
+        "POST",
+        "/me/notification-verifications",
+        "REQUEST_VERIFICATION",
+        "{\"phoneNumber\":\"+821012345678\",\"expectedContactVersion\":\"0\"}"
+      },
+      {
+        "POST",
+        "/me/notification-verifications/" + UUID.randomUUID() + "/verify",
+        "VERIFY_CONTACT",
+        "{\"code\":\"123456\"}"
+      },
+      {
+        "PUT",
+        "/me/notification-preference",
+        "CHANGE_PREFERENCE",
+        "{\"enabled\":false,\"expectedVersion\":\"0\",\"verifiedContactVersion\":\"0\","
+            + "\"policyVersion\":\"2026-11\"}"
+      },
+      {
+        "POST",
+        "/me/guest-claims/" + UUID.randomUUID() + "/imports",
+        "IMPORT_GUEST",
+        "{\"confirm\":true}"
+      },
+      {"DELETE", "/me/account", "WITHDRAW", ""}
+    };
+    for (String[] command : commands) {
+      for (boolean badKey : new boolean[] {true, false}) {
+        String key = badKey ? shortId : UUID.randomUUID().toString();
+        String token = badKey ? commandToken(session, member, command[2]) : "t".repeat(4097);
+        MvcResult result =
+            mvc.perform(
+                    request(HttpMethod.valueOf(command[0]), "/api/v1" + command[1])
+                        .cookie(session.cookie())
+                        .with(oauth2Login().oauth2User(member))
+                        .header("X-CSRF-TOKEN", session.csrf())
+                        .header("Idempotency-Key", key)
+                        .header("X-Command-Token", token)
+                        .contentType("application/json")
+                        .content(command[3]))
+                .andReturn();
+        expectValidation(
+            result,
+            command[0] + " " + command[1] + (badKey ? " short key" : " long token"),
+            failures);
+      }
+    }
+    String[][] paths = {
+      {"GET", "/operations/" + shortId, null, ""},
+      {
+        "POST",
+        "/me/lotto/records/" + shortId + "/cancel-purchase",
+        "CANCEL_PURCHASE",
+        "{\"expectedVersion\":\"0\"}"
+      },
+      {
+        "POST",
+        "/me/notification-verifications/" + shortId + "/verify",
+        "VERIFY_CONTACT",
+        "{\"code\":\"123456\"}"
+      },
+      {"POST", "/me/guest-claims/" + shortId + "/imports", "IMPORT_GUEST", "{\"confirm\":true}"}
+    };
+    for (String[] path : paths) {
+      MockHttpServletRequestBuilder r =
+          request(HttpMethod.valueOf(path[0]), "/api/v1" + path[1])
+              .cookie(session.cookie())
+              .with(oauth2Login().oauth2User(member))
+              .header("X-CSRF-TOKEN", session.csrf())
+              .header("Idempotency-Key", UUID.randomUUID().toString())
+              .contentType("application/json")
+              .content(path[3]);
+      if (path[2] != null) {
+        r.header("X-Command-Token", commandToken(session, member, path[2]));
+      }
+      MvcResult result = mvc.perform(r).andReturn();
+      if (result.getResponse().getStatus() != 404
+          || !"NOT_FOUND".equals(body(result).path("code").asText())) {
+        failures.add(
+            path[0]
+                + " "
+                + path[1]
+                + " -> "
+                + result.getResponse().getStatus()
+                + " "
+                + body(result).path("code").asText());
+      }
     }
     assertThat(failures).isEmpty();
     assertQuietLogs(output);
