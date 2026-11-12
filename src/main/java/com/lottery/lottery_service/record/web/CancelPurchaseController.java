@@ -2,6 +2,7 @@ package com.lottery.lottery_service.record.web;
 
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.web.CanonicalUuid;
 import com.lottery.lottery_service.common.web.RequestSubject;
 import com.lottery.lottery_service.record.CancelCommandService;
 import java.time.Clock;
@@ -47,14 +48,14 @@ public class CancelPurchaseController {
     RequestSubject subject = RequestSubject.member(auth);
     UUID record;
     try {
-      record = UUID.fromString(recordId);
+      record = CanonicalUuid.parse(recordId);
     } catch (IllegalArgumentException e) {
       throw new BusinessException(ErrorCode.NOT_FOUND, "요청한 내용을 찾을 수 없습니다.");
     }
     UUID key;
     long version;
     try {
-      key = UUID.fromString(idempotencyKey);
+      key = CanonicalUuid.parse(idempotencyKey);
       version = Long.parseLong(input.expectedVersion());
     } catch (IllegalArgumentException | NullPointerException e) {
       throw new BusinessException(ErrorCode.VALIDATION_FAILED, "입력 형식을 확인해 주세요.");

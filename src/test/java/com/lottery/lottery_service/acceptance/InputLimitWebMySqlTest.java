@@ -110,10 +110,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
   @Test
   @DisplayName("회원 operation의 요청 스키마 제약을 하나씩 어기면 모두 400·422이고 상태 테이블은 그대로다")
   void everyDeclaredLimitIsEnforced() throws Exception {
-    Instant now = rounds.dbNow();
-    rounds.register(
-        new RoundSchedule(
-            ROUND, now.minus(Duration.ofDays(1)), now.plusSeconds(3600), now.plusSeconds(7200), 1));
+    registerRound();
     MemberPrincipal member =
         MemberPrincipal.of(accounts.login(OAuthProvider.KAKAO, "input-limit"), OAuthProvider.KAKAO);
     Session session = session(member);
@@ -257,6 +254,75 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
     assertThat(adminStateCounts()).isEqualTo(before);
   }
 
+  @Test
+  @DisplayName("조회 변수와 경로 회차, 명령 헤더가 openapi 형식·범위를 벗어나면 400 VALIDATION_FAILED다")
+  void parameterLimitsAreEnforced() throws Exception {
+    registerRound();
+    MemberPrincipal member =
+        MemberPrincipal.of(
+            accounts.login(OAuthProvider.NAVER, "input-params"), OAuthProvider.NAVER);
+    Session session = session(member);
+    String longCursor = "a".repeat(4097);
+    List<String> gets =
+        List.of(
+            "/me/lotto/records?round=0",
+            "/me/lotto/records?round=x",
+            "/me/lotto/records?purchased=maybe",
+            "/me/lotto/records?rank=6",
+            "/me/lotto/records?cursor=" + longCursor,
+            "/lotto/rounds/0/result",
+            "/lotto/rounds/x/result");
+    List<String> failures = new ArrayList<>();
+    for (String url : gets) {
+      MvcResult result =
+          mvc.perform(
+                  get("/api/v1" + url)
+                      .cookie(session.cookie())
+                      .with(oauth2Login().oauth2User(member)))
+              .andReturn();
+      expectValidation(result, "GET " + url, failures);
+    }
+    String purchase =
+        "{\"round\":"
+            + ROUND
+            + ",\"entries\":[{\"clientItemId\":\"a\",\"numbers\":[1,2,3,4,5,6]}]}";
+    for (String[] headers :
+        new String[][] {
+          {UUID.randomUUID().toString().substring(1), "valid"},
+          {UUID.randomUUID().toString(), "t".repeat(4097)}
+        }) {
+      String token =
+          "valid".equals(headers[1])
+              ? commandToken(session, member, "REGISTER_PURCHASE")
+              : headers[1];
+      MvcResult result =
+          mvc.perform(
+                  post("/api/v1/me/lotto/purchases")
+                      .cookie(session.cookie())
+                      .with(oauth2Login().oauth2User(member))
+                      .header("X-CSRF-TOKEN", session.csrf())
+                      .header("Idempotency-Key", headers[0])
+                      .header("X-Command-Token", token)
+                      .contentType("application/json")
+                      .content(purchase))
+              .andReturn();
+      expectValidation(
+          result,
+          "POST purchases key=" + headers[0].length() + " token=" + token.length(),
+          failures);
+    }
+    assertThat(failures).isEmpty();
+  }
+
+  private void expectValidation(MvcResult result, String label, List<String> failures)
+      throws Exception {
+    int status = result.getResponse().getStatus();
+    String code = body(result).path("code").asText();
+    if (status != 400 || !"VALIDATION_FAILED".equals(code)) {
+      failures.add(label + " -> " + status + " " + code);
+    }
+  }
+
   private int sweep(List<Target> targets, Authenticator authenticate) throws Exception {
     JsonNode spec = spec();
     int sent = 0;
@@ -345,6 +411,18 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
   @FunctionalInterface
   private interface Authenticator {
     void apply(Target target, MockHttpServletRequestBuilder request) throws Exception;
+  }
+
+  private void registerRound() {
+    if (jdbc.queryForObject(
+            "SELECT COUNT(*) FROM lotto_round WHERE round_no = ?", Long.class, ROUND)
+        > 0) {
+      return;
+    }
+    Instant now = rounds.dbNow();
+    rounds.register(
+        new RoundSchedule(
+            ROUND, now.minus(Duration.ofDays(1)), now.plusSeconds(3600), now.plusSeconds(7200), 1));
   }
 
   private void mutate(

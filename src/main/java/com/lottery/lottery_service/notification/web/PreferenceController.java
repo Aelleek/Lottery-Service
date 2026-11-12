@@ -3,6 +3,7 @@ package com.lottery.lottery_service.notification.web;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.web.CanonicalUuid;
 import com.lottery.lottery_service.common.web.RequestSubject;
 import com.lottery.lottery_service.notification.verify.ContactCipher;
 import com.lottery.lottery_service.notification.verify.PhoneMask;
@@ -70,7 +71,7 @@ public class PreferenceController {
     long expected;
     long verified;
     try {
-      key = UUID.fromString(idempotencyKey);
+      key = CanonicalUuid.parse(idempotencyKey);
       expected = Long.parseLong(input.expectedVersion());
       verified = Long.parseLong(input.verifiedContactVersion());
     } catch (IllegalArgumentException | NullPointerException e) {

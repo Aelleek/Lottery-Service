@@ -11,6 +11,7 @@ import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.number.LottoNumber;
 import com.lottery.lottery_service.common.number.LottoNumbers;
+import com.lottery.lottery_service.common.web.CanonicalUuid;
 import com.lottery.lottery_service.result.domain.WinningNumbers;
 import com.lottery.lottery_service.result.query.RoundResultQuery;
 import com.lottery.lottery_service.result.web.RoundResultController;
@@ -227,7 +228,7 @@ public class AdminChangeController {
 
   private static UUID uuid(String value, ErrorCode onError) {
     try {
-      return UUID.fromString(value);
+      return CanonicalUuid.parse(value);
     } catch (IllegalArgumentException | NullPointerException e) {
       throw new BusinessException(
           onError, onError == ErrorCode.NOT_FOUND ? "요청한 내용을 찾을 수 없습니다." : "입력 형식을 확인해 주세요.");

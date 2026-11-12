@@ -3,6 +3,7 @@ package com.lottery.lottery_service.notification.web;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.web.CanonicalUuid;
 import com.lottery.lottery_service.common.web.RequestSubject;
 import com.lottery.lottery_service.notification.verify.PhoneMask;
 import com.lottery.lottery_service.notification.verify.VerificationIssueService;
@@ -58,7 +59,7 @@ public class VerificationController {
     RequestSubject subject = RequestSubject.member(auth);
     UUID key;
     try {
-      key = UUID.fromString(idempotencyKey);
+      key = CanonicalUuid.parse(idempotencyKey);
     } catch (IllegalArgumentException e) {
       throw new BusinessException(ErrorCode.VALIDATION_FAILED, "입력 형식을 확인해 주세요.");
     }
@@ -111,13 +112,13 @@ public class VerificationController {
     RequestSubject subject = RequestSubject.member(auth);
     UUID challenge;
     try {
-      challenge = UUID.fromString(challengeId);
+      challenge = CanonicalUuid.parse(challengeId);
     } catch (IllegalArgumentException e) {
       throw new BusinessException(ErrorCode.NOT_FOUND, "요청한 내용을 찾을 수 없습니다.");
     }
     UUID key;
     try {
-      key = UUID.fromString(idempotencyKey);
+      key = CanonicalUuid.parse(idempotencyKey);
     } catch (IllegalArgumentException e) {
       throw new BusinessException(ErrorCode.VALIDATION_FAILED, "입력 형식을 확인해 주세요.");
     }

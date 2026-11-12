@@ -3,6 +3,7 @@ package com.lottery.lottery_service.common.command.web;
 import com.lottery.lottery_service.common.command.OperationQuery;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.web.CanonicalUuid;
 import com.lottery.lottery_service.common.web.RequestSubject;
 import com.lottery.lottery_service.recommendation.RecommendationView;
 import com.lottery.lottery_service.recommendation.web.RecommendationController;
@@ -43,7 +44,7 @@ public class OperationController {
     RequestSubject subject = RequestSubject.any(auth);
     UUID id;
     try {
-      id = UUID.fromString(operationId);
+      id = CanonicalUuid.parse(operationId);
     } catch (IllegalArgumentException e) {
       throw new BusinessException(ErrorCode.NOT_FOUND, "요청한 내용을 찾을 수 없습니다.");
     }
