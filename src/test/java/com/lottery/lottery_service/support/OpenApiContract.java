@@ -13,12 +13,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.boot.test.autoconfigure.web.servlet.MockMvcBuilderCustomizer;
@@ -42,12 +44,15 @@ public final class OpenApiContract implements ResultHandler {
   private static final String BASE = "https://contract.invalid/openapi.json";
   private static final Path OPENAPI = Path.of("docs/contracts/openapi.yaml");
   private static final Set<String> METHODS = Set.of("get", "post", "put", "patch", "delete");
+  private static final Pattern LEADING_STATUSES = Pattern.compile("^(\\d{3}(?:·\\d{3})*)");
+  private static final String OTHER_FORMAT_ERRORS = "VALIDATION_FAILED";
 
   private final JsonNode spec;
   private final JsonSchemaFactory factory;
   private final List<Route> routes = new ArrayList<>();
   private final Map<String, JsonSchema> schemas = new ConcurrentHashMap<>();
   private final ObjectMapper json = new ObjectMapper();
+  private final Map<String, Set<Integer>> codeStatuses = new ConcurrentHashMap<>();
 
   /** openapi 파일을 읽어 검사기를 만든다. */
   public OpenApiContract() {
@@ -69,6 +74,16 @@ public final class OpenApiContract implements ResultHandler {
       Map.Entry<String, JsonNode> path = paths.next();
       Pattern pattern = Pattern.compile(path.getKey().replaceAll("\\{[^/]+}", "[^/]+"));
       routes.add(new Route(path.getKey(), pattern, path.getValue()));
+    }
+    for (JsonNode code : spec.at("/components/schemas/Error/properties/code/oneOf")) {
+      Matcher m = LEADING_STATUSES.matcher(code.path("description").asText());
+      Set<Integer> statuses = new HashSet<>();
+      if (m.find()) {
+        for (String value : m.group(1).split("·")) {
+          statuses.add(Integer.parseInt(value));
+        }
+      }
+      codeStatuses.put(code.path("const").asText(), statuses);
     }
   }
 
@@ -115,6 +130,7 @@ public final class OpenApiContract implements ResultHandler {
       throw new AssertionError(operation + " 응답 " + status + "에 JSON 본문이 없다");
     }
     validate(pointer, body, operation + " 응답 " + status);
+    checkErrorCode(json.readTree(body), response.getStatus(), operation);
     String requestBody =
         request.getContentAsByteArray() == null
             ? ""
@@ -124,6 +140,19 @@ public final class OpenApiContract implements ResultHandler {
         && !requestBody.isBlank()
         && !spec.at(requestPointer + "/content/" + escape("application/json")).isMissingNode()) {
       validate(requestPointer, requestBody, operation + " 요청(" + status + "으로 받아들임)");
+    }
+  }
+
+  private void checkErrorCode(JsonNode body, int status, String operation) {
+    if (status < 400 || !body.path("code").isTextual()) {
+      return;
+    }
+    String code = body.path("code").asText();
+    Set<Integer> allowed = codeStatuses.getOrDefault(code, Set.of());
+    boolean otherFormat = OTHER_FORMAT_ERRORS.equals(code) && status < 500;
+    if (!allowed.contains(status) && !otherFormat) {
+      throw new AssertionError(
+          operation + " 응답 " + status + "의 오류 코드 " + code + "는 openapi에서 " + allowed + " 상태로만 쓴다");
     }
   }
 

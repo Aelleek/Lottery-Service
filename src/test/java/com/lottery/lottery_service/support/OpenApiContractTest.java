@@ -108,6 +108,30 @@ class OpenApiContractTest {
         .doesNotThrowAnyException();
   }
 
+  @Test
+  @DisplayName("오류 코드는 openapi 설명에 적힌 상태로만 쓰인다(VALIDATION_FAILED는 다른 4xx도 된다)")
+  void errorCodeMatchesStatus() {
+    assertThatThrownBy(
+            () ->
+                CONTRACT.handle(
+                    result(
+                        "GET",
+                        "/api/v1/me/lotto/records",
+                        401,
+                        UNAUTHENTICATED.replace("UNAUTHENTICATED", "FORBIDDEN"))))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("FORBIDDEN");
+    assertThatCode(
+            () ->
+                CONTRACT.handle(
+                    result(
+                        "GET",
+                        "/api/v1/me/lotto/records",
+                        400,
+                        UNAUTHENTICATED.replace("UNAUTHENTICATED", "VALIDATION_FAILED"))))
+        .doesNotThrowAnyException();
+  }
+
   private static MvcResult result(String method, String uri, int status, String body)
       throws Exception {
     return result(method, uri, "", status, body);
