@@ -1,10 +1,9 @@
 package com.lottery.lottery_service.result.source;
 
-import java.io.InputStream;
+import com.lottery.lottery_service.common.http.BoundedHttp;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
@@ -41,18 +40,14 @@ public class DhlotteryDrawSource implements DrawSource {
     try {
       HttpRequest request =
           HttpRequest.newBuilder(URI.create(baseUrl + roundNo)).timeout(TIMEOUT).GET().build();
-      HttpResponse<InputStream> response =
-          http.send(request, HttpResponse.BodyHandlers.ofInputStream());
-      try (InputStream in = response.body()) {
-        if (response.statusCode() != 200) {
-          return new ParsedDraw.Invalid("HTTP_" + response.statusCode());
-        }
-        byte[] body = in.readNBytes(DrawResponseParser.MAX_BYTES + 1);
-        if (body.length > DrawResponseParser.MAX_BYTES) {
-          return new ParsedDraw.Invalid("SIZE");
-        }
-        return DrawResponseParser.parse(roundNo, new String(body, StandardCharsets.UTF_8));
+      BoundedHttp.Response response =
+          BoundedHttp.send(http, request, DrawResponseParser.MAX_BYTES, TIMEOUT);
+      if (response.status() != 200) {
+        return new ParsedDraw.Invalid("HTTP_" + response.status());
       }
+      return DrawResponseParser.parse(roundNo, new String(response.body(), StandardCharsets.UTF_8));
+    } catch (BoundedHttp.TooLargeException e) {
+      return new ParsedDraw.Invalid("SIZE");
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return new ParsedDraw.Invalid("INTERRUPTED");

@@ -1,10 +1,13 @@
 package com.lottery.lottery_service.result.source;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import com.lottery.lottery_service.support.SlowBodyServer;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -82,6 +85,27 @@ class DhlotteryDrawSourceTest {
   void oversizedBody() {
     body.set("x".repeat(DrawResponseParser.MAX_BYTES + 100));
     assertThat(source.fetch(1200)).isEqualTo(new ParsedDraw.Invalid("SIZE"));
+  }
+
+  @Test
+  @DisplayName("헤더 뒤 본문을 아주 천천히 보내도 전체 시간 상한(5초) 뒤 NETWORK 실패로 끝난다(03 6.4)")
+  void slowBodyHitsTotalDeadline() throws Exception {
+    HttpServer slow = SlowBodyServer.start(1_000);
+    try {
+      DhlotteryDrawSource dripping =
+          new DhlotteryDrawSource(
+              "http://127.0.0.1:" + slow.getAddress().getPort() + "/?srchLtEpsd=");
+      long started = System.nanoTime();
+
+      ParsedDraw parsed =
+          assertTimeoutPreemptively(Duration.ofSeconds(10), () -> dripping.fetch(1200));
+
+      assertThat(parsed).isEqualTo(new ParsedDraw.Invalid("NETWORK"));
+      assertThat(Duration.ofNanos(System.nanoTime() - started))
+          .isGreaterThan(Duration.ofSeconds(4));
+    } finally {
+      slow.stop(0);
+    }
   }
 
   @Test

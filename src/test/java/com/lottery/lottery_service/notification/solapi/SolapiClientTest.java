@@ -1,16 +1,19 @@
 package com.lottery.lottery_service.notification.solapi;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.notification.MessageLookup;
 import com.lottery.lottery_service.notification.ProviderStatus;
 import com.lottery.lottery_service.notification.SendOutcome;
+import com.lottery.lottery_service.support.SlowBodyServer;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -231,6 +234,32 @@ class SolapiClientTest {
                     1, new byte[] {1}, "M4V1", Instant.parse("2026-11-08T12:31:00Z"))))
         .isInstanceOf(ProviderStatus.NotFound.class);
     assertThat(output.getAll()).contains("solapi lookup failed").doesNotContain("1058219734");
+  }
+
+  @Test
+  @DisplayName("헤더 뒤 본문을 아주 천천히 보내도 전체 시간 상한 뒤 알 수 없음으로 끝난다(03 6.4)")
+  void slowBodyHitsTotalDeadline() throws Exception {
+    HttpServer slow = SlowBodyServer.start(1_000);
+    try {
+      SolapiClient dripping =
+          new SolapiClient(
+              new SolapiProperties(
+                  "http://127.0.0.1:" + slow.getAddress().getPort(),
+                  "KEY",
+                  "SECRET",
+                  "01000000000",
+                  "KA01PF000"),
+              Clock.fixed(Instant.parse("2026-11-08T15:30:00Z"), ZoneOffset.UTC));
+
+      SendOutcome outcome =
+          assertTimeoutPreemptively(
+              Duration.ofSeconds(10),
+              () -> dripping.sendAlimtalk("01012345678", "T", Map.of(), "k"));
+
+      assertThat(outcome).isInstanceOf(SendOutcome.Unknown.class);
+    } finally {
+      slow.stop(0);
+    }
   }
 
   private SendOutcome send() {

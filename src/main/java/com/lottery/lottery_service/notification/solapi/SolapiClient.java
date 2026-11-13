@@ -4,15 +4,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.lottery.lottery_service.common.http.BoundedHttp;
 import com.lottery.lottery_service.notification.ProviderStatus;
 import com.lottery.lottery_service.notification.SendOutcome;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -193,16 +192,10 @@ public class SolapiClient {
                 SolapiAuth.header(properties.apiKey(), properties.apiSecret(), clock.instant()))
             .build();
     try {
-      HttpResponse<InputStream> response =
-          http.send(built, HttpResponse.BodyHandlers.ofInputStream());
-      try (InputStream in = response.body()) {
-        byte[] bytes = in.readNBytes(MAX_BODY + 1);
-        if (bytes.length > MAX_BODY) {
-          throw new IOException("solapi response too large");
-        }
-        JsonNode body = bytes.length == 0 ? json.createObjectNode() : parse(bytes);
-        return new Response(response.statusCode(), body == null ? json.createObjectNode() : body);
-      }
+      BoundedHttp.Response response = BoundedHttp.send(http, built, MAX_BODY, TIMEOUT);
+      byte[] bytes = response.body();
+      JsonNode body = bytes.length == 0 ? json.createObjectNode() : parse(bytes);
+      return new Response(response.status(), body == null ? json.createObjectNode() : body);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new IOException("interrupted", e);

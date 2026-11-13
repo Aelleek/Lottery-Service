@@ -2,11 +2,14 @@ package com.lottery.lottery_service.common.alert;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lottery.lottery_service.support.SlowBodyServer;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -79,6 +82,24 @@ class DiscordWebhookSenderTest {
         .isInstanceOf(IllegalStateException.class)
         .hasMessage("discord webhook failed")
         .satisfies(e -> assertThat(e.getMessage()).doesNotContain("/hook"));
+  }
+
+  @Test
+  @DisplayName("응답 본문을 아주 천천히 보내도 전체 시간 상한 뒤 실패로 던진다(03 6.4)")
+  void slowBodyHitsTotalDeadline() throws Exception {
+    HttpServer slow = SlowBodyServer.start(1_000);
+    try {
+      String webhook = "http://127.0.0.1:" + slow.getAddress().getPort() + "/hook";
+
+      assertTimeoutPreemptively(
+          Duration.ofSeconds(10),
+          () ->
+              assertThatThrownBy(() -> new DiscordWebhookSender(webhook).send("x"))
+                  .isInstanceOf(IllegalStateException.class)
+                  .hasMessage("discord webhook failed"));
+    } finally {
+      slow.stop(0);
+    }
   }
 
   private String url() {

@@ -1,11 +1,11 @@
 package com.lottery.lottery_service.common.alert;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lottery.lottery_service.common.http.BoundedHttp;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 public class DiscordWebhookSender implements OperatorAlertSender {
 
   private static final Duration TIMEOUT = Duration.ofSeconds(5);
+  private static final int MAX_BODY = 64 * 1024;
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private final HttpClient http = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
@@ -44,9 +45,9 @@ public class DiscordWebhookSender implements OperatorAlertSender {
                   HttpRequest.BodyPublishers.ofString(
                       MAPPER.writeValueAsString(Map.of("content", content))))
               .build();
-      HttpResponse<Void> response = http.send(request, HttpResponse.BodyHandlers.discarding());
-      if (response.statusCode() / 100 != 2) {
-        throw new IllegalStateException("discord webhook returned " + response.statusCode());
+      int status = BoundedHttp.send(http, request, MAX_BODY, TIMEOUT).status();
+      if (status / 100 != 2) {
+        throw new IllegalStateException("discord webhook returned " + status);
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
