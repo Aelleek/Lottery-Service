@@ -18,6 +18,7 @@ import java.sql.SQLException;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,7 @@ class OAuthLoginFlowWebMySqlTest extends MySqlContainerSupport {
   private static final String DB = "oauth_login_flow";
   private static final String SESSION_COOKIE = "__Host-lottery_session";
   private static final List<String> TOKEN_REQUESTS = new CopyOnWriteArrayList<>();
+  private static final AtomicReference<String> PROVIDER_USER = new AtomicReference<>("4242");
   private static final HttpServer PROVIDER = provider();
 
   @Autowired private MockMvc mvc;
@@ -85,6 +87,7 @@ class OAuthLoginFlowWebMySqlTest extends MySqlContainerSupport {
   @Test
   @DisplayName("소셜 로그인에 성공하면 회원이 되고, 세션 ID가 바뀌어 로그인 전 세션 ID는 더 이상 없다")
   void loginRotatesSessionId() throws Exception {
+    PROVIDER_USER.set("4242");
     MvcResult start = mvc.perform(get("/oauth2/authorization/kakao")).andReturn();
     assertThat(start.getResponse().getStatus()).isEqualTo(302);
     String location = start.getResponse().getHeader("Location");
@@ -106,14 +109,84 @@ class OAuthLoginFlowWebMySqlTest extends MySqlContainerSupport {
     assertThat(after.getValue()).isNotEqualTo(before.getValue());
     assertThat(sessionExists(before)).isFalse();
     assertThat(sessionExists(after)).isTrue();
-    assertThat(TOKEN_REQUESTS).singleElement().asString().contains("code=fake-code");
+    assertThat(TOKEN_REQUESTS).last().asString().contains("code=fake-code");
     assertThat(
             jdbc.queryForObject(
-                "SELECT COUNT(*) FROM oauth_account WHERE provider = 'KAKAO'", Long.class))
+                "SELECT COUNT(*) FROM oauth_account WHERE provider_user_id = '4242'", Long.class))
         .isEqualTo(1);
 
     mvc.perform(get("/api/v1/session").cookie(after)).andExpect(jsonPath("$.kind").value("MEMBER"));
     mvc.perform(get("/api/v1/session").cookie(before)).andExpect(jsonPath("$.kind").value("NONE"));
+  }
+
+  @Test
+  @DisplayName(
+      "T62: 재인증은 제공자에 로그인 화면을 다시 요청하고, 같은 계정이면 재인증 시각을 남긴다."
+          + " 다른 계정이면 실패로 돌려보내고 세션은 원래 회원 그대로이며 그 계정의 회원을 새로 만들지 않는다")
+  void reauthenticationThroughProvider() throws Exception {
+    PROVIDER_USER.set("5001");
+    Cookie session = login();
+    assertThat(reauthenticatedAt(session)).isFalse();
+
+    PROVIDER_USER.set("5002");
+    MvcResult other = reauth(session);
+    assertThat(other.getResponse().getHeader("Location")).endsWith("/?reauth=failed");
+    assertThat(reauthenticatedAt(session)).isFalse();
+    mvc.perform(get("/api/v1/session").cookie(session))
+        .andExpect(jsonPath("$.kind").value("MEMBER"));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM oauth_account WHERE provider_user_id = '5002'", Long.class))
+        .isZero();
+
+    PROVIDER_USER.set("5001");
+    MvcResult same = reauth(session);
+    assertThat(same.getResponse().getHeader("Location")).doesNotContain("failed");
+    Cookie rotated = sessionCookie(same);
+    assertThat(reauthenticatedAt(rotated)).isTrue();
+    mvc.perform(get("/api/v1/session").cookie(rotated))
+        .andExpect(jsonPath("$.kind").value("MEMBER"));
+  }
+
+  private Cookie login() throws Exception {
+    MvcResult start = mvc.perform(get("/oauth2/authorization/kakao")).andReturn();
+    Cookie before = sessionCookie(start);
+    MvcResult callback =
+        mvc.perform(
+                get("/login/oauth2/code/kakao")
+                    .param("code", "fake-code")
+                    .param("state", query(start.getResponse().getHeader("Location"), "state"))
+                    .cookie(before))
+            .andExpect(status().is3xxRedirection())
+            .andReturn();
+    return sessionCookie(callback);
+  }
+
+  private MvcResult reauth(Cookie session) throws Exception {
+    MvcResult start =
+        mvc.perform(get("/oauth2/authorization/kakao").param("reauth", "true").cookie(session))
+            .andReturn();
+    String location = start.getResponse().getHeader("Location");
+    assertThat(query(location, "prompt")).isEqualTo("login");
+    return mvc.perform(
+            get("/login/oauth2/code/kakao")
+                .param("code", "fake-code")
+                .param("state", query(location, "state"))
+                .cookie(session))
+        .andExpect(status().is3xxRedirection())
+        .andReturn();
+  }
+
+  private boolean reauthenticatedAt(Cookie cookie) {
+    String id = new String(Base64.getDecoder().decode(cookie.getValue()), StandardCharsets.UTF_8);
+    return jdbc.queryForObject(
+            "SELECT COUNT(*) FROM SPRING_SESSION_ATTRIBUTES a JOIN SPRING_SESSION s"
+                + " ON s.PRIMARY_ID = a.SESSION_PRIMARY_ID WHERE s.SESSION_ID = ?"
+                + " AND a.ATTRIBUTE_NAME = ?",
+            Long.class,
+            id,
+            Reauthentication.COMPLETED_AT)
+        > 0;
   }
 
   private static HttpServer provider() {
@@ -129,7 +202,8 @@ class OAuthLoginFlowWebMySqlTest extends MySqlContainerSupport {
                 "{\"access_token\":\"fake-at\",\"token_type\":\"bearer\",\"expires_in\":3600}");
           });
       server.createContext(
-          "/userinfo", exchange -> json(exchange, "{\"id\":4242,\"kakao_account\":{}}"));
+          "/userinfo",
+          exchange -> json(exchange, "{\"id\":" + PROVIDER_USER.get() + ",\"kakao_account\":{}}"));
       server.start();
       return server;
     } catch (IOException e) {
