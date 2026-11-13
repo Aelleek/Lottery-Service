@@ -170,7 +170,7 @@ public class VerificationStore {
             + " notify_enabled = FALSE, consent_event_id = NULL, version = version + 1",
         memberId,
         row.get("target_ciphertext"),
-        secrets.contact().currentVersion(),
+        ContactCipher.versionOf((byte[]) row.get("target_ciphertext")),
         utc(now));
     return VerificationResult.VERIFIED;
   }

@@ -72,6 +72,21 @@ public class ContactCipher {
     }
   }
 
+  /** 암호문에 적힌 키 버전. */
+  public static int versionOf(byte[] sealed) {
+    return ByteBuffer.wrap(sealed).getInt();
+  }
+
+  /** 현재 키 버전으로 만든 암호문인지 본다. */
+  public boolean isCurrent(byte[] sealed) {
+    return versionOf(sealed) == secrets.contact().currentVersion();
+  }
+
+  /** 그 회원의 암호문을 풀어 현재 키 버전으로 다시 암호화한다(03 6.6). 변조됐거나 다른 회원의 암호문이면 예외. */
+  public byte[] reencrypt(long memberId, byte[] sealed) {
+    return encrypt(memberId, decrypt(memberId, sealed));
+  }
+
   private static byte[] aad(long memberId) {
     return ("member_contact|" + memberId).getBytes(StandardCharsets.UTF_8);
   }

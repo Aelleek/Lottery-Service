@@ -271,7 +271,7 @@ public class AdminMfaStore {
     return value == null ? null : instant(value);
   }
 
-  private static byte[] aad(long memberId) {
+  static byte[] aad(long memberId) {
     return ("admin-mfa|" + memberId).getBytes(StandardCharsets.UTF_8);
   }
 
