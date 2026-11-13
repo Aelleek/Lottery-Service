@@ -29,9 +29,10 @@ public final class BoundedHttp {
    * 받은 응답.
    *
    * @param status 상태 코드
+   * @param headers 응답 헤더
    * @param body 본문. 상한 이하
    */
-  public record Response(int status, byte[] body) {}
+  public record Response(int status, java.net.http.HttpHeaders headers, byte[] body) {}
 
   /** 본문이 크기 상한을 넘었다. 넘은 뒤로는 읽지 않는다. */
   public static final class TooLargeException extends IOException {
@@ -59,7 +60,7 @@ public final class BoundedHttp {
         http.sendAsync(request, info -> new Limited(maxBytes));
     try {
       HttpResponse<byte[]> response = future.get(total.toMillis(), TimeUnit.MILLISECONDS);
-      return new Response(response.statusCode(), response.body());
+      return new Response(response.statusCode(), response.headers(), response.body());
     } catch (TimeoutException e) {
       future.cancel(true);
       throw new HttpTimeoutException("response did not finish within the time limit");

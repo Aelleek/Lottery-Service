@@ -1,8 +1,8 @@
 package com.lottery.lottery_service.auth;
 
+import com.lottery.lottery_service.common.http.BoundedClientHttpRequestFactory;
 import java.time.Duration;
 import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.http.converter.FormHttpMessageConverter;
 import org.springframework.security.oauth2.client.endpoint.OAuth2AccessTokenResponseClient;
 import org.springframework.security.oauth2.client.endpoint.OAuth2AuthorizationCodeGrantRequest;
@@ -14,13 +14,16 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * 소셜 로그인 제공자 호출(토큰 교환, 사용자 정보)에 연결·응답 시간 제한을 둔다(03 6.4). Spring Security의 기본 클라이언트는 시간 제한이 없어, 제공자가
- * 응답하지 않으면 로그인 요청을 처리하는 스레드가 끝없이 묶인다.
+ * 소셜 로그인 제공자 호출(토큰 교환, 사용자 정보)에 본문까지 포함한 시간 상한과 크기 상한을 두고 주소 이동을 따르지 않는다(03 6.4). Spring Security의
+ * 기본 클라이언트는 시간 제한이 없어, 제공자가 응답하지 않으면 로그인 요청을 처리하는 스레드가 끝없이 묶인다.
  */
 public final class OAuthClientHttp {
 
-  /** 연결과 응답 읽기 각각의 시간 제한. */
+  /** 연결부터 응답 본문 끝까지의 시간 상한. */
   public static final Duration TIMEOUT = Duration.ofSeconds(5);
+
+  /** 제공자 응답 본문 크기 상한. 토큰·사용자 정보 응답은 수 KB다. */
+  static final int MAX_BODY = 64 * 1024;
 
   private OAuthClientHttp() {}
 
@@ -53,9 +56,6 @@ public final class OAuthClientHttp {
   }
 
   private static ClientHttpRequestFactory requestFactory(Duration timeout) {
-    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-    factory.setConnectTimeout(timeout);
-    factory.setReadTimeout(timeout);
-    return factory;
+    return new BoundedClientHttpRequestFactory(MAX_BODY, timeout);
   }
 }

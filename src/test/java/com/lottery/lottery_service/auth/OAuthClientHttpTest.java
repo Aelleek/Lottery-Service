@@ -4,12 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import com.lottery.lottery_service.support.SlowBodyServer;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +37,7 @@ class OAuthClientHttpTest {
       new AtomicReference<>(
           "{\"access_token\":\"at\",\"token_type\":\"Bearer\",\"expires_in\":3600}");
   private final AtomicReference<Boolean> hang = new AtomicReference<>(false);
+  private final AtomicInteger userInfoCalls = new AtomicInteger();
   private HttpServer server;
 
   @BeforeEach
@@ -53,6 +56,7 @@ class OAuthClientHttpTest {
     server.createContext(
         "/userinfo",
         exchange -> {
+          userInfoCalls.incrementAndGet();
           if (hang.get()) {
             sleep();
           }
@@ -109,8 +113,67 @@ class OAuthClientHttpTest {
                 .isInstanceOf(RuntimeException.class));
   }
 
-  private ClientRegistration registration() {
+  @Test
+  @DisplayName("본문을 아주 천천히 보내도 전체 시간 상한 뒤 실패한다")
+  void slowBodyHitsTotalDeadline() throws Exception {
+    HttpServer slow = SlowBodyServer.start(1_000);
+    try {
+      ClientRegistration dripping = registration("http://127.0.0.1:" + slow.getAddress().getPort());
+      long started = System.nanoTime();
+
+      assertThatThrownBy(
+              () ->
+                  OAuthClientHttp.userService(SHORT)
+                      .loadUser(new OAuth2UserRequest(dripping, access())))
+          .isInstanceOf(RuntimeException.class);
+      assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(4));
+    } finally {
+      slow.stop(0);
+    }
+  }
+
+  @Test
+  @DisplayName("크기 상한을 넘는 응답과 주소 이동(3xx)은 받지 않는다. 이동한 곳은 부르지 않는다")
+  void rejectsOversizedAndRedirect() {
+    server.createContext(
+        "/big",
+        exchange -> {
+          byte[] out = ("{\"id\":\"" + "x".repeat(OAuthClientHttp.MAX_BODY) + "\"}").getBytes();
+          exchange.sendResponseHeaders(200, out.length);
+          exchange.getResponseBody().write(out);
+          exchange.close();
+        });
+    server.createContext(
+        "/moved",
+        exchange -> {
+          exchange.getResponseHeaders().add("Location", "/userinfo");
+          exchange.sendResponseHeaders(302, -1);
+          exchange.close();
+        });
     String base = "http://127.0.0.1:" + server.getAddress().getPort();
+
+    assertThatThrownBy(
+            () ->
+                OAuthClientHttp.userService(SHORT)
+                    .loadUser(new OAuth2UserRequest(registration(base, "/big"), access())))
+        .isInstanceOf(RuntimeException.class);
+    assertThatThrownBy(
+            () ->
+                OAuthClientHttp.userService(SHORT)
+                    .loadUser(new OAuth2UserRequest(registration(base, "/moved"), access())))
+        .isInstanceOf(RuntimeException.class);
+    assertThat(userInfoCalls.get()).isZero();
+  }
+
+  private ClientRegistration registration() {
+    return registration("http://127.0.0.1:" + server.getAddress().getPort());
+  }
+
+  private ClientRegistration registration(String base) {
+    return registration(base, "/userinfo");
+  }
+
+  private ClientRegistration registration(String base, String userInfoPath) {
     return ClientRegistration.withRegistrationId("kakao")
         .clientId("client")
         .clientSecret("secret")
@@ -118,7 +181,7 @@ class OAuthClientHttpTest {
         .redirectUri("http://localhost/login/oauth2/code/kakao")
         .authorizationUri(base + "/authorize")
         .tokenUri(base + "/token")
-        .userInfoUri(base + "/userinfo")
+        .userInfoUri(base + userInfoPath)
         .userNameAttributeName("id")
         .build();
   }
