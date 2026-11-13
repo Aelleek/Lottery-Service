@@ -12,7 +12,7 @@ import org.springframework.core.env.StandardEnvironment;
 class ServerCommandEnvironmentTest {
 
   @Test
-  @DisplayName("복원·권한 부여·키 재암호화 명령이면 웹 서버와 주기 작업을 끄고, 아니면 건드리지 않는다")
+  @DisplayName("복원·권한 부여·키 재암호화·세션 회수 명령이면 웹 서버와 주기 작업을 끄고, 아니면 건드리지 않는다")
   void disablesWebAndWorkerForCommands() {
     assertThat(
             apply(
@@ -20,6 +20,10 @@ class ServerCommandEnvironmentTest {
         .containsEntry("web", "none")
         .containsEntry("worker", "false");
     assertThat(apply(Map.of("lottery.admin.grant.member", "x"))).containsEntry("web", "none");
+    assertThat(apply(Map.of("lottery.incident.revoke-sessions", "true")))
+        .containsEntry("web", "none")
+        .containsEntry("worker", "false");
+    assertThat(apply(Map.of("lottery.incident.revoke-sessions", "false"))).containsEntry("web", "");
     assertThat(apply(Map.of("lottery.secrets.reencrypt.ring", "contact")))
         .containsEntry("web", "none")
         .containsEntry("worker", "false");

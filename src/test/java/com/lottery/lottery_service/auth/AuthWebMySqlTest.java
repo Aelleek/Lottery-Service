@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oauth2Login;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -12,6 +13,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.MemberLogin;
+import com.lottery.lottery_service.account.withdrawal.RestoreReplay;
+import com.lottery.lottery_service.account.withdrawal.SessionRevokeCommand;
 import com.lottery.lottery_service.config.SecurityConfig;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.OpenApiContract;
@@ -24,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -44,6 +48,7 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
   @Autowired private AccountStore accounts;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private ObjectMapper json;
+  @Autowired private RestoreReplay replay;
 
   @DynamicPropertySource
   static void database(DynamicPropertyRegistry registry) throws SQLException {
@@ -181,6 +186,31 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
     mvc.perform(
             get("/api/v1/session").cookie(otherDevice).with(oauth2Login().oauth2User(principal)))
         .andExpect(jsonPath("$.kind").value("MEMBER"));
+  }
+
+  @Test
+  @DisplayName("사고 대응 세션 회수 명령은 서버 세션을 지우고, 옛 인증 버전의 로그인 정보로 온 요청은 401이다(07 7절 2번)")
+  void incidentRevokesEverySession() throws Exception {
+    MemberLogin login = accounts.login(OAuthProvider.KAKAO, "incident-" + System.nanoTime());
+    MemberPrincipal principal = MemberPrincipal.of(login, OAuthProvider.KAKAO);
+    Cookie session =
+        sessionCookie(
+            mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(principal)))
+                .andReturn()
+                .getResponse()
+                .getHeader("Set-Cookie"));
+    assertThat(sessionExists(session)).isTrue();
+    mvc.perform(get("/api/v1/me/guest-claims").with(oauth2Login().oauth2User(principal)))
+        .andExpect(status().isOk());
+
+    assertThat(
+            new SessionRevokeCommand(replay, mock(ConfigurableApplicationContext.class)).execute())
+        .isZero();
+
+    assertThat(sessionExists(session)).isFalse();
+    assertThat(authVersion(login.memberId())).isEqualTo(login.authVersion() + 1);
+    mvc.perform(get("/api/v1/me/guest-claims").with(oauth2Login().oauth2User(principal)))
+        .andExpect(status().isUnauthorized());
   }
 
   private static Cookie sessionCookie(String setCookie) {

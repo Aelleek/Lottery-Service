@@ -7,8 +7,8 @@ import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 
 /**
- * 서버 관리 명령(복원 뒤 삭제 기록 재적용, 관리자 권한 부여, 키 재암호화)으로 실행할 때는 웹 서버와 주기 작업을 켜지 않는다. 명령이 끝나기 전에 요청을 받거나 발송이
- * 돌지 않게 한다(07 4절 1·3번).
+ * 서버 관리 명령(복원 뒤 삭제 기록 재적용, 관리자 권한 부여, 키 재암호화, 사고 때 세션 회수)으로 실행할 때는 웹 서버와 주기 작업을 켜지 않는다. 명령이 끝나기 전에
+ * 요청을 받거나 발송이 돌지 않게 한다(07 4절 1·3번).
  */
 public class ServerCommandEnvironment implements EnvironmentPostProcessor {
 
@@ -35,6 +35,7 @@ public class ServerCommandEnvironment implements EnvironmentPostProcessor {
   static boolean isCommand(ConfigurableEnvironment environment) {
     return "true".equalsIgnoreCase(environment.getProperty("lottery.restore.replay-journal"))
         || environment.containsProperty("lottery.admin.grant.member")
-        || environment.containsProperty("lottery.secrets.reencrypt.ring");
+        || environment.containsProperty("lottery.secrets.reencrypt.ring")
+        || "true".equalsIgnoreCase(environment.getProperty("lottery.incident.revoke-sessions"));
   }
 }
