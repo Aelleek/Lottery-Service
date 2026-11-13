@@ -4,325 +4,120 @@
 ![Java](https://img.shields.io/badge/Java-17-red)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-brightgreen)
 ![Gradle](https://img.shields.io/badge/Gradle-8.x-02303A)
-![DB](https://img.shields.io/badge/DB-MySQL%20(local)%20%7C%20H2%20(test)-informational)
+![DB](https://img.shields.io/badge/DB-MySQL%208.4-informational)
 ![Auth](https://img.shields.io/badge/Auth-OAuth2%20(Google%2FKakao%2FNaver)-yellow)
 
 # Lottery Service
 
-> Spring Boot 기반 로또 번호 추천/구매 기록 서비스
-> OAuth2 소셜 로그인(카카오/구글/네이버)을 지원하며,
-> **로컬 개발 실행은 Docker Compose MySQL + `local` profile**,
-> **테스트는 H2 기반 `test` 환경**을 사용합니다.
+로또 번호 추천과 구매 기록, 당첨 확인, 결과 알림을 제공하는 Spring Boot 서비스입니다. 회원은 소셜 로그인(구글, 카카오, 네이버)으로, 비회원은 쿠키 자격으로 씁니다.
 
----
+서비스 정의와 정책, 구조, API 계약은 [docs/](docs/README.md)에 있습니다. 이 문서는 코드를 받아 실행하고 검증하는 방법을 다룹니다.
 
-## ✨ Key Features
+## 주요 기능
 
-- 로또 번호 **추천/구매** API
-- 사용자별 **구매 기록** 조회
-- **OAuth2 로그인**: 카카오, 구글, 네이버
-- 로컬 개발 환경: **Docker Compose + MySQL 8**
-- 테스트 환경: **H2 in-memory**
-- 코드 품질: **Spotless / Checkstyle / PMD**
+- 번호 추천: 기본 추천(생성 필터 7개, 과거 1등 제외)과 조건 추천(넣을 번호·뺄 번호). 회원과 비회원이 같은 생성기를 쓰고, 같은 회차에 받은 조합은 다시 주지 않습니다.
+- 구매 기록: 직접 등록과 취소, 회차별 내역, 비회원 기록 가져오기.
+- 당첨 결과: 동행복권 결과 수집과 게시, 내용이 다르면 격리 후 관리자 승인, 결과 직접 등록, 등수 판정과 정정 뒤 재판정, 즉시 확인.
+- 결과 알림: 휴대폰 번호 인증과 동의, 알림톡 발송 슬롯, 접수 여부 대조, 월 예산, 운영자 알림(Discord).
+- 계정: 탈퇴와 개인 자료 삭제, 삭제 기록으로 복원 뒤 재적용, 보관 기간 정리와 집계.
+- 관리자: TOTP 2차 인증, 알림 현황·통계 조회, 다시 보내기·결과 승인·직접 등록(감사 기록).
 
----
+## 기술 스택
 
-## 🛠 Tech Stack
+- Java 17, Spring Boot 3, Gradle Wrapper
+- MySQL 8.4, Flyway(스키마), Spring Session JDBC(회원 세션), `JdbcTemplate`
+- Spring Security OAuth2 Client
+- 테스트: JUnit 5, H2(단위), Testcontainers MySQL(저장소·웹 통합)
+- 품질: Spotless(Google Java Format), Checkstyle, PMD
 
-- **Language**: Java 17
-- **Framework**: Spring Boot 3.x
-- **Build**: Gradle (Wrapper 포함)
-- **DB (local runtime)**: MySQL 8.x via Docker Compose
-- **DB (test)**: H2 in-memory
-- **Auth**: Spring Security OAuth2 Client
-- **Quality**: Spotless, Checkstyle, PMD
+## 코드 구조
 
----
+`com.lottery.lottery_service` 아래를 기능 단위로 나눕니다.
 
-## 📦 Project Structure
+| 패키지 | 내용 |
+|---|---|
+| `round` | 회차 일정, 판매 마감과 봉인 |
+| `recommendation` | 추천 생성기, 생성 필터, 멱등 명령 |
+| `record` | 구매 등록·취소, 내역, 가져오기, 보관 정리 |
+| `result` | 결과 수집·게시·격리·직접 등록, 판정 |
+| `notification` | 번호 인증·동의, 결과 알림 발송과 대조, 예산 |
+| `account` | 회원·비회원 주체, 탈퇴, 복원 |
+| `auth` | 소셜 로그인, 세션, CSRF, 재인증 |
+| `admin` | 관리자 권한, 2차 인증, 감사, 관리자 API |
+| `stats` | 사용량 집계 |
+| `common` | job 실행기, 명령 토큰, 요청 제한, 키, 외부 호출, 운영자 알림 |
+| `config` | 보안·웹 필터 설정, 서버 관리 명령 환경 |
 
-```text
-src/
- ├─ main/
- │   ├─ java/com/lottery/lottery_service/
- │   │   ├─ lotto/ ...        # 로또 도메인(컨트롤러/서비스/도메인)
- │   │   └─ member/ ...       # 회원/인증 관련
- │   └─ resources/
- │       ├─ application.yml         # 공통 설정
- │       ├─ application-local.yml   # local runtime 설정
- │       └─ data.sql
- └─ test/
-     └─ resources/
-         └─ application-test.yml    # test(H2) 설정
+스키마는 `src/main/resources/db/migration/V1__first_release_schema.sql`이며 [docs/contracts/schema.sql](docs/contracts/schema.sql)과 같아야 합니다.
 
-config/
- ├─ local-db.example.yml
- └─ oauth-client.yml                # gitignore
+## 로컬 실행
 
-docker-compose.yml
-.env.example
-```
-
----
-
-## ⚙️ Setup (Local Development)
-
-### 1) Prerequisites
-
-- **JDK 17**
-- **Gradle Wrapper 포함** → 별도 Gradle 설치 불필요
-- **Docker / Docker Compose**
-
-### 2) 로컬 설정 파일 준비
-
-예시 파일을 복사해서 실제 로컬 설정 파일을 생성합니다.
+필요한 것: JDK 17, Docker(Compose 포함).
 
 ```bash
 cp .env.example .env
 cp config/local-db.example.yml config/local-db.yml
-```
-
-### 3) `.env` 설정
-
-`docker-compose.yml` 에서 사용할 MySQL 컨테이너 환경변수입니다.
-
-예시:
-
-```dotenv
-MYSQL_HOST_PORT=13306
-MYSQL_DATABASE=lottery
-MYSQL_USER=lottery
-MYSQL_PASSWORD=lottery
-MYSQL_ROOT_PASSWORD=rootpassword
-```
-
-### 4) `config/local-db.yml` 설정
-
-Spring Boot `local` profile 에서 사용할 DB 연결 정보입니다.
-
-예시:
-
-```yaml
-lottery:
-  db:
-    host: localhost
-    port: 13306
-    name: lottery
-    username: lottery
-    password: lottery
-```
-
-### 5) MySQL 실행
-
-```bash
-docker compose up -d
-docker compose ps
-```
-
-정상 기동 시 `lottery-mysql` 이 `healthy` 상태가 되어야 합니다.
-
-### 6) 애플리케이션 실행
-
-```bash
+cp config/secrets.example.yml config/secrets.yml           # 키를 난수로 채운다: openssl rand -base64 32
+cp config/integrations.example.yml config/integrations.yml # 알림을 쓰지 않으면 만들지 않아도 된다
+docker compose up -d                                       # MySQL 8.4
 SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 ```
 
-### 7) 테스트 실행
+- 스키마는 앱이 시작할 때 Flyway가 만듭니다. 옛 테이블이 남은 로컬 DB는 `docker compose down -v`로 지우고 다시 만듭니다.
+- 소셜 로그인 값은 환경 변수(`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`)나 `config/oauth-client.yml`로 넣습니다.
+- 주기 작업(마감 봉인, 결과 수집, 발송, 정리)은 기본으로 꺼져 있습니다. 켜려면 `LOTTERY_WORKER_ENABLED=true`를 줍니다.
+- `local` 프로필은 http에서 쿠키가 붙도록 쿠키의 `Secure`를 끕니다. 운영에서는 이 프로필을 쓰지 않습니다.
+
+`config/` 아래 실제 설정 파일과 `.env`는 git에 올리지 않습니다.
+
+## 테스트
 
 ```bash
-./gradlew test
+./gradlew test        # 단위 테스트(H2, Docker 불필요)
+./gradlew mysqlTest   # 실제 MySQL 8.4 컨테이너로 도는 저장소·웹 통합 테스트(Docker 필요)
+./gradlew loadTest    # 부하 목표 확인(Docker 필요, -Dload.seconds=60 -Dload.users=100 -Dload.rps=20)
 ```
 
-> 참고: 현재 일부 테스트는 레거시 상태로 복구 작업이 필요합니다.
+수용 시나리오(T01~T65)는 [docs/08-delivery.md](docs/08-delivery.md#5-수용-시나리오)에 있고, 테스트 이름에 시나리오 ID를 적습니다. 웹 통합 테스트는 응답이 [openapi.yaml](docs/contracts/openapi.yaml)과 맞는지도 확인합니다.
 
----
-
-## 🔐 OAuth2 설정
-
-소셜 로그인을 사용하려면 민감정보를 별도 파일로 분리합니다.
-
-`config/oauth-client.yml` 예시:
-
-```yaml
-spring:
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: YOUR_GOOGLE_ID
-            client-secret: YOUR_GOOGLE_SECRET
-            scope: [openid, profile, email]
-            redirect-uri: "{baseUrl}/login/oauth2/code/google"
-
-          kakao:
-            client-id: YOUR_KAKAO_REST_API_KEY
-            client-secret: YOUR_KAKAO_CLIENT_SECRET
-            client-authentication-method: client_secret_post
-            redirect-uri: "{baseUrl}/login/oauth2/code/kakao"
-            scope: [profile_nickname, account_email]
-
-          naver:
-            client-id: YOUR_NAVER_CLIENT_ID
-            client-secret: YOUR_NAVER_CLIENT_SECRET
-            client-authentication-method: client_secret_post
-            redirect-uri: "{baseUrl}/login/oauth2/code/naver"
-            scope: [name, email]
-
-        provider:
-          kakao:
-            authorization-uri: https://kauth.kakao.com/oauth/authorize
-            token-uri: https://kauth.kakao.com/oauth/token
-            user-info-uri: https://kapi.kakao.com/v2/user/me
-            user-name-attribute: id
-
-          naver:
-            authorization-uri: https://nid.naver.com/oauth2.0/authorize
-            token-uri: https://nid.naver.com/oauth2.0/token
-            user-info-uri: https://openapi.naver.com/v1/nid/me
-            user-name-attribute: response
-```
-
-### 외부 설정 파일 원칙
-
-다음 파일들은 로컬 전용/민감정보 파일로 관리하고 `.gitignore` 에 포함합니다.
-
-- `config/oauth-client.yml` - OAuth2 민감정보
-- `config/local-db.yml` - local DB 연결 정보
-- `.env` - Docker Compose MySQL 환경변수
-
----
-
-## 🚦 Quality Gates (Code Style & Static Analysis)
+## 품질 검사
 
 ```bash
-./gradlew spotlessApply       # 코드 포맷팅 적용
-./gradlew spotlessCheck       # 포맷 검사
-./gradlew checkstyleMain      # Checkstyle
-./gradlew pmdMain             # PMD
-./gradlew test                # 테스트 실행
+./gradlew spotlessApply   # 포맷 적용
+./gradlew spotlessCheck   # 포맷 검사(CI에서 항상)
+./gradlew checkstyleMain checkstyleTest pmdMain pmdTest -DchangedFiles=<쉼표로 이은 경로>
 ```
 
-> 참고: 현재 테스트는 전부 green 상태가 아닐 수 있습니다.
-> 로컬 실행과 API 스모크 테스트는 확인되었지만, 테스트 컨텍스트/OAuth2 관련 복구 작업이 별도로 필요합니다.
+CI는 바뀐 파일에만 Checkstyle과 PMD를 적용하고, 위반이 있으면 실패합니다. `-DchangedFiles` 없이 돌리면 리포트만 만듭니다.
 
----
+## API
 
-## 📚 API
+모든 API는 `/api/v1` 아래에 있고 계약은 [docs/contracts/openapi.yaml](docs/contracts/openapi.yaml), 설명은 [docs/06-api.md](docs/06-api.md)에 있습니다.
 
-> 실제 컨트롤러/DTO에 맞춰 수치·필드명을 조정하세요. 아래는 예시입니다.
+- 세션과 자격: `GET /session`(CSRF 토큰), `POST /guest-credentials`(비회원 자격)
+- 추천: `POST /command-tokens`, `POST /lotto/recommendations`
+- 기록: `POST /me/lotto/purchases`, `POST /me/lotto/records/{recordId}/cancel-purchase`, `GET /me/lotto/records`, `GET /guest/lotto/records`
+- 결과: `GET /lotto/rounds/{round}/result`, `POST /lotto/check`
+- 알림: `POST /me/notification-verifications`, `PUT /me/notification-preference` 등
+- 관리자: `/admin/**`(2차 인증 필요)
 
-### 인증 & 프로필
+변경 요청에는 `X-CSRF-TOKEN` 헤더가 필요하고, 추천·구매 같은 명령은 명령 토큰(`X-Command-Token`)이나 `Idempotency-Key`로 한 번만 처리됩니다.
 
-- **OAuth 시작**: `GET /oauth2/authorization/{provider}` (`google|kakao|naver`)
-- **내 프로필**: `GET /api/me` → 로그인 필요
+## 서버 관리 명령
 
-### 로또
+웹 서버와 주기 작업을 띄우지 않고 한 번 실행한 뒤 끝나는 명령입니다. 운영 절차는 [docs/07-operations.md](docs/07-operations.md)에 있습니다.
 
-| Method | Path                   | Auth     | 설명 |
-| ------ | ---------------------- | -------- | ---- |
-| GET    | `/api/lotto/recommend` | Optional | 추천 번호 `count`개(기본 5) 세트 반환 |
-| POST   | `/api/lotto/purchase`  | Required | 추천/선택 번호를 구매 기록으로 저장 |
-| GET    | `/api/lotto/records`   | Required | 내 구매 기록 목록 조회 |
+| 명령 | 용도 |
+|---|---|
+| `--lottery.admin.grant.member=<회원 외부 ID> --lottery.admin.grant.action=grant\|revoke\|reset-mfa --lottery.admin.grant.reason=<사유>` | 관리자 부여, 회수, 2차 인증 초기화 |
+| `--lottery.secrets.reencrypt.ring=contact\|admin-mfa` | 키를 바꾼 뒤 남은 암호문을 현재 키로 다시 암호화 |
+| `--lottery.restore.replay-journal=true` | 백업 복원 뒤 삭제 기록 재적용 |
+| `--lottery.incident.revoke-sessions=true` | 보안 사고 때 모든 회원 세션 회수 |
 
-#### 요청/응답 예시
-
-**추천 번호**
-
-```http
-GET /api/lotto/recommend?count=5 HTTP/1.1
-```
-
-```json
-[
-  { "numbers": [1, 3, 12, 24, 33, 41] },
-  { "numbers": [2, 11, 16, 20, 29, 44] }
-]
-```
-
-**구매 요청**
-
-```http
-POST /api/lotto/purchase HTTP/1.1
-Content-Type: application/json
-```
-
-```json
-{
-  "source": "recommendation",
-  "sets": [
-    { "numbers": [1, 3, 12, 24, 33, 41] }
-  ]
-}
-```
-
-**구매 기록 조회**
-
-```http
-GET /api/lotto/records HTTP/1.1
-```
-
-```json
-[
-  {
-    "id": 123,
-    "purchasedAt": "2025-09-20T12:30:05Z",
-    "numbers": [1, 3, 12, 24, 33, 41]
-  }
-]
-```
-
-### 에러 포맷(예시)
-
-```json
-{
-  "timestamp": "2025-09-24T01:23:45Z",
-  "status": 400,
-  "error": "Bad Request",
-  "code": "LOTTO-001",
-  "message": "유효하지 않은 번호입니다",
-  "path": "/api/lotto/purchase"
-}
-```
-
----
-
-## 🧭 Branch & Commit (권장)
-
-- 브랜치: `feature/*`, `fix/*`, `chore/*`, `test/*`
-- 커밋 메시지: Conventional Commits 권장
-
-예:
-
-- `feat(lotto): 추천 번호 생성 규칙 추가`
-- `fix(auth): OAuth redirect-uri 인코딩 문제 수정`
-- `chore(env): add docker mysql setup for local runtime`
-- `test(auth): recover oauth test context`
-
----
-
-## ❗ Troubleshooting
-
-- **MySQL 컨테이너가 뜨지 않음**
-  - `.env` 값과 `docker-compose.yml` 변수명이 일치하는지 확인
-  - `docker compose ps` 에서 `healthy` 상태인지 확인
-
-- **OAuth 로그인 실패**
-  - 제공자 대시보드의 Redirect URI 와 `config/oauth-client.yml` 설정 확인
-
-- **테스트 컨텍스트 실패**
-  - OAuth2 `ClientRegistrationRepository` 빈 누락 여부 확인
-  - 테스트 프로필 및 보안 설정 분리 여부 확인
-
----
-
-## 📄 License
+## License
 
 MIT
-
----
 
 ## Credits
 
 - Author: aelleek@gmail.com
-- Stack: Spring Boot, Java 17, Gradle, MySQL, H2
