@@ -148,6 +148,54 @@ class OAuthLoginFlowWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.kind").value("MEMBER"));
   }
 
+  @Test
+  @DisplayName("콜백의 state가 로그인 시작 때 준 값과 다르거나 같은 콜백을 다시 보내면 실패하고, 토큰 교환도 회원 생성도 없다")
+  void rejectsForgedOrReplayedState() throws Exception {
+    PROVIDER_USER.set("6001");
+    MvcResult start = mvc.perform(get("/oauth2/authorization/kakao")).andReturn();
+    Cookie session = sessionCookie(start);
+    String state = query(start.getResponse().getHeader("Location"), "state");
+    int tokenCalls = TOKEN_REQUESTS.size();
+
+    MvcResult forged =
+        mvc.perform(
+                get("/login/oauth2/code/kakao")
+                    .param("code", "fake-code")
+                    .param("state", state + "x")
+                    .cookie(session))
+            .andReturn();
+    MvcResult noSession =
+        mvc.perform(
+                get("/login/oauth2/code/kakao").param("code", "fake-code").param("state", state))
+            .andReturn();
+
+    assertThat(forged.getResponse().getHeader("Location")).endsWith("/?login=failed");
+    assertThat(noSession.getResponse().getHeader("Location")).endsWith("/?login=failed");
+    assertThat(TOKEN_REQUESTS).hasSize(tokenCalls);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM oauth_account WHERE provider_user_id = '6001'", Long.class))
+        .isZero();
+
+    MvcResult first =
+        mvc.perform(
+                get("/login/oauth2/code/kakao")
+                    .param("code", "fake-code")
+                    .param("state", state)
+                    .cookie(session))
+            .andReturn();
+    assertThat(first.getResponse().getHeader("Location")).doesNotContain("failed");
+    MvcResult replay =
+        mvc.perform(
+                get("/login/oauth2/code/kakao")
+                    .param("code", "fake-code")
+                    .param("state", state)
+                    .cookie(sessionCookie(first)))
+            .andReturn();
+    assertThat(replay.getResponse().getHeader("Location")).endsWith("/?login=failed");
+    assertThat(TOKEN_REQUESTS).hasSize(tokenCalls + 1);
+  }
+
   private Cookie login() throws Exception {
     MvcResult start = mvc.perform(get("/oauth2/authorization/kakao")).andReturn();
     Cookie before = sessionCookie(start);
