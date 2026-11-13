@@ -10,6 +10,7 @@ import com.lottery.lottery_service.auth.GuestAuthenticationFilter;
 import com.lottery.lottery_service.auth.LoginFailureHandler;
 import com.lottery.lottery_service.auth.LoginSuccessHandler;
 import com.lottery.lottery_service.auth.MemberOAuth2UserService;
+import com.lottery.lottery_service.auth.OAuthClientHttp;
 import com.lottery.lottery_service.auth.ReauthAuthorizationRequestResolver;
 import com.lottery.lottery_service.auth.SessionRevocationFilter;
 import com.lottery.lottery_service.common.error.BusinessException;
@@ -142,6 +143,10 @@ public class SecurityConfig {
                         a ->
                             a.authorizationRequestResolver(
                                 new ReauthAuthorizationRequestResolver(registrations)))
+                    .tokenEndpoint(
+                        t ->
+                            t.accessTokenResponseClient(
+                                OAuthClientHttp.tokenClient(OAuthClientHttp.TIMEOUT)))
                     .userInfoEndpoint(u -> u.userService(memberOAuth2UserService))
                     .successHandler(
                         new LoginSuccessHandler(guestCredentials, guestIssuer, claims, clock))

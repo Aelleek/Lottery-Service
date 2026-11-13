@@ -6,7 +6,6 @@ import jakarta.servlet.http.HttpSession;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
@@ -27,10 +26,10 @@ public class MemberOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
   private final List<OAuth2UserInfoExtractor> extractors;
   private final AccountStore accounts;
 
-  /** 기본 사용자 정보 조회기로 서비스를 만든다. */
+  /** 시간 제한을 둔 사용자 정보 조회기로 서비스를 만든다(03 6.4). */
   @Autowired
   public MemberOAuth2UserService(List<OAuth2UserInfoExtractor> extractors, AccountStore accounts) {
-    this(new DefaultOAuth2UserService(), extractors, accounts);
+    this(OAuthClientHttp.userService(OAuthClientHttp.TIMEOUT), extractors, accounts);
   }
 
   MemberOAuth2UserService(
