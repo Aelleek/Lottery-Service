@@ -2,6 +2,7 @@ package com.lottery.lottery_service.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -41,6 +42,7 @@ class OAuthLoginFlowWebMySqlTest extends MySqlContainerSupport {
 
   private static final String DB = "oauth_login_flow";
   private static final String SESSION_COOKIE = "__Host-lottery_session";
+  private static final String GUEST_COOKIE = "__Host-lottery_guest";
   private static final List<String> TOKEN_REQUESTS = new CopyOnWriteArrayList<>();
   private static final AtomicReference<String> PROVIDER_USER = new AtomicReference<>("4242");
   private static final HttpServer PROVIDER = provider();
@@ -194,6 +196,36 @@ class OAuthLoginFlowWebMySqlTest extends MySqlContainerSupport {
             .andReturn();
     assertThat(replay.getResponse().getHeader("Location")).endsWith("/?login=failed");
     assertThat(TOKEN_REQUESTS).hasSize(tokenCalls + 1);
+  }
+
+  @Test
+  @DisplayName("비회원 쿠키를 가진 채 로그인하면 그 비회원을 회원에 귀속하고 비회원 쿠키를 지운다. 그 쿠키는 더 이상 비회원으로 쓰이지 않는다")
+  void loginClaimsGuest() throws Exception {
+    PROVIDER_USER.set("7001");
+    MvcResult issued = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
+    Cookie guest = issued.getResponse().getCookie(GUEST_COOKIE);
+    mvc.perform(get("/api/v1/session").cookie(guest)).andExpect(jsonPath("$.kind").value("GUEST"));
+
+    MvcResult start = mvc.perform(get("/oauth2/authorization/kakao").cookie(guest)).andReturn();
+    MvcResult callback =
+        mvc.perform(
+                get("/login/oauth2/code/kakao")
+                    .param("code", "fake-code")
+                    .param("state", query(start.getResponse().getHeader("Location"), "state"))
+                    .cookie(sessionCookie(start), guest))
+            .andExpect(status().is3xxRedirection())
+            .andReturn();
+
+    assertThat(callback.getResponse().getHeaders("Set-Cookie"))
+        .anySatisfy(c -> assertThat(c).startsWith(GUEST_COOKIE + "=").contains("Max-Age=0"));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM subject_claim c JOIN actor_subject m"
+                    + " ON m.id = c.member_subject_id JOIN oauth_account o"
+                    + " ON o.member_id = m.member_id WHERE o.provider_user_id = '7001'",
+                Long.class))
+        .isEqualTo(1);
+    mvc.perform(get("/api/v1/session").cookie(guest)).andExpect(jsonPath("$.kind").value("NONE"));
   }
 
   private Cookie login() throws Exception {
