@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 백업에서 DB를 되돌린 뒤 하는 일(07 4절 3·4번). 삭제 기록을 다시 적용해 되살아난 탈퇴 회원을 다시 막고 삭제 job을 등록하며, 모든 회원 세션을 회수한다. 삭제
@@ -50,10 +51,11 @@ public class RestoreReplay {
   }
 
   /**
-   * 모든 회원 세션을 회수한다. 서버 세션을 지우고 모든 회원의 {@code auth_version}을 올린다(C-32).
+   * 모든 회원 세션을 회수한다. 서버 세션을 지우고 모든 회원의 {@code auth_version}을 올린다(C-32). 둘은 한 트랜잭션이다.
    *
    * @return 버전을 올린 회원 수
    */
+  @Transactional
   public int revokeAllSessions() {
     jdbc.update("DELETE FROM SPRING_SESSION");
     return jdbc.update("UPDATE member SET auth_version = auth_version + 1");
