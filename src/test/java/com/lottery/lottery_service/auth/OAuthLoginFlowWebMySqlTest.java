@@ -228,6 +228,30 @@ class OAuthLoginFlowWebMySqlTest extends MySqlContainerSupport {
     mvc.perform(get("/api/v1/session").cookie(guest)).andExpect(jsonPath("$.kind").value("NONE"));
   }
 
+  @Test
+  @DisplayName("탈퇴 처리 중인 회원의 소셜 계정으로 로그인하면 실패로 돌려보내고 회원 세션을 만들지 않는다")
+  void blockedMemberCannotLogin() throws Exception {
+    PROVIDER_USER.set("8001");
+    Cookie first = login();
+    jdbc.update(
+        "UPDATE member SET state = 'WITHDRAWING' WHERE id = (SELECT member_id FROM oauth_account"
+            + " WHERE provider_user_id = '8001')");
+
+    MvcResult start = mvc.perform(get("/oauth2/authorization/kakao")).andReturn();
+    MvcResult callback =
+        mvc.perform(
+                get("/login/oauth2/code/kakao")
+                    .param("code", "fake-code")
+                    .param("state", query(start.getResponse().getHeader("Location"), "state"))
+                    .cookie(sessionCookie(start)))
+            .andReturn();
+
+    assertThat(callback.getResponse().getHeader("Location")).endsWith("/?login=failed");
+    mvc.perform(get("/api/v1/session").cookie(sessionCookie(start)))
+        .andExpect(jsonPath("$.kind").value("NONE"));
+    mvc.perform(get("/api/v1/session").cookie(first)).andExpect(jsonPath("$.kind").value("NONE"));
+  }
+
   private Cookie login() throws Exception {
     MvcResult start = mvc.perform(get("/oauth2/authorization/kakao")).andReturn();
     Cookie before = sessionCookie(start);
