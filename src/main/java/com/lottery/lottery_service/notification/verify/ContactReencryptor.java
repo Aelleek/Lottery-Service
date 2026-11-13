@@ -2,13 +2,16 @@ package com.lottery.lottery_service.notification.verify;
 
 import com.lottery.lottery_service.common.secret.KeyReencryptor;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
  * 연락처 암호화 키({@code contact})로 만든 수신 번호 암호문을 현재 버전으로 다시 암호화한다(03 6.6). 대상은 연락처, 인증 요청 대상, 메시지에 고정한
- * 수신 번호 사본이다. 키 버전은 컬럼이 아니라 암호문 앞에 적힌 값으로 판단한다. 읽은 뒤 암호문이 바뀐 행(번호 변경, 정리)은 건드리지 않고 남은 수에 센다.
+ * 수신 번호 사본이다. 키 버전은 컬럼이 아니라 암호문 앞에 적힌 값으로 판단한다. 읽은 뒤 암호문이 바뀐 행(번호 변경, 정리)은 건드리지 않고 남은 수에 센다. 풀 수 없는
+ * 행(변조, 다른 회원 행으로 옮겨진 값, 이미 지운 키 버전)은 건너뛰고 행 ID만 로그에 남기며 남은 수에 센다.
  */
+@Slf4j
 @Component
 public class ContactReencryptor implements KeyReencryptor {
 
@@ -86,7 +89,13 @@ public class ContactReencryptor implements KeyReencryptor {
   }
 
   private int update(Target t, Row row) {
-    byte[] fresh = cipher.reencrypt(row.memberId(), row.sealed());
+    byte[] fresh;
+    try {
+      fresh = cipher.reencrypt(row.memberId(), row.sealed());
+    } catch (IllegalStateException | IllegalArgumentException e) {
+      log.warn("cannot reencrypt {} row id={}; left on its old version", t.table(), row.id());
+      return 0;
+    }
     String set = t.cipher() + " = ?" + (t.versionSet() == null ? "" : ", " + t.versionSet());
     String sql =
         "UPDATE "

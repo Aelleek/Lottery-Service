@@ -164,6 +164,25 @@ class ContactReencryptorMySqlTest extends MySqlContainerSupport {
         .doesNotContain("1012345678");
   }
 
+  @Test
+  @DisplayName("풀 수 없는 행(다른 회원 행으로 옮겨진 값, 변조)은 건너뛰고 남은 수에 세며, 나머지 행은 계속 다시 암호화한다")
+  void skipsUnreadableRows() {
+    jdbc.update(
+        "INSERT INTO member_contact (member_id, address_ciphertext, key_version) VALUES (?, ?, 1)",
+        other,
+        oldCipher.encrypt(member, PHONE));
+    byte[] tampered = oldCipher.encrypt(member, PHONE);
+    tampered[tampered.length - 1] ^= 1;
+    long broken = challengeRow(tampered, "EXPIRED");
+    long good = challengeRow(oldCipher.encrypt(member, PHONE), "EXPIRED");
+
+    assertThat(reencryptor.reencrypt()).isEqualTo(new KeyReencryptor.Result(1, 2));
+    assertThat(ContactCipher.versionOf(column("verification_challenge", "target_ciphertext", good)))
+        .isEqualTo(2);
+    assertThat(column("verification_challenge", "target_ciphertext", broken)).isEqualTo(tampered);
+    assertThat(ContactCipher.versionOf(contact(other))).isEqualTo(1);
+  }
+
   private long verifiedWithOldKey() {
     VerificationStore issuer = new VerificationStore(jdbc, TestSecrets.keys(), oldCipher, clock);
     VerificationStore verifier =

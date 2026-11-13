@@ -93,6 +93,26 @@ class AdminMfaReencryptorMySqlTest extends MySqlContainerSupport {
         .isEqualTo(AdminMfaStore.Outcome.OK);
   }
 
+  @Test
+  @DisplayName("풀 수 없는 비밀값은 건너뛰고 남은 수에 세며, 다른 관리자의 비밀값은 계속 다시 암호화한다")
+  void skipsUnreadableSecret() {
+    store(TestSecrets.keys()).enroll(admin);
+    long broken = grant();
+    jdbc.update(
+        "UPDATE admin_grant SET mfa_secret = ?, mfa_key_version = 1 WHERE member_id = ?",
+        new byte[40],
+        broken);
+
+    assertThat(new AdminMfaReencryptor(jdbc, TestSecrets.rotated()).reencrypt())
+        .isEqualTo(new KeyReencryptor.Result(1, 1));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT mfa_key_version FROM admin_grant WHERE member_id = ?",
+                Integer.class,
+                admin))
+        .isEqualTo(2);
+  }
+
   private AdminMfaStore store(SecretKeys keys) {
     return new AdminMfaStore(
         jdbc,
