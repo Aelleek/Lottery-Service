@@ -66,6 +66,7 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
     registry.add("server.servlet.session.cookie.secure", () -> "true");
     registry.add("server.servlet.session.cookie.http-only", () -> "true");
     registry.add("server.servlet.session.cookie.same-site", () -> "Lax");
+    registry.add("server.servlet.session.timeout", () -> "14d");
   }
 
   @Test
@@ -154,6 +155,15 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
         .startsWith("__Host-lottery_session=")
         .contains("Path=/", "Secure", "HttpOnly", "SameSite=Lax");
     Cookie session = sessionCookie(setCookie);
+    String storedId =
+        new String(Base64.getDecoder().decode(session.getValue()), StandardCharsets.UTF_8);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT MAX_INACTIVE_INTERVAL FROM SPRING_SESSION WHERE SESSION_ID = ?",
+                Integer.class,
+                storedId))
+        .as("02 7.2: 14일 동안 쓰지 않으면 만료")
+        .isEqualTo(14 * 24 * 60 * 60);
     Cookie otherDevice =
         sessionCookie(
             mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(principal)))
