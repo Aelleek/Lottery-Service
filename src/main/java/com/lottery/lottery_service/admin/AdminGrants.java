@@ -69,6 +69,36 @@ public class AdminGrants {
         });
   }
 
+  /**
+   * 서버 관리 명령으로 권한을 회수한다. ADMIN이 한 명뿐이거나 그 계정을 믿을 수 없을 때 쓴다(C-33, 07 7절 2번). 감사 기록의 행위자는 대상 회원이다.
+   *
+   * @throws BusinessException 대상 회원이 없거나 ACTIVE가 아니거나 권한이 없으면 {@code NOT_FOUND}
+   */
+  public void revokeByCommand(UUID memberPublicId, String reason) {
+    byCommand(memberPublicId, reason, "ADMIN_REVOKE_BY_COMMAND", this::revokeRow);
+  }
+
+  /**
+   * 서버 관리 명령으로 다중 요소 인증을 초기화한다. ADMIN이 한 명뿐인데 기기를 잃었거나 복구 코드를 다 썼을 때 쓴다(C-33). 감사 기록의 행위자는 대상 회원이다.
+   *
+   * @throws BusinessException 대상 회원이 없거나 ACTIVE가 아니거나 권한이 없으면 {@code NOT_FOUND}
+   */
+  public void resetMfaByCommand(UUID memberPublicId, String reason) {
+    byCommand(
+        memberPublicId, reason, "ADMIN_MFA_RESET_BY_COMMAND", t -> requireChanged(mfa.reset(t)));
+  }
+
+  private void byCommand(UUID memberPublicId, String reason, String action, LongConsumer apply) {
+    requireReason(reason);
+    tx.executeWithoutResult(
+        status -> {
+          long target = activeMember(memberPublicId);
+          apply.accept(target);
+          audit.record(event(target, action, target, reason, null));
+          alert(action, null);
+        });
+  }
+
   /** ADMIN이 다른 회원에게 권한을 주거나 역할을 바꾼다. 자기 역할은 바꿀 수 없다. */
   public void grant(long actorMemberId, UUID memberPublicId, AdminRole role, String reason) {
     change(
@@ -83,19 +113,7 @@ public class AdminGrants {
 
   /** ADMIN이 다른 관리자의 권한을 회수한다. 자기 자신은 회수할 수 없다. */
   public void revoke(long actorMemberId, UUID memberPublicId, String reason) {
-    change(
-        actorMemberId,
-        memberPublicId,
-        reason,
-        "ADMIN_REVOKE",
-        true,
-        target ->
-            requireChanged(
-                jdbc.update(
-                    "UPDATE admin_grant SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL",
-                    utc(clock.instant()),
-                    target)),
-        null);
+    change(actorMemberId, memberPublicId, reason, "ADMIN_REVOKE", true, this::revokeRow, null);
   }
 
   /** ADMIN이 다른 관리자의 다중 요소 인증을 초기화한다(기기 분실, 복구 코드 소진). 자기 자신은 할 수 없다. */
@@ -157,6 +175,14 @@ public class AdminGrants {
             + (role == null ? "null" : "\"" + role.name() + "\"")
             + "}",
         clock.instant());
+  }
+
+  private void revokeRow(long target) {
+    requireChanged(
+        jdbc.update(
+            "UPDATE admin_grant SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL",
+            utc(clock.instant()),
+            target));
   }
 
   private static void requireChanged(int rows) {

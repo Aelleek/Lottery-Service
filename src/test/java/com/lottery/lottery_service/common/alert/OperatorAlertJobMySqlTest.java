@@ -222,6 +222,16 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
             handler.format(
                 mapper.readTree("{\"kind\":\"ADMIN_CHANGE\",\"action\":\"ADMIN_MFA_RESET\"}")))
         .startsWith("[관리자 권한 변경] 2차 인증 초기화.");
+    assertThat(
+            handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"ADMIN_CHANGE\",\"action\":\"ADMIN_REVOKE_BY_COMMAND\"}")))
+        .startsWith("[관리자 권한 변경] 서버 명령으로 권한 회수.");
+    assertThat(
+            handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"ADMIN_CHANGE\",\"action\":\"ADMIN_MFA_RESET_BY_COMMAND\"}")))
+        .startsWith("[관리자 권한 변경] 서버 명령으로 2차 인증 초기화.");
     assertThat(handler.format(mapper.readTree("{\"kind\":\"ADMIN_CHANGE\",\"action\":\"OTHER\"}")))
         .contains("알 수 없는 변경");
     assertThat(

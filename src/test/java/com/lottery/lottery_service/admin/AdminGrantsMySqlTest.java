@@ -193,6 +193,66 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
     assertThat(audits("ADMIN_MFA_RESET", "SUCCEEDED")).isEqualTo(1);
   }
 
+  @Test
+  @DisplayName("하나뿐인 ADMIN도 관리 명령으로 자기 2차 인증을 초기화하고 권한을 회수할 수 있다. 감사와 운영자 알림이 남는다(C-33)")
+  void soleAdminByCommand() {
+    UUID soleId = UUID.randomUUID();
+    long sole = member(soleId);
+    grants.grantByCommand(soleId, AdminRole.ADMIN, "첫 관리자 지정");
+    mfa.enroll(sole);
+    assertCode(() -> grants.resetMfa(sole, soleId, "기기 분실"), ErrorCode.FORBIDDEN);
+
+    grants.resetMfaByCommand(soleId, "하나뿐인 ADMIN의 기기 분실");
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT mfa_secret IS NULL FROM admin_grant WHERE member_id = ?",
+                Boolean.class,
+                sole))
+        .isTrue();
+    assertThat(access.roleOf(sole)).contains(AdminRole.ADMIN);
+    assertThat(mfa.enroll(sole).recoveryCodes()).hasSize(10);
+
+    grants.revokeByCommand(soleId, "계정 도용 의심");
+
+    assertThat(access.roleOf(sole)).isEmpty();
+    assertThat(audits("ADMIN_MFA_RESET_BY_COMMAND", "SUCCEEDED")).isEqualTo(1);
+    assertThat(audits("ADMIN_REVOKE_BY_COMMAND", "SUCCEEDED")).isEqualTo(1);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.action')) FROM job"
+                    + " WHERE job_type = 'OPERATOR_ALERT'"
+                    + " AND JSON_EXTRACT(payload, '$.kind') = 'ADMIN_CHANGE' ORDER BY id",
+                String.class))
+        .containsExactly(
+            "ADMIN_GRANT_BY_COMMAND", "ADMIN_MFA_RESET_BY_COMMAND", "ADMIN_REVOKE_BY_COMMAND");
+  }
+
+  @Test
+  @DisplayName("관리 명령의 회수·초기화도 권한이 없는 회원이나 빈 사유는 받지 않고 아무것도 바꾸지 않는다")
+  void commandRejectsWithoutChange() {
+    UUID plainId = UUID.randomUUID();
+    member(plainId);
+    UUID adminId = UUID.randomUUID();
+    long admin = member(adminId);
+    grants.grantByCommand(adminId, AdminRole.ADMIN, "첫 관리자 지정");
+
+    assertCode(() -> grants.revokeByCommand(plainId, "권한 없음"), ErrorCode.NOT_FOUND);
+    assertCode(() -> grants.resetMfaByCommand(plainId, "권한 없음"), ErrorCode.NOT_FOUND);
+    assertCode(() -> grants.revokeByCommand(UUID.randomUUID(), "없는 회원"), ErrorCode.NOT_FOUND);
+    assertCode(() -> grants.revokeByCommand(adminId, " "), ErrorCode.VALIDATION_FAILED);
+    grants.revokeByCommand(adminId, "회수");
+    assertCode(() -> grants.revokeByCommand(adminId, "두 번째"), ErrorCode.NOT_FOUND);
+
+    assertThat(access.roleOf(admin)).isEmpty();
+    assertThat(audits("ADMIN_REVOKE_BY_COMMAND", "SUCCEEDED")).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM admin_audit_event WHERE action LIKE '%BY_COMMAND'",
+                Long.class))
+        .isEqualTo(2);
+  }
+
   private long admin() {
     UUID id = UUID.randomUUID();
     long memberId = member(id);

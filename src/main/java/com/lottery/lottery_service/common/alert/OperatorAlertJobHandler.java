@@ -205,6 +205,8 @@ public class OperatorAlertJobHandler implements JobHandler {
       case "ADMIN_GRANT" -> "권한 부여·역할 변경";
       case "ADMIN_REVOKE" -> "권한 회수";
       case "ADMIN_MFA_RESET" -> "2차 인증 초기화";
+      case "ADMIN_REVOKE_BY_COMMAND" -> "서버 명령으로 권한 회수";
+      case "ADMIN_MFA_RESET_BY_COMMAND" -> "서버 명령으로 2차 인증 초기화";
       default -> "알 수 없는 변경";
     };
   }
