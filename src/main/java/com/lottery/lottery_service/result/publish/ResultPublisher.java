@@ -56,8 +56,8 @@ public class ResultPublisher {
   }
 
   /**
-   * 결과 API에서 받은 결과를 처리한다. 처음이면 게시하고, 같으면 그대로 두고(직접 등록 게시본이면 API 확인 표시), 다르면 격리한다. 이미 격리한 결과와 같으면 받은
-   * 시각만 갱신한다.
+   * 결과 API에서 받은 결과를 처리한다. 처음이면 게시하고, 같으면 그대로 두고(직접 등록 게시본이면 API 확인 표시), 다르면 격리하고 그 회차의 보관 정리를
+   * 보류한다(04 5절). 이미 격리한 결과와 같으면 받은 시각만 갱신한다.
    */
   public ReceiveOutcome receive(OfficialDraw draw) {
     return tx.execute(status -> receiveLocked(draw));
@@ -106,6 +106,7 @@ public class ResultPublisher {
     }
     long id = insertResult(draw.roundNo(), draw.winning(), draw, "QUARANTINED", "API", null);
     insertPrizes(id, draw);
+    jdbc.update("UPDATE lotto_round SET cleanup_held = TRUE WHERE round_no = ?", draw.roundNo());
     jobs.enqueue(
         JobStore.OPERATOR_ALERT,
         "result-quarantined:" + id,
@@ -170,7 +171,8 @@ public class ResultPublisher {
   }
 
   /**
-   * 격리한 결과를 새 게시본으로 승인한다. 이전 게시본은 SUPERSEDED가 되고 그 판정 job에 취소를 요청한다. 권한·사유·감사는 호출한 쪽에서 한다.
+   * 격리한 결과를 새 게시본으로 승인한다. 이전 게시본은 SUPERSEDED가 되고 그 판정 job에 취소를 요청한다. 남은 격리 결과가 없으면 정리 보류를 푼다.
+   * 권한·사유·감사는 호출한 쪽에서 한다.
    *
    * @throws BusinessException 격리된 결과가 아니면 {@code NOT_FOUND}, 게시 버전이 다르면 {@code VERSION_CONFLICT}
    */
@@ -205,6 +207,11 @@ public class ResultPublisher {
               "UPDATE draw_result SET state = 'VERIFIED', published_at = NOW(6) WHERE id = ?",
               resultId);
           publish(roundNo, resultId, previous);
+          jdbc.update(
+              "UPDATE lotto_round SET cleanup_held = FALSE WHERE round_no = ? AND NOT EXISTS"
+                  + " (SELECT 1 FROM draw_result WHERE round_no = ? AND state = 'QUARANTINED')",
+              roundNo,
+              roundNo);
         });
   }
 

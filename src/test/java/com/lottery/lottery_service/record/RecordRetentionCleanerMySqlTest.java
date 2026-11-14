@@ -134,16 +134,24 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
     assertThat(exists(losing)).isTrue();
   }
 
+  @Test
+  @DisplayName("게시본과 다른 결과가 와서 격리되면 보관 기간이 지나도 그 회차 기록을 지우지 않는다(04 5절)")
+  void quarantinedCorrectionHoldsCleanup() {
+    long losing = record(member, LOSING, false);
+    publishAndEvaluate();
+
+    receive(LottoNumbers.of(1, 2, 10, 20, 30, 40));
+
+    assertThat(cleanup(AFTER_RETENTION)).isZero();
+    assertThat(exists(losing)).isTrue();
+  }
+
   private int cleanup(Instant now) {
     Integer deleted = tx.execute(s -> cleaner(now).cleanupRound(ROUND, 100));
     return deleted == null ? 0 : deleted;
   }
 
-  private RecordRetentionCleaner cleaner(Instant now) {
-    return new RecordRetentionCleaner(jdbc, Clock.fixed(now, ZoneOffset.UTC));
-  }
-
-  private void publishAndEvaluate() {
+  private void receive(LottoNumbers main) {
     Clock clock = Clock.fixed(Instant.parse("2026-11-14T12:00:00Z"), ZoneOffset.UTC);
     new ResultPublisher(
             jdbc,
@@ -153,11 +161,15 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
             clock)
         .receive(
             new OfficialDraw(
-                ROUND,
-                new WinningNumbers(LottoNumbers.of(1, 2, 3, 4, 5, 6), LottoNumber.of(7)),
-                null,
-                null,
-                new byte[32]));
+                ROUND, new WinningNumbers(main, LottoNumber.of(7)), null, null, new byte[32]));
+  }
+
+  private RecordRetentionCleaner cleaner(Instant now) {
+    return new RecordRetentionCleaner(jdbc, Clock.fixed(now, ZoneOffset.UTC));
+  }
+
+  private void publishAndEvaluate() {
+    receive(LottoNumbers.of(1, 2, 3, 4, 5, 6));
     long resultId = jdbc.queryForObject("SELECT published_result_id FROM lotto_round", Long.class);
     tx.execute(s -> new EvaluationStore(jdbc).evaluateBatch(resultId, 0, 100));
   }

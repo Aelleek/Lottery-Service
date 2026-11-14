@@ -197,6 +197,26 @@ class ResultPublisherMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("격리된 결과가 남아 있는 동안 회차 정리를 보류하고, 격리가 모두 승인되면 보류를 푼다(04 5절)")
+  void quarantineHoldsCleanup() {
+    publisher.receive(draw(WIN, null));
+    assertThat(cleanupHeld()).isFalse();
+
+    publisher.receive(draw(OTHER, null));
+    assertThat(cleanupHeld()).isTrue();
+    publisher.receive(
+        draw(new WinningNumbers(LottoNumbers.of(3, 11, 19, 27, 36, 44), LottoNumber.of(8)), null));
+    List<Long> quarantined =
+        jdbc.queryForList(
+            "SELECT id FROM draw_result WHERE state = 'QUARANTINED' ORDER BY id", Long.class);
+
+    publisher.approve(quarantined.get(0), 1);
+    assertThat(cleanupHeld()).isTrue();
+    publisher.approve(quarantined.get(1), 2);
+    assertThat(cleanupHeld()).isFalse();
+  }
+
+  @Test
   @DisplayName("직접 등록은 즉시 게시되고 금액은 비어 있다. 나중에 같은 API 결과가 오면 확인 표시만, 다르면 격리(T47)")
   void manualRegistration() {
     long id = publisher.registerManual(ROUND, WIN, admin, 0);
@@ -243,6 +263,12 @@ class ResultPublisherMySqlTest extends MySqlContainerSupport {
     return jdbc.queryForMap(
         "SELECT published_result_id, publication_version FROM lotto_round WHERE round_no = ?",
         ROUND);
+  }
+
+  private boolean cleanupHeld() {
+    return Boolean.TRUE.equals(
+        jdbc.queryForObject(
+            "SELECT cleanup_held FROM lotto_round WHERE round_no = ?", Boolean.class, ROUND));
   }
 
   private List<String> prizes() {
