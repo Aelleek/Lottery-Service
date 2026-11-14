@@ -61,6 +61,7 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
             "recommendation_item",
             "recommendation_request",
             "job",
+            "command_operation",
             "lotto_record",
             "oauth_account",
             "guest_credential",
@@ -144,6 +145,44 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
 
     assertThat(cleanup(AFTER_RETENTION)).isZero();
     assertThat(exists(losing)).isTrue();
+  }
+
+  @Test
+  @DisplayName("사용자가 지워 숨긴 기록은 알림 계획이 끝나고 가리키는 멱등 기록이 만료되면 보관 기간 전이라도 지운다(04 5절)")
+  void deletesHiddenRecords() {
+    long hidden = record(member, LOSING, false);
+    long visible = record(member, FOURTH, false);
+    jdbc.update(
+        "UPDATE lotto_record SET deleted_at = NOW(6), version = version + 1 WHERE id = ?", hidden);
+    liveCommandFor(hidden, member, "2026-11-20 00:00:00");
+    Instant beforeRetention = Instant.parse("2026-11-19T00:00:00Z");
+
+    assertThat(hiddenCleanup(beforeRetention)).isZero();
+    jdbc.update("UPDATE lotto_round SET notification_plan_closed_at = NULL");
+    assertThat(hiddenCleanup(Instant.parse("2026-11-21T00:00:00Z"))).isZero();
+    jdbc.update("UPDATE lotto_round SET notification_plan_closed_at = NOW(6)");
+    assertThat(hiddenCleanup(Instant.parse("2026-11-21T00:00:00Z"))).isEqualTo(1);
+
+    assertThat(exists(hidden)).isFalse();
+    assertThat(exists(visible)).isTrue();
+  }
+
+  private int hiddenCleanup(Instant now) {
+    Integer deleted = tx.execute(s -> cleaner(now).deleteHiddenRecords(100));
+    return deleted == null ? 0 : deleted;
+  }
+
+  private void liveCommandFor(long recordId, long subject, String markerExpiresAt) {
+    jdbc.update(
+        "INSERT INTO command_operation (public_id, subject_id, operation, token_id, client_key,"
+            + " request_hash, state, token_expires_at, marker_expires_at, resource_public_id)"
+            + " SELECT UUID_TO_BIN(UUID()), ?, 'CANCEL_PURCHASE', UUID_TO_BIN(UUID()),"
+            + " UUID_TO_BIN(UUID()), ?, 'SUCCEEDED', ?, ?, public_id FROM lotto_record WHERE id = ?",
+        subject,
+        new byte[32],
+        markerExpiresAt,
+        markerExpiresAt,
+        recordId);
   }
 
   private int cleanup(Instant now) {

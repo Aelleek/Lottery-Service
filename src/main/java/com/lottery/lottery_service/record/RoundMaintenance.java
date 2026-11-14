@@ -37,6 +37,10 @@ public class RoundMaintenance {
 
   private final JdbcTemplate jdbc;
   private final NotificationPlanCloser planCloser;
+
+  /** 숨긴 기록 정리가 하루에 도는 최대 묶음 수. */
+  static final int MAX_HIDDEN_BATCHES = 1_000;
+
   private final RecordRetentionCleaner cleaner;
   private final HousekeepingCleaner housekeeping;
   private final JobStore jobs;
@@ -87,6 +91,13 @@ public class RoundMaintenance {
    */
   public int cleanupRecords(int batch) {
     int deleted = 0;
+    for (int i = 0; i < MAX_HIDDEN_BATCHES; i++) {
+      Integer n = tx.execute(status -> cleaner.deleteHiddenRecords(batch));
+      deleted += n == null ? 0 : n;
+      if (n == null || n < batch) {
+        break;
+      }
+    }
     for (int round :
         jdbc.queryForList(
             "SELECT r.round_no FROM lotto_round r WHERE r.draw_at <= ? AND EXISTS (SELECT 1"
@@ -114,7 +125,7 @@ public class RoundMaintenance {
 
   /**
    * 보관 기간 뒤 7일이 지나도 남은 정리 대상을 회차·이유마다 한 번 운영자에게 알린다. 정리 뒤에 부른다. 이유는 회차 단위(정리 보류, 결과 미게시, 알림 계획 미완료,
-   * 집계 미확정)를 먼저 보고, 없으면 기록 단위(미판정, 정정 보호)를 본다.
+   * 집계 미확정)를 먼저 보고, 없으면 기록 단위(미판정, 아직 지우지 못한 숨긴 기록, 정정 보호)를 본다.
    *
    * @return 이번에 등록한 알림 수
    */
@@ -141,7 +152,8 @@ public class RoundMaintenance {
       }
       Map<String, Object> counts =
           jdbc.queryForMap(
-              "SELECT COALESCE(SUM(e.record_id IS NULL), 0) AS unevaluated,"
+              "SELECT COALESCE(SUM(e.record_id IS NULL AND l.deleted_at IS NULL), 0) AS unevaluated,"
+                  + " COALESCE(SUM(l.deleted_at IS NOT NULL), 0) AS hidden,"
                   + " COALESCE(SUM(e.record_id IS NOT NULL AND l.correction_protected_until > ?), 0)"
                   + " AS protected"
                   + CANDIDATES,
@@ -149,6 +161,8 @@ public class RoundMaintenance {
               round);
       alerts +=
           alert(round, "UNEVALUATED", ((Number) counts.get("unevaluated")).longValue()) ? 1 : 0;
+      alerts +=
+          alert(round, "HIDDEN_NOT_DELETED", ((Number) counts.get("hidden")).longValue()) ? 1 : 0;
       alerts +=
           alert(round, "CORRECTION_PROTECTED", ((Number) counts.get("protected")).longValue())
               ? 1

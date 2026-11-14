@@ -68,6 +68,7 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
             "recommendation_request",
             "winning_evaluation",
             "job",
+            "command_operation",
             "lotto_record",
             "oauth_account",
             "guest_credential",
@@ -180,6 +181,38 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
                 + " \"roundNo\": 1200}",
             "{\"kind\": \"CLEANUP_DELAYED\", \"count\": 1, \"reason\": \"CORRECTION_PROTECTED\","
                 + " \"roundNo\": 1200}");
+  }
+
+  @Test
+  @DisplayName("지웠지만 아직 실제로 지우지 못한 숨긴 기록은 미판정이 아니라 HIDDEN_NOT_DELETED로 알린다")
+  void alertsHiddenRecordsSeparately() {
+    long hidden = record(member, LottoNumbers.of(1, 2, 10, 20, 30, 40), false);
+    publishAndEvaluate();
+    jdbc.update(
+        "UPDATE lotto_record SET deleted_at = NOW(6), version = version + 1 WHERE id = ?", hidden);
+    liveCommandFor(hidden, member, "2027-12-31 00:00:00");
+    jdbc.update("UPDATE lotto_round SET notification_plan_closed_at = '2026-11-22 00:00:00'");
+    clock.set(AFTER_DELAY);
+
+    assertThat(maintenance.cleanupRecords(100)).isZero();
+    assertThat(maintenance.alertDelayedCleanup()).isEqualTo(1);
+    assertThat(alertPayloads())
+        .containsExactly(
+            "{\"kind\": \"CLEANUP_DELAYED\", \"count\": 1, \"reason\": \"HIDDEN_NOT_DELETED\","
+                + " \"roundNo\": 1200}");
+  }
+
+  private void liveCommandFor(long recordId, long subject, String markerExpiresAt) {
+    jdbc.update(
+        "INSERT INTO command_operation (public_id, subject_id, operation, token_id, client_key,"
+            + " request_hash, state, token_expires_at, marker_expires_at, resource_public_id)"
+            + " SELECT UUID_TO_BIN(UUID()), ?, 'CANCEL_PURCHASE', UUID_TO_BIN(UUID()),"
+            + " UUID_TO_BIN(UUID()), ?, 'SUCCEEDED', ?, ?, public_id FROM lotto_record WHERE id = ?",
+        subject,
+        new byte[32],
+        markerExpiresAt,
+        markerExpiresAt,
+        recordId);
   }
 
   private List<String> alertPayloads() {
