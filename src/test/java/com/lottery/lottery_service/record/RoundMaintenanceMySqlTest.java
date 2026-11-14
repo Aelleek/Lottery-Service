@@ -143,6 +143,45 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("5세트 중 1세트가 4등이면 그 기록만 남고 나머지 4개 기록과 요청·항목·이력은 모두 지워진다(04 5절 예)")
+  void fiveSetExample() {
+    List<LottoNumbers> sets =
+        List.of(
+            LottoNumbers.of(1, 2, 3, 4, 20, 30),
+            LottoNumbers.of(1, 2, 10, 20, 30, 40),
+            LottoNumbers.of(1, 2, 11, 21, 31, 41),
+            LottoNumbers.of(1, 2, 12, 22, 32, 42),
+            LottoNumbers.of(1, 2, 13, 23, 33, 43));
+    history(member);
+    long request = jdbc.queryForObject("SELECT MAX(id) FROM recommendation_request", Long.class);
+    long fourth = 0;
+    for (int i = 0; i < sets.size(); i++) {
+      long id = record(member, sets.get(i), false);
+      fourth = i == 0 ? id : fourth;
+      jdbc.update(
+          "INSERT INTO recommendation_item (request_id, ordinal, record_id, numbers_key)"
+              + " VALUES (?, ?, ?, ?)",
+          request,
+          i + 1,
+          id,
+          sets.get(i).key());
+    }
+    publishAndEvaluate();
+    assertThat(maintenance.closeNotificationPlans()).isEqualTo(1);
+
+    assertThat(maintenance.cleanupRecords(100)).isEqualTo(4);
+
+    assertThat(jdbc.queryForList("SELECT id FROM lotto_record", Long.class))
+        .containsExactly(fourth);
+    for (String table :
+        List.of("recommendation_item", "recommendation_request", "recommendation_seen")) {
+      assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Long.class))
+          .as(table)
+          .isZero();
+    }
+  }
+
+  @Test
   @DisplayName("보관 기간 뒤 7일이 지나도 못 지운 기록은 회차·이유마다 운영자 알림 한 번이고, 그 전에는 알리지 않는다")
   void alertsDelayedCleanupOnce() {
     record(member, LottoNumbers.of(1, 2, 10, 20, 30, 40), false);
