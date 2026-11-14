@@ -2,6 +2,7 @@ package com.lottery.lottery_service.notification;
 
 import static com.lottery.lottery_service.common.db.DbValues.instant;
 
+import com.lottery.lottery_service.common.error.ExceptionLogs;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -73,13 +74,13 @@ public class UnknownMessageSweep {
           failed.add(message.id());
         }
       } catch (RuntimeException e) {
-        log.warn("message reconcile failed messageId={}", message.id(), e);
+        ExceptionLogs.warn(log, "message reconcile failed messageId={}", e, message.id());
       }
     }
     try {
       tx.execute(s -> reconciler.alertReconcileTimeouts(failed));
     } catch (RuntimeException e) {
-      log.warn("reconcile timeout alert failed count={}", failed.size(), e);
+      ExceptionLogs.warn(log, "reconcile timeout alert failed count={}", e, failed.size());
     }
     return resolved;
   }
@@ -104,7 +105,7 @@ public class UnknownMessageSweep {
       ProviderStatus status = lookup.lookup(message);
       return status == null ? new ProviderStatus.NotFound() : status;
     } catch (RuntimeException e) {
-      log.warn("message lookup failed messageId={}", message.id(), e);
+      ExceptionLogs.warn(log, "message lookup failed messageId={}", e, message.id());
       return new ProviderStatus.NotFound();
     }
   }

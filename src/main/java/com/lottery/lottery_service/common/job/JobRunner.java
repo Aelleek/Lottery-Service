@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.common.job;
 
+import com.lottery.lottery_service.common.error.ExceptionLogs;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
@@ -76,7 +77,7 @@ public class JobRunner {
       log.warn("job lease lost id={}", lease.id());
       return Optional.empty();
     } catch (RuntimeException e) {
-      log.warn("job failed id={} type={}", lease.id(), lease.type(), e);
+      ExceptionLogs.warn(log, "job failed id={} type={}", e, lease.id(), lease.type());
       return Optional.of(
           jobs.fail(lease, e.getClass().getSimpleName(), clock.instant().plus(RETRY_DELAY)));
     }

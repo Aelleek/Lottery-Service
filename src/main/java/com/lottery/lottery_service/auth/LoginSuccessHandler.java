@@ -4,6 +4,7 @@ import com.lottery.lottery_service.account.ClaimResult;
 import com.lottery.lottery_service.account.GuestCredentialStore;
 import com.lottery.lottery_service.account.GuestIssueService;
 import com.lottery.lottery_service.account.SubjectClaimStore;
+import com.lottery.lottery_service.common.error.ExceptionLogs;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -71,7 +72,7 @@ public class LoginSuccessHandler extends SavedRequestAwareAuthenticationSuccessH
                 log.info("guest claim result={}", result);
               });
     } catch (RuntimeException e) {
-      log.warn("guest claim failed", e);
+      ExceptionLogs.warn(log, "guest claim failed", e);
     }
   }
 

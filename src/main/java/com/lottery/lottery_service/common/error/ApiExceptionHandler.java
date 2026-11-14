@@ -179,7 +179,7 @@ public class ApiExceptionHandler {
    */
   private static void logUnexpected(Exception e, HttpServletRequest request) {
     String requestId = RequestIdFilter.requestIdOf(request);
-    SQLException sql = sqlCause(e);
+    SQLException sql = ExceptionLogs.sqlCause(e);
     if (e instanceof DataAccessException || sql != null) {
       log.error(
           "unhandled db error requestId={} type={} sqlState={} errorCode={}",
@@ -190,17 +190,6 @@ public class ApiExceptionHandler {
       return;
     }
     log.error("unhandled error requestId={}", requestId, e);
-  }
-
-  private static SQLException sqlCause(Throwable e) {
-    Throwable current = e;
-    for (int depth = 0; current != null && depth < 16; depth++) {
-      if (current instanceof SQLException sql) {
-        return sql;
-      }
-      current = current.getCause();
-    }
-    return null;
   }
 
   private static HttpStatusCode declaredStatus(Exception e) {
