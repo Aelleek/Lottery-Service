@@ -79,6 +79,23 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("접수 확인 종결 알림은 회차와 건수를 담고, 인증 메시지는 회차 대신 인증으로 쓴다(07 2.1절)")
+  void reconcileTimeoutFormat() throws Exception {
+    OperatorAlertJobHandler handler = new OperatorAlertJobHandler(sent::add, jdbc);
+
+    assertThat(
+            handler.format(
+                new ObjectMapper()
+                    .readTree("{\"kind\":\"MESSAGE_UNRESOLVED\",\"roundNo\":1200,\"count\":7}")))
+        .isEqualTo("[접수 확인 종결] 1200회 메시지 7건을 대조 기간 안에 확정하지 못해 실패로 끝냈습니다.");
+    assertThat(
+            handler.format(
+                new ObjectMapper()
+                    .readTree("{\"kind\":\"MESSAGE_UNRESOLVED\",\"roundNo\":null,\"count\":1}")))
+        .startsWith("[접수 확인 종결] 인증 메시지 1건");
+  }
+
+  @Test
   @DisplayName("슬롯 실패 알림은 회차, 슬롯 시각(서울), 원인, 대상 수, 건수를 담고 마지막 슬롯이면 다시 보내기를 안내한다")
   void slotFailedFormat() throws Exception {
     String text =

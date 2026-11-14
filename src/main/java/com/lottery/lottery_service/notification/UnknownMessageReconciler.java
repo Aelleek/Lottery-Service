@@ -10,6 +10,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -92,14 +93,49 @@ public class UnknownMessageReconciler {
           "UPDATE delivery_message SET last_error_code = 'RECONCILE_TIMEOUT' WHERE id = ?",
           messageId);
       budget.spend(messageId);
-      jobs.enqueue(
-          JobStore.OPERATOR_ALERT,
-          "message-unresolved:" + messageId,
-          "{\"kind\":\"MESSAGE_UNRESOLVED\",\"messageId\":" + messageId + "}",
-          now);
       return "FAILED";
     }
     return "UNKNOWN";
+  }
+
+  /**
+   * 대조 기간이 지나 FAILED로 끝낸 메시지를 회차마다 묶어 운영자 알림 1건씩 등록한다(07 2.1절 "접수 확인 종결": 회차, 건수). 인증 메시지는 회차 없이 한
+   * 건으로 묶는다. 주어진 메시지 중 종결 규칙으로 끝난 것만 센다.
+   *
+   * @return 등록한 알림 수
+   */
+  public int alertReconcileTimeouts(List<Long> messageIds) {
+    if (messageIds.isEmpty()) {
+      return 0;
+    }
+    String in = String.join(",", Collections.nCopies(messageIds.size(), "?"));
+    List<Map<String, Object>> groups =
+        jdbc.queryForList(
+            "SELECT round_no, COUNT(*) AS n, MIN(id) AS first_id FROM delivery_message"
+                + " WHERE state = 'FAILED' AND last_error_code = 'RECONCILE_TIMEOUT' AND id IN ("
+                + in
+                + ") GROUP BY round_no",
+            messageIds.toArray());
+    int alerts = 0;
+    for (Map<String, Object> g : groups) {
+      Object round = g.get("round_no");
+      alerts +=
+          jobs.enqueue(
+                  JobStore.OPERATOR_ALERT,
+                  "message-unresolved:"
+                      + (round == null ? "verification" : round)
+                      + ":"
+                      + g.get("first_id"),
+                  "{\"kind\":\"MESSAGE_UNRESOLVED\",\"roundNo\":"
+                      + (round == null ? "null" : round)
+                      + ",\"count\":"
+                      + ((Number) g.get("n")).longValue()
+                      + "}",
+                  clock.instant())
+              ? 1
+              : 0;
+    }
+    return alerts;
   }
 
   /**

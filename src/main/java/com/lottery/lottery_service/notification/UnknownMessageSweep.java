@@ -42,7 +42,7 @@ public class UnknownMessageSweep {
 
   /**
    * UNKNOWN 메시지를 최대 {@code limit}건 조회하고 반영한다. 조회가 예외로 끝나면 찾지 못한 것으로 보고, 그것만으로 미접수로 확정하지 않는다. 한 메시지의
-   * 반영 실패는 다른 메시지를 막지 않는다.
+   * 반영 실패는 다른 메시지를 막지 않는다. 대조 기간이 지나 끝낸 메시지는 마지막에 회차마다 운영자 알림 1건으로 묶는다.
    *
    * @return 이번에 UNKNOWN을 벗어난 메시지 수
    */
@@ -60,6 +60,7 @@ public class UnknownMessageSweep {
       }
     }
     int resolved = 0;
+    List<Long> failed = new ArrayList<>();
     for (MessageLookup.UnknownMessage message : due) {
       afterId = message.id();
       ProviderStatus status = find(message);
@@ -68,9 +69,17 @@ public class UnknownMessageSweep {
         if (!"UNKNOWN".equals(state)) {
           resolved++;
         }
+        if ("FAILED".equals(state)) {
+          failed.add(message.id());
+        }
       } catch (RuntimeException e) {
         log.warn("message reconcile failed messageId={}", message.id(), e);
       }
+    }
+    try {
+      tx.execute(s -> reconciler.alertReconcileTimeouts(failed));
+    } catch (RuntimeException e) {
+      log.warn("reconcile timeout alert failed count={}", failed.size(), e);
     }
     return resolved;
   }

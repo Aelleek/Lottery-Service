@@ -68,15 +68,11 @@ public class OperatorAlertJobHandler implements JobHandler {
           + "회 결과가 게시본과 달라 격리했습니다."
           + changedNames(payload.path("changed"))
           + " 승인이 필요합니다.";
-      case "MESSAGE_UNRESOLVED" -> {
-        List<Integer> rounds =
-            jdbc.queryForList(
-                "SELECT round_no FROM delivery_message WHERE id = ?",
-                Integer.class,
-                payload.path("messageId").asLong());
-        String round = rounds.isEmpty() || rounds.get(0) == null ? "인증" : rounds.get(0) + "회";
-        yield "[접수 확인 종결] " + round + " 메시지 1건을 대조 기간 안에 확정하지 못해 실패로 끝냈습니다.";
-      }
+      case "MESSAGE_UNRESOLVED" -> "[접수 확인 종결] "
+          + (payload.path("roundNo").isNumber() ? payload.path("roundNo").asInt() + "회" : "인증")
+          + " 메시지 "
+          + payload.path("count").asLong()
+          + "건을 대조 기간 안에 확정하지 못해 실패로 끝냈습니다.";
       case "SLOT_FAILED" -> "[결과 알림 슬롯 실패] "
           + payload.path("roundNo").asInt()
           + "회"

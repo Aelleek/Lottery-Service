@@ -294,6 +294,24 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("대조 기간이 지나 한 번에 끝낸 메시지는 회차마다 건수를 담은 운영자 알림 1건으로 묶는다(07 2.1절)")
+  void reconcileTimeoutsAlertOncePerRound() {
+    unknownMessage(fourthMember);
+    unknownMessage(thirdMember);
+    jdbc.update("DELETE FROM job WHERE job_type = 'OPERATOR_ALERT'");
+    clock.set(clock.instant().plus(UnknownMessageReconciler.RECONCILE_WINDOW));
+
+    assertThat(sweep(new UnavailableMessageLookup()).run(UnknownMessageSweep.MAX_LOOKUPS))
+        .isEqualTo(2);
+
+    assertThat(
+            jdbc.queryForList(
+                "SELECT CAST(payload AS CHAR) FROM job WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .containsExactly("{\"kind\": \"MESSAGE_UNRESOLVED\", \"count\": 2, \"roundNo\": 1200}");
+  }
+
+  @Test
   @DisplayName("7일 동안 풀리지 않은 UNKNOWN은 FAILED와 비용 확정, 운영자 알림 1건이고 그 뒤 접수로 나와도 다시 보내지 않는다(T46)")
   void unresolvedUnknownFails() {
     UnknownMessageReconciler reconciler = reconciler();
@@ -301,6 +319,7 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     clock.set(clock.instant().plus(UnknownMessageReconciler.RECONCILE_WINDOW));
 
     assertThat(apply(reconciler, a, new ProviderStatus.NotFound())).isEqualTo("FAILED");
+    assertThat(count(() -> reconciler.alertReconcileTimeouts(List.of(a)))).isEqualTo(1);
     assertThat(apply(reconciler, a, new ProviderStatus.Accepted("M-1"))).isEqualTo("FAILED");
     assertThat(budgetRow()).containsEntry("reserved_units", 0L).containsEntry("spent_units", 143L);
     assertThat(
