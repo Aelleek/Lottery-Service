@@ -14,9 +14,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 결과 수집 job(07 1절). 한 번 수집하고, 아직 게시되지 않았으면 {@link CollectionSchedule}의 다음 시각에 다음 시도를 등록한다. 시도마다
- * job이 하나라 중복 키에 시각을 넣는다. 게시되지 않았으면 그 시도의 결과(미발표, 수집 실패)를 job의 마지막 오류 코드로 남겨 결과 조회가 미발표와 수집 지연을
- * 나눈다. 외부 호출이 있어 실행기의 트랜잭션 밖에서 돈다.
+ * 결과 수집 job(07 1절). 한 번 수집하고, 아직 게시되지 않았거나 직접 등록한 게시본을 결과 API가 아직 확인(같으면 확인 표시, 다르면 격리)하지 않았으면
+ * {@link CollectionSchedule}의 다음 시각에 다음 시도를 등록한다(05 6절 직접 등록 5번). 시도마다 job이 하나라 중복 키에 시각을 넣는다. 게시되지
+ * 않았으면 그 시도의 결과(미발표, 수집 실패)를 job의 마지막 오류 코드로 남겨 결과 조회가 미발표와 수집 지연을 나눈다. 외부 호출이 있어 실행기의 트랜잭션 밖에서 돈다.
  */
 @Component
 public class ResultCollectJobHandler implements JobHandler {
@@ -73,10 +73,10 @@ public class ResultCollectJobHandler implements JobHandler {
     int roundNo = payload.path("roundNo").asInt();
     Instant drawAt = Instant.parse(payload.path("drawAt").asText());
     ParsedDraw parsed = null;
-    if (!published(roundNo)) {
+    if (needsCollection(roundNo)) {
       parsed = collector.collect(roundNo).parsed();
     }
-    if (!published(roundNo)) {
+    if (needsCollection(roundNo)) {
       Instant next = CollectionSchedule.nextAttempt(drawAt, clock.instant());
       String code = parsed instanceof ParsedDraw.NotAnnounced ? NOT_ANNOUNCED : FETCH_ERROR;
       tx.executeWithoutResult(
@@ -101,10 +101,16 @@ public class ResultCollectJobHandler implements JobHandler {
     return "collect:" + roundNo + ":";
   }
 
-  private boolean published(int roundNo) {
-    return jdbc.queryForObject(
-            "SELECT published_result_id FROM lotto_round WHERE round_no = ?", Long.class, roundNo)
-        != null;
+  private boolean needsCollection(int roundNo) {
+    return Boolean.TRUE.equals(
+        jdbc.queryForObject(
+            "SELECT r.published_result_id IS NULL OR (d.source = 'MANUAL'"
+                + " AND d.api_confirmed_at IS NULL AND NOT EXISTS (SELECT 1 FROM draw_result q"
+                + " WHERE q.round_no = r.round_no AND q.state = 'QUARANTINED'))"
+                + " FROM lotto_round r LEFT JOIN draw_result d ON d.id = r.published_result_id"
+                + " WHERE r.round_no = ?",
+            Boolean.class,
+            roundNo));
   }
 
   private static JsonNode read(String json) {

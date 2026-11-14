@@ -874,6 +874,56 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("직접 등록한 게시본은 결과 API가 확인하거나 격리할 때까지 계속 수집한다(05 6절 직접 등록 5번)")
+  void collectJobContinuesAfterManualEntry() {
+    jdbc.update("DELETE FROM job");
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    JobStore jobs = new JobStore(jdbc, tm, clock, new JobProperties(null, null));
+    Instant drawAt = Instant.parse("2026-11-14T11:35:00Z");
+    clock.set(drawAt.plusSeconds(600));
+    jdbc.update(
+        "UPDATE draw_result d JOIN lotto_round r ON r.published_result_id = d.id"
+            + " SET d.source = 'MANUAL', d.api_confirmed_at = NULL,"
+            + " d.registered_by_member_id = (SELECT MIN(id) FROM member)");
+    List<Integer> fetched = new ArrayList<>();
+    ResultCollectJobHandler handler =
+        new ResultCollectJobHandler(
+            new ResultCollector(
+                r -> {
+                  fetched.add(r);
+                  return new ParsedDraw.NotAnnounced();
+                },
+                null),
+            jobs,
+            jdbc,
+            tm,
+            clock);
+    JobRunner runner = new JobRunner(jobs, List.of(handler), tm, clock);
+
+    assertThat(handler.plan(ROUND, drawAt)).isTrue();
+    assertThat(runner.runOnce()).contains(JobState.SUCCEEDED);
+    assertThat(fetched).containsExactly(ROUND);
+    assertThat(readyCollectJobs()).isEqualTo(1);
+
+    jdbc.update(
+        "UPDATE draw_result d JOIN lotto_round r ON r.published_result_id = d.id"
+            + " SET d.api_confirmed_at = NOW(6)");
+    clock.set(drawAt.plusSeconds(900));
+    assertThat(runner.runOnce()).contains(JobState.SUCCEEDED);
+    assertThat(fetched).containsExactly(ROUND);
+    assertThat(readyCollectJobs()).isZero();
+    jdbc.update(
+        "UPDATE draw_result SET source = 'API', registered_by_member_id = NULL,"
+            + " api_confirmed_at = NULL");
+  }
+
+  private long readyCollectJobs() {
+    return jdbc.queryForObject(
+        "SELECT COUNT(*) FROM job WHERE job_type = 'RESULT_COLLECT' AND state = 'READY'",
+        Long.class);
+  }
+
+  @Test
   @DisplayName(
       "슬롯 사이에 정정되면 접수된 메시지는 그대로, 아직 호출하지 않은 메시지는 새 게시본으로 보내고, 새로 대상이 된 회원은 다음 슬롯에서 1건(T38)")
   void correctionBetweenSlots() {
