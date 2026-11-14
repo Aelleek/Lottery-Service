@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.notification;
 
+import com.lottery.lottery_service.common.error.ExceptionLogs;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.result.query.ResultState;
 import com.lottery.lottery_service.result.query.RoundResultQuery;
@@ -128,7 +129,13 @@ public class ResultSlotRunner {
         outcome = new SendOutcome.Unknown();
       }
       SendOutcome recorded = outcome;
-      tx.executeWithoutResult(status -> messages.recordOutcome(id, recorded));
+      try {
+        tx.executeWithoutResult(status -> messages.recordOutcome(id, recorded));
+      } catch (RuntimeException e) {
+        ExceptionLogs.warn(log, "result message outcome not saved message={}", e, id);
+        failed++;
+        continue;
+      }
       if (outcome instanceof SendOutcome.Accepted) {
         sent++;
       } else {

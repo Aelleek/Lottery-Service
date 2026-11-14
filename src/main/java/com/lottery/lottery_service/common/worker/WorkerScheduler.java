@@ -192,8 +192,8 @@ public class WorkerScheduler {
   }
 
   /**
-   * 기한이 지난 인증 요청의 코드 HMAC을 지우고, 멈춘 인증 메시지를 UNKNOWN으로 넘긴 뒤, 접수 여부를 모르는 메시지를 제공자에 조회해 반영한다. 기본 10분
-   * 간격이다(07 1절, 초기 설정값).
+   * 기한이 지난 인증 요청의 코드 HMAC을 지우고, 멈춘 인증·결과 알림 메시지를 UNKNOWN으로 넘긴 뒤, 접수 여부를 모르는 메시지를 제공자에 조회해 반영한다. 기본
+   * 10분 간격이다(07 1절, 초기 설정값).
    */
   @Scheduled(fixedDelayString = "${lottery.worker.unknown-sweep-ms:600000}")
   public void reconcileUnknownMessages() {
@@ -201,6 +201,10 @@ public class WorkerScheduler {
     Integer stale = tx.execute(status -> verificationMessages.markStaleInFlightUnknown());
     if (stale != null && stale > 0) {
       log.warn("verification messages left in flight count={}", stale);
+    }
+    Integer staleResults = tx.execute(status -> unknown.markStaleInFlightUnknown());
+    if (staleResults != null && staleResults > 0) {
+      log.warn("result messages left in flight count={}", staleResults);
     }
     int resolved = sweep.run(UnknownMessageSweep.MAX_LOOKUPS);
     if (resolved > 0) {

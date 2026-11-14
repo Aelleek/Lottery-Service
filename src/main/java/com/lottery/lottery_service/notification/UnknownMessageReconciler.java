@@ -178,6 +178,22 @@ public class UnknownMessageReconciler {
         roundNo);
   }
 
+  /** IN_FLIGHT로 남은 결과 알림을 접수 여부 모름으로 넘기는 시간. 제공자 호출 하나는 5초 안에 끝나므로 이보다 오래면 처리하던 쪽이 멈춘 것이다. */
+  public static final Duration STALE_IN_FLIGHT = Duration.ofMinutes(5);
+
+  /**
+   * 마지막 시도 뒤 {@link #STALE_IN_FLIGHT}가 넘게 IN_FLIGHT로 남은 결과 알림을 UNKNOWN으로 넘긴다(05 8.3절). 회수할 job이 없는
+   * 경우를 잡는다: 요청 처리 중 멈춘 수동 다시 보내기, 제공자 호출 뒤 결과 저장이 실패한 슬롯. 다시 호출하지 않고 대조한다. 비용은 예약 그대로 둔다.
+   *
+   * @return 바꾼 메시지 수
+   */
+  public int markStaleInFlightUnknown() {
+    return jdbc.update(
+        "UPDATE delivery_message SET state = 'UNKNOWN', version = version + 1"
+            + " WHERE purpose = 'RESULT' AND state = 'IN_FLIGHT' AND last_attempt_at < ?",
+        utc(clock.instant().minus(STALE_IN_FLIGHT)));
+  }
+
   /**
    * lease 만료로 회수한 job이 결과 알림 슬롯이면 그 회차의 IN_FLIGHT 메시지를 UNKNOWN으로 바꾼다(05 8.3절). 다른 종류의 job이면 아무것도 하지
    * 않는다.

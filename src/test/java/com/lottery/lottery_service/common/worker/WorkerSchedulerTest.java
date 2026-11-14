@@ -203,6 +203,7 @@ class WorkerSchedulerTest {
 
     verify(verifications).expireDue(WorkerScheduler.MAX_EXPIRED_CHALLENGES);
     verify(verificationMessages).markStaleInFlightUnknown();
+    verify(unknown).markStaleInFlightUnknown();
     verify(sweep).run(UnknownMessageSweep.MAX_LOOKUPS);
   }
 

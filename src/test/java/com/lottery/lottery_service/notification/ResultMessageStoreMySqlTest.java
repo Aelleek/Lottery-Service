@@ -470,6 +470,49 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("결과 알림이 5분 넘게 IN_FLIGHT로 남으면 대조 순회가 UNKNOWN으로 넘기고, 그보다 짧으면 그대로 둔다(05 8.3절)")
+  void staleInFlightResultBecomesUnknown() {
+    tx.execute(s -> store.createMissing(ROUND));
+    long a = message(fourthMember);
+    inTx(() -> store.startSending(a, 143));
+    UnknownMessageReconciler reconciler = reconciler();
+
+    clock.set(clock.instant().plus(UnknownMessageReconciler.STALE_IN_FLIGHT).minusSeconds(1));
+    assertThat(count(reconciler::markStaleInFlightUnknown)).isZero();
+    assertThat(state(fourthMember)).isEqualTo("IN_FLIGHT");
+    clock.set(clock.instant().plusSeconds(2));
+    assertThat(count(reconciler::markStaleInFlightUnknown)).isEqualTo(1);
+    assertThat(state(fourthMember)).isEqualTo("UNKNOWN");
+    assertThat(budgetRow()).containsEntry("reserved_units", 143L);
+  }
+
+  @Test
+  @DisplayName("제공자 호출 뒤 결과 저장이 실패해도 슬롯은 다음 회원으로 넘어가고, 그 메시지는 IN_FLIGHT로 남아 대조를 기다린다")
+  void outcomeSaveFailureDoesNotStopSlot() {
+    tx.execute(s -> store.createMissing(ROUND));
+    long broken = message(fourthMember);
+    ResultMessageStore real = store;
+    store =
+        new ResultMessageStore(jdbc, new NotificationTargetQuery(jdbc), budget, clock) {
+          @Override
+          public void recordOutcome(long messageId, SendOutcome outcome) {
+            if (messageId == broken) {
+              throw new IllegalStateException("db down");
+            }
+            real.recordOutcome(messageId, outcome);
+          }
+        };
+
+    SlotResult result =
+        runner(id -> new SendOutcome.Accepted("M-" + id)).run(ROUND, slot(false, false));
+
+    assertThat(result.failed()).isEqualTo(1);
+    assertThat(result.sent()).isEqualTo(1);
+    assertThat(state(fourthMember)).isEqualTo("IN_FLIGHT");
+    assertThat(state(thirdMember)).isEqualTo("ACCEPTED");
+  }
+
+  @Test
   @DisplayName("슬롯은 대상에게 보내고 모두 접수되면 성공이며 운영자 알림이 없다")
   void slotSuccess() {
     SlotResult result =
