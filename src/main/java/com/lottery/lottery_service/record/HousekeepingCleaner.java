@@ -156,7 +156,8 @@ public class HousekeepingCleaner {
   }
 
   /**
-   * 기록이 하나도 남지 않은 주체·회차의 추천 이력과 요청을 지운다. 판매 마감 전 회차는 건드리지 않는다(D-025).
+   * 정리할 기록이 남지 않은 주체·회차의 추천 이력과 요청·항목을 지운다(04 5절). 회원의 구매 기록과 최신 판정이 당첨인 기록은 계속 남는 기록이라 막지 않는다. 예:
+   * 5세트 중 1세트가 4등이면 그 기록만 남고 요청·항목·이력은 지운다. 판매 마감 전 회차는 건드리지 않는다(D-025).
    *
    * @return 지운 추천 요청 수
    */
@@ -172,8 +173,12 @@ public class HousekeepingCleaner {
       return 0;
     }
     String noRecords =
-        " AND NOT EXISTS (SELECT 1 FROM lotto_record l WHERE l.owner_subject_id = %s.subject_id"
-            + " AND l.round_no = %s.round_no)";
+        " AND NOT EXISTS (SELECT 1 FROM lotto_record l JOIN actor_subject a ON a.id = l.owner_subject_id"
+            + " JOIN lotto_round r ON r.round_no = l.round_no WHERE l.owner_subject_id = %s.subject_id"
+            + " AND l.round_no = %s.round_no AND (a.kind = 'GUEST' OR l.deleted_at IS NOT NULL"
+            + " OR NOT (l.purchased = TRUE OR EXISTS (SELECT 1 FROM winning_evaluation e"
+            + " WHERE e.record_id = l.id AND e.result_id = r.published_result_id"
+            + " AND e.record_version = l.version AND e.rank_no IS NOT NULL))))";
     jdbc.update(
         "DELETE s FROM recommendation_seen s WHERE s.round_no = ?" + noRecords.formatted("s", "s"),
         roundNo);

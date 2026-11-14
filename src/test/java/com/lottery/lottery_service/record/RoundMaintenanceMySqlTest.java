@@ -108,7 +108,7 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("알림 계획을 완료한 뒤 보관 기간이 지난 낙첨·비회원 기록을 묶음마다 지우고, 당첨·구매 기록은 남긴다")
+  @DisplayName("알림 계획을 완료한 뒤 보관 기간이 지난 낙첨·비회원 기록을 묶음마다 지우고, 당첨·구매 기록만 남기며 추천 요청은 지운다(04 5절)")
   void closesPlanAndCleansInBatches() {
     record(member, LottoNumbers.of(1, 2, 10, 20, 30, 40), false);
     record(member, LottoNumbers.of(1, 2, 11, 21, 31, 41), false);
@@ -137,7 +137,7 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
                 "SELECT COUNT(*) FROM recommendation_request WHERE subject_id = ?",
                 Long.class,
                 member))
-        .isEqualTo(1);
+        .isZero();
     clock.set(AFTER_DELAY);
     assertThat(maintenance.alertDelayedCleanup()).isZero();
   }
