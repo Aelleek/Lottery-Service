@@ -653,6 +653,43 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("한 슬롯에 제공자 실패와 예산 차단이 함께 있으면 원인은 BUDGET_EXHAUSTED이고 건수는 따로 남는다(07 2.2절)")
+  void budgetBlockWinsOverProviderFailure() {
+    long newSubject =
+        new AccountStore(jdbc, new DataSourceTransactionManager(dataSource), clock)
+            .login(OAuthProvider.KAKAO, "budget-third")
+            .subjectId();
+    consent(memberOf(newSubject));
+    record(newSubject, LottoNumbers.of(1, 2, 3, 4, 10, 30).key(), true, false);
+    long result = jdbc.queryForObject("SELECT published_result_id FROM lotto_round", Long.class);
+    tx.execute(s -> new EvaluationStore(jdbc).evaluateBatch(result, 0, 100));
+    store =
+        new ResultMessageStore(
+            jdbc,
+            new NotificationTargetQuery(jdbc),
+            new MessageBudgetStore(jdbc, new BudgetProperties(200L, 90)),
+            clock);
+    tx.execute(s -> store.createMissing(ROUND));
+    List<Long> ids =
+        jdbc.queryForList(
+            "SELECT id FROM delivery_message WHERE purpose = 'RESULT' ORDER BY id", Long.class);
+    assertThat(ids).hasSize(3);
+
+    SlotResult slot =
+        runner(
+                id ->
+                    id == ids.get(0).longValue()
+                        ? new SendOutcome.NotAccepted("E")
+                        : new SendOutcome.Accepted("M"))
+            .run(ROUND, slot(true, false));
+
+    assertThat(slot.cause()).isEqualTo("BUDGET_EXHAUSTED");
+    assertThat(slot.providerFailed()).isEqualTo(1);
+    assertThat(slot.budgetBlocked()).isEqualTo(1);
+    assertThat(slot.sent()).isEqualTo(1);
+  }
+
+  @Test
   @DisplayName("일부가 실패하면 PARTIAL_FAILURE, 다음 슬롯은 못 받은 회원에게만 보내고, 마지막 슬롯 실패 때 남은 메시지는 HALTED(T37)")
   void partialFailureThenHalt() {
     SlotResult first =
