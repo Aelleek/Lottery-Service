@@ -38,6 +38,12 @@ public class OperatorAlertJobHandler implements JobHandler {
     return JobStore.OPERATOR_ALERT;
   }
 
+  /** Discord 호출은 외부 호출이라 실행기 트랜잭션 밖에서 한다(03 3절). */
+  @Override
+  public boolean transactional() {
+    return false;
+  }
+
   @Override
   public JobStep step(JobLease lease, String cursorJson) {
     sender.send(format(read(lease.payload())));

@@ -79,6 +79,12 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("운영자 알림 job은 외부 호출(Discord)이라 실행기 트랜잭션 밖에서 돈다(03 3절)")
+  void runsOutsideTransaction() {
+    assertThat(new OperatorAlertJobHandler(sent::add, jdbc).transactional()).isFalse();
+  }
+
+  @Test
   @DisplayName("접수 확인 종결 알림은 회차와 건수를 담고, 인증 메시지는 회차 대신 인증으로 쓴다(07 2.1절)")
   void reconcileTimeoutFormat() throws Exception {
     OperatorAlertJobHandler handler = new OperatorAlertJobHandler(sent::add, jdbc);
