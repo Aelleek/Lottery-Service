@@ -50,14 +50,15 @@ public class ManualResendService {
    * 다시 보낸다.
    *
    * @param actor 실행한 관리자의 역할
-   * @throws BusinessException 결과가 게시되지 않았거나 기한이 지났으면 {@code DISPATCH_WINDOW_CLOSED}
+   * @throws BusinessException 결과가 게시되지 않았거나, 기한이 지났거나, 알림 계획을 이미 닫았으면(05 8.7절) {@code
+   *     DISPATCH_WINDOW_CLOSED}
    */
   public SlotResult resend(int roundNo, AdminRole actor) {
     Instant now = clock.instant();
     List<LocalDateTime> published =
         jdbc.queryForList(
             "SELECT d.published_at FROM lotto_round r JOIN draw_result d ON d.id = r.published_result_id"
-                + " WHERE r.round_no = ?",
+                + " WHERE r.round_no = ? AND r.notification_plan_closed_at IS NULL",
             LocalDateTime.class,
             roundNo);
     if (published.isEmpty()

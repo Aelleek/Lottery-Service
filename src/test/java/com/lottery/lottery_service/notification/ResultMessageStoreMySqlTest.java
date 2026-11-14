@@ -696,6 +696,42 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("알림 계획을 닫은 회차는 정정으로 게시 시각이 바뀌어도 다시 보내지 않고 새 메시지도 만들지 않는다(05 8.7절)")
+  void resendRejectedAfterPlanClosed() {
+    jdbc.update("UPDATE lotto_round SET notification_plan_closed_at = NOW(6)");
+    jdbc.update(
+        "UPDATE draw_result d JOIN lotto_round r ON r.published_result_id = d.id"
+            + " SET d.published_at = ?",
+        LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC));
+    List<Long> called = new ArrayList<>();
+    ManualResendService resend =
+        new ManualResendService(
+            jdbc,
+            runner(
+                id -> {
+                  called.add(id);
+                  return new SendOutcome.Accepted("M");
+                }),
+            new JobStore(
+                jdbc,
+                new DataSourceTransactionManager(dataSource),
+                clock,
+                new JobProperties(null, null)),
+            new DataSourceTransactionManager(dataSource),
+            clock);
+
+    assertThatThrownBy(() -> resend.resend(ROUND, AdminRole.OPERATOR))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.getCode()).isEqualTo(ErrorCode.DISPATCH_WINDOW_CLOSED));
+    assertThat(called).isEmpty();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE purpose = 'RESULT'", Long.class))
+        .isZero();
+  }
+
+  @Test
   @DisplayName("회차 일정으로 슬롯 job 12개를 한 번만 등록하고, 때가 된 슬롯 job은 실행기 트랜잭션 밖에서 발송한다")
   void slotJobs() {
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
