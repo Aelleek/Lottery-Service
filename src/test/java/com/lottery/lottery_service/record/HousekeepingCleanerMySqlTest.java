@@ -42,6 +42,7 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
   @BeforeEach
   void setUp() {
     jdbc = new JdbcTemplate(dataSource);
+    jdbc.update("UPDATE lotto_round SET published_result_id = NULL");
     for (String t :
         List.of(
             "job",
@@ -53,12 +54,14 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
             "recommendation_seen",
             "recommendation_item",
             "recommendation_request",
+            "winning_evaluation",
             "lotto_record",
             "guest_credential",
             "command_operation",
             "admin_audit_event",
             "actor_subject",
             "member",
+            "draw_result",
             "lotto_round")) {
       jdbc.update("DELETE FROM " + t);
     }
@@ -247,6 +250,78 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_item", Long.class))
         .isEqualTo(1);
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("당첨·미구매 기록만 남은 회원은 이력을 지우고, 비회원 기록·숨긴 기록이 남거나 정리 보류 중인 회차는 남긴다(04 5절)")
+  void roundHistoryHoldBranches() {
+    AccountStore accounts = new AccountStore(jdbc, tm, clock);
+    long winner = accounts.login(OAuthProvider.KAKAO, "winner").subjectId();
+    long hidden = accounts.login(OAuthProvider.KAKAO, "hidden").subjectId();
+    long guest = new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys()).issue().subjectId();
+    jdbc.update(
+        "INSERT INTO lotto_round (round_no, sales_open_at, sales_close_at, draw_at, schedule_version)"
+            + " VALUES (1199, '2026-10-01', '2026-10-05', '2026-10-05', 1)");
+    jdbc.update(
+        "INSERT INTO draw_result (public_id, round_no, revision, numbers_key, bonus_number,"
+            + " semantic_hash, source_hash, state, fetched_at, published_at) VALUES (UUID_TO_BIN(UUID()),"
+            + " 1199, 1, '01 02 03 04 05 06', 7, ?, ?, 'VERIFIED', NOW(6), NOW(6))",
+        new byte[32],
+        new byte[32]);
+    long result = jdbc.queryForObject("SELECT MAX(id) FROM draw_result", Long.class);
+    jdbc.update("UPDATE lotto_round SET published_result_id = ? WHERE round_no = 1199", result);
+    long winning = historyWithRecord(winner, false, false);
+    jdbc.update(
+        "INSERT INTO winning_evaluation (record_id, result_id, round_no, record_version, rank_no,"
+            + " matched_count, bonus_matched, evaluated_at) VALUES (?, ?, 1199, 0, 4, 4, FALSE, NOW(6))",
+        winning,
+        result);
+    historyWithRecord(hidden, false, true);
+    historyWithRecord(guest, false, false);
+    HousekeepingCleaner cleaner = new HousekeepingCleaner(jdbc, clock);
+
+    jdbc.update("UPDATE lotto_round SET cleanup_held = TRUE WHERE round_no = 1199");
+    assertThat(cleaner.deleteOrphanRoundHistory(1199)).isZero();
+    jdbc.update("UPDATE lotto_round SET cleanup_held = FALSE WHERE round_no = 1199");
+    assertThat(cleaner.deleteOrphanRoundHistory(1199)).isEqualTo(1);
+
+    assertThat(jdbc.queryForList("SELECT subject_id FROM recommendation_request", Long.class))
+        .containsExactlyInAnyOrder(hidden, guest);
+    assertThat(jdbc.queryForList("SELECT subject_id FROM recommendation_seen", Long.class))
+        .containsExactlyInAnyOrder(hidden, guest);
+  }
+
+  private long historyWithRecord(long subject, boolean purchased, boolean deleted) {
+    jdbc.update(
+        "INSERT INTO recommendation_request (public_id, subject_id, round_no, key_digest, request_hash,"
+            + " accepted_at, policy_version, generation_mode, filter_version, response_expires_at)"
+            + " VALUES (UUID_TO_BIN(UUID()), ?, 1199, ?, ?, NOW(6), 1, 'BASIC', 'FILTER_V1', NOW(6))",
+        subject,
+        new byte[32],
+        new byte[32]);
+    long request = jdbc.queryForObject("SELECT MAX(id) FROM recommendation_request", Long.class);
+    jdbc.update(
+        "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key,"
+            + " recommended_at, purchased, purchased_at, deleted_at) VALUES (UUID_TO_BIN(UUID()), ?,"
+            + " 1199, '01 02 03 04 20 30', NOW(6), ?, "
+            + (purchased ? "NOW(6)" : "NULL")
+            + ", "
+            + (deleted ? "NOW(6)" : "NULL")
+            + ")",
+        subject,
+        purchased);
+    long record = jdbc.queryForObject("SELECT MAX(id) FROM lotto_record", Long.class);
+    jdbc.update(
+        "INSERT INTO recommendation_item (request_id, ordinal, record_id, numbers_key)"
+            + " VALUES (?, 1, ?, '01 02 03 04 20 30')",
+        request,
+        record);
+    jdbc.update(
+        "INSERT INTO recommendation_seen (subject_id, round_no, numbers_key, first_request_id)"
+            + " VALUES (?, 1199, '01 02 03 04 20 30', ?)",
+        subject,
+        request);
+    return record;
   }
 
   @Test

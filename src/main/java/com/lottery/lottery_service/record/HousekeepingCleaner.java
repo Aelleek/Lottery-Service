@@ -157,7 +157,7 @@ public class HousekeepingCleaner {
 
   /**
    * 정리할 기록이 남지 않은 주체·회차의 추천 이력과 요청·항목을 지운다(04 5절). 회원의 구매 기록과 최신 판정이 당첨인 기록은 계속 남는 기록이라 막지 않는다. 예:
-   * 5세트 중 1세트가 4등이면 그 기록만 남고 요청·항목·이력은 지운다. 판매 마감 전 회차는 건드리지 않는다(D-025).
+   * 5세트 중 1세트가 4등이면 그 기록만 남고 요청·항목·이력은 지운다. 판매 마감 전 회차와 정리 보류 중인 회차는 건드리지 않는다(D-025, 04 5절).
    *
    * @return 지운 추천 요청 수
    */
@@ -165,7 +165,7 @@ public class HousekeepingCleaner {
     Instant now = clock.instant();
     Boolean closed =
         jdbc.queryForObject(
-            "SELECT sales_close_at <= ? FROM lotto_round WHERE round_no = ?",
+            "SELECT sales_close_at <= ? AND cleanup_held = FALSE FROM lotto_round WHERE round_no = ?",
             Boolean.class,
             utc(now),
             roundNo);

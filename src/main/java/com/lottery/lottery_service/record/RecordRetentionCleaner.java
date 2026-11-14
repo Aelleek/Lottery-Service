@@ -75,8 +75,8 @@ public class RecordRetentionCleaner {
   }
 
   /**
-   * 사용자가 지워 숨긴 기록({@code deleted_at})을 묶음 하나만큼 실제로 지운다(04 5절). 그 회차의 알림 계획이 끝났고, 그 기록을 결과로 가리키는 멱등
-   * 기록이 만료됐고, 아직 남은 원본에서 그 기록으로 가져온 항목이 없을 때만 지운다. 보관 기간은 기다리지 않는다.
+   * 사용자가 지워 숨긴 기록({@code deleted_at})을 묶음 하나만큼 실제로 지운다(04 5절). 그 회차가 정리 보류가 아니고 알림 계획이 끝났고, 그 기록을
+   * 결과로 가리키는 멱등 기록이 만료됐고, 아직 남은 원본에서 그 기록으로 가져온 항목이 없을 때만 지운다. 보관 기간은 기다리지 않는다.
    *
    * @return 지운 기록 수
    */
@@ -85,6 +85,7 @@ public class RecordRetentionCleaner {
         jdbc.queryForList(
             "SELECT l.id FROM lotto_record l JOIN lotto_round r ON r.round_no = l.round_no"
                 + " WHERE l.deleted_at IS NOT NULL AND r.notification_plan_closed_at IS NOT NULL"
+                + " AND r.cleanup_held = FALSE"
                 + " AND NOT EXISTS (SELECT 1 FROM command_operation c"
                 + " WHERE c.resource_public_id = l.public_id AND c.marker_expires_at > ?)"
                 + " AND NOT EXISTS (SELECT 1 FROM history_import_item h"

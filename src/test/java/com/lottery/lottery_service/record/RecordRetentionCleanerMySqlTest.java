@@ -60,6 +60,8 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
             "recommendation_seen",
             "recommendation_item",
             "recommendation_request",
+            "history_import_item",
+            "subject_claim",
             "job",
             "command_operation",
             "lotto_record",
@@ -148,7 +150,7 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("사용자가 지워 숨긴 기록은 알림 계획이 끝나고 가리키는 멱등 기록이 만료되면 보관 기간 전이라도 지운다(04 5절)")
+  @DisplayName("사용자가 지워 숨긴 기록은 알림 계획이 끝나고 가리키는 멱등 기록이 만료되면 보관 기간 전이라도 지우고, 정리 보류 중이면 남긴다(04 5절)")
   void deletesHiddenRecords() {
     long hidden = record(member, LOSING, false);
     long visible = record(member, FOURTH, false);
@@ -160,11 +162,41 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
     assertThat(hiddenCleanup(beforeRetention)).isZero();
     jdbc.update("UPDATE lotto_round SET notification_plan_closed_at = NULL");
     assertThat(hiddenCleanup(Instant.parse("2026-11-21T00:00:00Z"))).isZero();
-    jdbc.update("UPDATE lotto_round SET notification_plan_closed_at = NOW(6)");
+    jdbc.update("UPDATE lotto_round SET notification_plan_closed_at = NOW(6), cleanup_held = TRUE");
+    assertThat(hiddenCleanup(Instant.parse("2026-11-21T00:00:00Z"))).isZero();
+    jdbc.update("UPDATE lotto_round SET cleanup_held = FALSE");
     assertThat(hiddenCleanup(Instant.parse("2026-11-21T00:00:00Z"))).isEqualTo(1);
 
     assertThat(exists(hidden)).isFalse();
     assertThat(exists(visible)).isTrue();
+  }
+
+  @Test
+  @DisplayName("남은 비회원 원본에서 가져온 숨긴 기록은 원본이 보관 정리로 지워진 뒤에 지운다(04 5절 가져오기 기록 만료)")
+  void hiddenImportTargetWaitsForSource() {
+    long source = record(guest, LOSING, false);
+    long target = record(member, LOSING, false);
+    jdbc.update(
+        "INSERT INTO subject_claim (public_id, guest_subject_id, member_subject_id, claimed_at,"
+            + " imported_at) VALUES (UUID_TO_BIN(UUID()), ?, ?, NOW(6), NOW(6))",
+        guest,
+        member);
+    long claim = jdbc.queryForObject("SELECT MAX(id) FROM subject_claim", Long.class);
+    jdbc.update(
+        "INSERT INTO history_import_item (claim_id, source_record_id, target_record_id, outcome)"
+            + " VALUES (?, ?, ?, 'CREATED')",
+        claim,
+        source,
+        target);
+    publishAndEvaluate();
+    jdbc.update(
+        "UPDATE lotto_record SET deleted_at = NOW(6), version = version + 1 WHERE id = ?", target);
+
+    assertThat(hiddenCleanup(AFTER_RETENTION)).isZero();
+    assertThat(cleanup(AFTER_RETENTION)).isEqualTo(1);
+    assertThat(exists(source)).isFalse();
+    assertThat(hiddenCleanup(AFTER_RETENTION)).isEqualTo(1);
+    assertThat(exists(target)).isFalse();
   }
 
   private int hiddenCleanup(Instant now) {
