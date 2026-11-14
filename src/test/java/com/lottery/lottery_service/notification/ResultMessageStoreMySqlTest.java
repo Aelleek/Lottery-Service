@@ -929,7 +929,7 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("직접 등록한 게시본은 결과 API가 확인하거나 격리할 때까지 계속 수집한다(05 6절 직접 등록 5번)")
+  @DisplayName("직접 등록한 게시본은 결과 API가 확인하거나 격리할 때까지 계속 수집하고, 격리되면 멈춘다(05 6절 직접 등록 5번)")
   void collectJobContinuesAfterManualEntry() {
     jdbc.update("DELETE FROM job");
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
@@ -967,6 +967,27 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     assertThat(runner.runOnce()).contains(JobState.SUCCEEDED);
     assertThat(fetched).containsExactly(ROUND);
     assertThat(readyCollectJobs()).isZero();
+
+    jdbc.update(
+        "UPDATE draw_result d JOIN lotto_round r ON r.published_result_id = d.id"
+            + " SET d.api_confirmed_at = NULL");
+    clock.set(drawAt.plusSeconds(1200));
+    assertThat(handler.plan(ROUND, drawAt.plusSeconds(600))).isTrue();
+    assertThat(runner.runOnce()).contains(JobState.SUCCEEDED);
+    assertThat(fetched).containsExactly(ROUND, ROUND);
+    assertThat(readyCollectJobs()).isEqualTo(1);
+    jdbc.update(
+        "INSERT INTO draw_result (public_id, round_no, revision, numbers_key, bonus_number,"
+            + " semantic_hash, source_hash, state, fetched_at) VALUES (UUID_TO_BIN(UUID()), ?, 99,"
+            + " '01 02 03 04 05 06', 7, ?, ?, 'QUARANTINED', NOW(6))",
+        ROUND,
+        new byte[32],
+        new byte[32]);
+    clock.set(drawAt.plusSeconds(3600));
+    assertThat(runner.runOnce()).contains(JobState.SUCCEEDED);
+    assertThat(fetched).containsExactly(ROUND, ROUND);
+    assertThat(readyCollectJobs()).isZero();
+    jdbc.update("DELETE FROM draw_result WHERE state = 'QUARANTINED'");
     jdbc.update(
         "UPDATE draw_result SET source = 'API', registered_by_member_id = NULL,"
             + " api_confirmed_at = NULL");
