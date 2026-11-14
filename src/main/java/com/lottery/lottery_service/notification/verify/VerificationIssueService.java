@@ -14,6 +14,8 @@ import com.lottery.lottery_service.notification.SendOutcome;
 import com.lottery.lottery_service.recommendation.CommandInProgressException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -38,6 +40,9 @@ public class VerificationIssueService {
   /** 발급 명령 종류. */
   public static final String OPERATION = "REQUEST_VERIFICATION";
 
+  /** 연락처 변경에 필요한 재인증의 유효 시간(02 7.2절). */
+  public static final Duration REAUTH_WINDOW = Duration.ofMinutes(5);
+
   private static final Logger log = LoggerFactory.getLogger(VerificationIssueService.class);
 
   private final CommandTokenCodec tokens;
@@ -48,6 +53,7 @@ public class VerificationIssueService {
   private final SecretKeys secrets;
   private final JdbcTemplate jdbc;
   private final TransactionTemplate tx;
+  private final Clock clock;
 
   /** 서비스를 만든다. */
   public VerificationIssueService(
@@ -58,7 +64,8 @@ public class VerificationIssueService {
       VerificationSender sender,
       SecretKeys secrets,
       JdbcTemplate jdbc,
-      PlatformTransactionManager transactionManager) {
+      PlatformTransactionManager transactionManager,
+      Clock clock) {
     this.tokens = tokens;
     this.operations = operations;
     this.verifications = verifications;
@@ -67,6 +74,7 @@ public class VerificationIssueService {
     this.secrets = secrets;
     this.jdbc = jdbc;
     this.tx = new TransactionTemplate(transactionManager);
+    this.clock = clock;
   }
 
   /**
@@ -74,8 +82,10 @@ public class VerificationIssueService {
    *
    * @param phone openapi 형식으로 검사한 국제 번호
    * @param expectedContactVersion 화면이 본 연락처 버전
-   * @throws BusinessException 연락처 버전이 다르면 {@code CONTACT_CHANGED}, 간격 전이거나 하루 상한이면 {@code
-   *     RATE_LIMITED}, 예산이 모자라거나 제공자가 받지 않았으면 {@code TEMPORARILY_UNAVAILABLE}
+   * @param reauthenticatedAt 세션의 마지막 재인증 시각. 연락처 변경은 최근 5분 재인증이 필요하다(02 7.2절)
+   * @throws BusinessException 재인증이 없거나 5분이 지났으면 {@code REAUTH_REQUIRED}, 연락처 버전이 다르면 {@code
+   *     CONTACT_CHANGED}, 간격 전이거나 하루 상한이면 {@code RATE_LIMITED}, 예산이 모자라거나 제공자가 받지 않았으면 {@code
+   *     TEMPORARILY_UNAVAILABLE}
    */
   public Requested request(
       long memberId,
@@ -84,8 +94,15 @@ public class VerificationIssueService {
       String commandToken,
       UUID idempotencyKey,
       String phone,
-      long expectedContactVersion) {
+      long expectedContactVersion,
+      Instant reauthenticatedAt) {
     CommandToken token = tokens.verify(commandToken, subjectPublicId, OPERATION);
+    Instant now = clock.instant();
+    if (reauthenticatedAt == null
+        || reauthenticatedAt.isAfter(now)
+        || now.isAfter(reauthenticatedAt.plus(REAUTH_WINDOW))) {
+      throw new BusinessException(ErrorCode.REAUTH_REQUIRED, "다시 인증해 주세요.");
+    }
     CommandStart start =
         operations.begin(
             subjectId, token, idempotencyKey, requestHash(memberId, phone, expectedContactVersion));

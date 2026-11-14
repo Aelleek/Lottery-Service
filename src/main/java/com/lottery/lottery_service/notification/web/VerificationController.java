@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.notification.web;
 
 import com.lottery.lottery_service.auth.MemberPrincipal;
+import com.lottery.lottery_service.auth.Reauthentication;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.web.CanonicalUuid;
@@ -8,6 +9,7 @@ import com.lottery.lottery_service.common.web.RequestSubject;
 import com.lottery.lottery_service.notification.verify.PhoneMask;
 import com.lottery.lottery_service.notification.verify.VerificationIssueService;
 import com.lottery.lottery_service.notification.verify.VerifyCommandService;
+import jakarta.servlet.http.HttpServletRequest;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
@@ -52,7 +54,8 @@ public class VerificationController {
       Authentication auth,
       @RequestHeader("X-Command-Token") String commandToken,
       @RequestHeader("Idempotency-Key") String idempotencyKey,
-      @RequestBody RequestInput input) {
+      @RequestBody RequestInput input,
+      HttpServletRequest request) {
     if (auth == null || !(auth.getPrincipal() instanceof MemberPrincipal member)) {
       throw new BusinessException(ErrorCode.UNAUTHENTICATED, "로그인이 필요합니다.");
     }
@@ -86,7 +89,8 @@ public class VerificationController {
             commandToken,
             key,
             input.phoneNumber(),
-            expectedVersion);
+            expectedVersion,
+            Reauthentication.lastAt(request).orElse(null));
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(

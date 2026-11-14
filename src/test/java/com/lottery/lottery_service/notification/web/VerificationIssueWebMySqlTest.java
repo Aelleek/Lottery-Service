@@ -19,10 +19,12 @@ import com.lottery.lottery_service.notification.verify.VerificationSender;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.OpenApiContract;
 import jakarta.servlet.http.Cookie;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -41,6 +43,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.session.Session;
+import org.springframework.session.SessionRepository;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -85,6 +89,10 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
   @Autowired private FakeSender sender;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private ObjectMapper json;
+
+  @SuppressWarnings("rawtypes")
+  @Autowired
+  private SessionRepository sessions;
 
   @DynamicPropertySource
   static void database(DynamicPropertyRegistry registry) throws SQLException {
@@ -272,6 +280,22 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("최근 5분 안에 재인증하지 않았으면 403 REAUTH_REQUIRED이고 코드를 보내지 않는다(02 7.2절)")
+  void requiresRecentReauthentication() throws Exception {
+    long before = challenges();
+    client("no-reauth", null)
+        .request("+821012341234", "0", UUID.randomUUID())
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("REAUTH_REQUIRED"));
+    client("stale-reauth", Instant.now().minus(Duration.ofMinutes(6)))
+        .request("+821012341235", "0", UUID.randomUUID())
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("REAUTH_REQUIRED"));
+    assertThat(sender.codes).isEmpty();
+    assertThat(challenges()).isEqualTo(before);
+  }
+
+  @Test
   @DisplayName("로그인하지 않으면 401")
   void requiresMember() throws Exception {
     mvc.perform(
@@ -285,6 +309,10 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
   }
 
   private Client client(String providerUserId) throws Exception {
+    return client(providerUserId, Instant.now());
+  }
+
+  private Client client(String providerUserId, Instant reauthenticatedAt) throws Exception {
     MemberPrincipal member =
         MemberPrincipal.of(
             accounts.login(OAuthProvider.KAKAO, providerUserId), OAuthProvider.KAKAO);
@@ -296,7 +324,24 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
         new Cookie(
             "__Host-lottery_session",
             setCookie.substring(setCookie.indexOf('=') + 1, setCookie.indexOf(';')));
+    if (reauthenticatedAt != null) {
+      Session stored =
+          sessions.findById(
+              new String(Base64.getDecoder().decode(session.getValue()), StandardCharsets.UTF_8));
+      stored.setAttribute(
+          "com.lottery.lottery_service.auth.Reauthentication.completedAt", reauthenticatedAt);
+      saveSession(stored);
+    }
     return new Client(member, session, csrf);
+  }
+
+  private long challenges() {
+    return jdbc.queryForObject("SELECT COUNT(*) FROM verification_challenge", Long.class);
+  }
+
+  @SuppressWarnings("unchecked")
+  private void saveSession(Session session) {
+    sessions.save(session);
   }
 
   private JsonNode body(MvcResult result) throws Exception {
