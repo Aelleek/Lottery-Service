@@ -30,6 +30,7 @@ import com.lottery.lottery_service.result.source.ResultCollector;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -480,6 +481,43 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
                     + " WHERE job_type = 'OPERATOR_ALERT'",
                 String.class))
         .isEqualTo("NULL");
+  }
+
+  @Test
+  @DisplayName("결과가 없고 마지막 수집 시도가 실패했으면 RESULT_FETCH_ERROR로 실패한다(07 2.2절)")
+  void slotWhileFetchFailing() {
+    jdbc.update("UPDATE lotto_round SET published_result_id = NULL");
+    jdbc.update(
+        "INSERT INTO job (public_id, job_type, dedupe_key, state, payload, available_at,"
+            + " last_error_code, finished_at) VALUES (UUID_TO_BIN(UUID()), 'RESULT_COLLECT', ?,"
+            + " 'SUCCEEDED', '{}', NOW(6), 'RESULT_FETCH_ERROR', NOW(6))",
+        ("collect:" + ROUND + ":2026-11-14T11:45:00Z").getBytes(StandardCharsets.UTF_8));
+
+    assertThat(runner(id -> new SendOutcome.Accepted("x")).run(ROUND, slot(true, false)).cause())
+        .isEqualTo("RESULT_FETCH_ERROR");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT CONCAT(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.cause')), ' ',"
+                    + " JSON_TYPE(JSON_EXTRACT(payload, '$.targets'))) FROM job"
+                    + " WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .isEqualTo("RESULT_FETCH_ERROR NULL");
+  }
+
+  @Test
+  @DisplayName("한 건도 보내지 못하고 제공자가 받지 않았으면 PROVIDER_ERROR로 실패한다(07 2.2절)")
+  void slotProviderError() {
+    SlotResult result =
+        runner(id -> new SendOutcome.NotAccepted("E")).run(ROUND, slot(true, false));
+
+    assertThat(result.cause()).isEqualTo("PROVIDER_ERROR");
+    assertThat(result.providerFailed()).isEqualTo(result.failed()).isPositive();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.cause')) FROM job"
+                    + " WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .isEqualTo("PROVIDER_ERROR");
   }
 
   @Test

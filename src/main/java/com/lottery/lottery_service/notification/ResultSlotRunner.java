@@ -1,6 +1,8 @@
 package com.lottery.lottery_service.notification;
 
 import com.lottery.lottery_service.common.job.JobStore;
+import com.lottery.lottery_service.result.query.ResultState;
+import com.lottery.lottery_service.result.query.RoundResultQuery;
 import java.time.Clock;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,7 @@ public class ResultSlotRunner {
   private final JobStore jobs;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final RoundResultQuery results;
 
   /** 실행기를 만든다. */
   public ResultSlotRunner(
@@ -41,6 +44,7 @@ public class ResultSlotRunner {
     this.jobs = jobs;
     this.tx = new TransactionTemplate(transactionManager);
     this.clock = clock;
+    this.results = new RoundResultQuery(jdbc);
   }
 
   /** 슬롯을 실행하고 결과를 돌려준다. 운영자 알림 대상 슬롯이 실패하면 운영자 알림 job을 등록하고, 마지막 슬롯이 실패하면 남은 메시지를 멈춘다. */
@@ -87,7 +91,10 @@ public class ResultSlotRunner {
         jdbc.queryForObject(
             "SELECT published_result_id FROM lotto_round WHERE round_no = ?", Long.class, roundNo);
     if (published == null) {
-      return new SlotResult(false, "RESULT_NOT_PUBLISHED", 0, 0, 0);
+      boolean fetchFailing =
+          results.find(roundNo).map(r -> r.state() == ResultState.DELAYED).orElse(false);
+      return new SlotResult(
+          false, fetchFailing ? "RESULT_FETCH_ERROR" : "RESULT_NOT_PUBLISHED", 0, 0, 0);
     }
     if (evaluationPending(roundNo)) {
       return new SlotResult(false, "EVALUATION_PENDING", 0, 0, 0);
@@ -142,12 +149,19 @@ public class ResultSlotRunner {
     }
     return new SlotResult(
         false,
-        budgetBlocked > 0 ? "BUDGET_EXHAUSTED" : "PARTIAL_FAILURE",
+        cause(budgetBlocked, providerFailed, sent),
         failed,
         unknown,
         sent,
         budgetBlocked,
         providerFailed);
+  }
+
+  private static String cause(int budgetBlocked, int providerFailed, int sent) {
+    if (budgetBlocked > 0) {
+      return "BUDGET_EXHAUSTED";
+    }
+    return providerFailed > 0 && sent == 0 ? "PROVIDER_ERROR" : "PARTIAL_FAILURE";
   }
 
   private boolean evaluationPending(int roundNo) {
@@ -164,7 +178,9 @@ public class ResultSlotRunner {
   }
 
   private String targets(int roundNo, String cause) {
-    if ("RESULT_NOT_PUBLISHED".equals(cause) || "EVALUATION_PENDING".equals(cause)) {
+    if ("RESULT_NOT_PUBLISHED".equals(cause)
+        || "RESULT_FETCH_ERROR".equals(cause)
+        || "EVALUATION_PENDING".equals(cause)) {
       return "null";
     }
     return String.valueOf(
