@@ -794,6 +794,40 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("발송이 lease 길이보다 오래 걸려도 메시지마다 lease를 늘려 슬롯 job이 회수되지 않고 끝난다")
+  void slowSlotKeepsLease() {
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    JobStore jobs = new JobStore(jdbc, tm, clock, new JobProperties(null, null));
+    jdbc.update("DELETE FROM job");
+    jobs.enqueue(
+        ResultSlotJobHandler.JOB,
+        "slow-slot",
+        "{\"roundNo\":"
+            + ROUND
+            + ",\"at\":\""
+            + clock.instant()
+            + "\",\"alert\":false,\"last\":false}",
+        clock.instant());
+    ResultSlotJobHandler handler =
+        new ResultSlotJobHandler(
+            runner(
+                id -> {
+                  clock.set(clock.instant().plus(Duration.ofMinutes(4)));
+                  return new SendOutcome.Accepted("M");
+                }),
+            new ResultCollector(r -> new ParsedDraw.NotAnnounced(), null),
+            jdbc,
+            jobs);
+
+    assertThat(new JobRunner(jobs, List.of(handler), tm, clock).runOnce())
+        .contains(JobState.SUCCEEDED);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'", Long.class))
+        .isEqualTo(2);
+  }
+
+  @Test
   @DisplayName("회차 일정으로 슬롯 job 12개를 한 번만 등록하고, 때가 된 슬롯 job은 실행기 트랜잭션 밖에서 발송한다")
   void slotJobs() {
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
@@ -815,7 +849,8 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
         new ResultSlotJobHandler(
             runner(id -> new SendOutcome.Accepted("M")),
             new ResultCollector(r -> new ParsedDraw.NotAnnounced(), null),
-            jdbc);
+            jdbc,
+            jobs);
     assertThat(new JobRunner(jobs, List.of(handler), tm, clock).runOnce())
         .contains(JobState.SUCCEEDED);
     assertThat(

@@ -132,6 +132,25 @@ public class JobStore {
   }
 
   /**
+   * lease를 지금부터 다시 lease 길이만큼 늘린다. 한 걸음이 오래 걸리는 job(발송 슬롯)이 일하는 중에 회수되지 않게 한다. lease가 아직 자기 것이고 만료
+   * 전일 때만 늘린다.
+   *
+   * @throws LeaseLostException lease를 잃었을 때
+   */
+  public void renewLease(JobLease lease) {
+    Instant now = clock.instant();
+    int changed =
+        jdbc.update(
+            "UPDATE job SET lease_until = ? WHERE id = ? AND state = 'RUNNING'"
+                + " AND lease_token = ? AND lease_until > ?",
+            utc(now.plus(properties.leaseDuration())),
+            lease.id(),
+            bytes(lease.token()),
+            utc(now));
+    requireHeld(lease, changed);
+  }
+
+  /**
    * job을 끝낸다(SUCCEEDED).
    *
    * @throws LeaseLostException lease를 잃었을 때

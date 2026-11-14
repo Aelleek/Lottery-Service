@@ -6,6 +6,7 @@ import com.lottery.lottery_service.common.db.DbValues;
 import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
+import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.result.source.ResultCollector;
 import java.time.Instant;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,11 +28,13 @@ public class ResultSlotJobHandler implements JobHandler {
   private final ResultSlotRunner runner;
   private final ResultCollector collector;
   private final JdbcTemplate jdbc;
+  private final JobStore jobs;
 
   /** 처리기를 만든다. */
   public ResultSlotJobHandler(
-      ResultSlotRunner runner, ResultCollector collector, JdbcTemplate jdbc) {
+      ResultSlotRunner runner, ResultCollector collector, JdbcTemplate jdbc, JobStore jobs) {
     this.runner = runner;
+    this.jobs = jobs;
     this.collector = collector;
     this.jdbc = jdbc;
   }
@@ -61,7 +64,7 @@ public class ResultSlotJobHandler implements JobHandler {
     if (published == null) {
       collector.collect(roundNo);
     }
-    SlotResult result = runner.run(roundNo, slot);
+    SlotResult result = runner.run(roundNo, slot, () -> jobs.renewLease(lease));
     jdbc.update(
         "UPDATE job SET last_error_code = ?, cursor_json = ? WHERE id = ? AND lease_token = ?",
         result.cause(),

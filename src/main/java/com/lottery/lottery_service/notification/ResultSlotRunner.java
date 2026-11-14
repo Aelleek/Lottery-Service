@@ -50,7 +50,15 @@ public class ResultSlotRunner {
 
   /** 슬롯을 실행하고 결과를 돌려준다. 운영자 알림 대상 슬롯이 실패하면 운영자 알림 job을 등록하고, 마지막 슬롯이 실패하면 남은 메시지를 멈춘다. */
   public SlotResult run(int roundNo, ResultSlot slot) {
-    SlotResult result = execute(roundNo);
+    return run(roundNo, slot, () -> {});
+  }
+
+  /**
+   * {@link #run(int, ResultSlot)}와 같고, 메시지마다 보내기 전에 {@code beforeEach}를 부른다. 발송 슬롯 job은 여기서 lease를
+   * 늘리고, lease를 잃었으면 예외로 발송을 멈춘다.
+   */
+  public SlotResult run(int roundNo, ResultSlot slot, Runnable beforeEach) {
+    SlotResult result = execute(roundNo, beforeEach);
     if (!result.success()) {
       tx.executeWithoutResult(
           status -> {
@@ -87,7 +95,7 @@ public class ResultSlotRunner {
     return result;
   }
 
-  private SlotResult execute(int roundNo) {
+  private SlotResult execute(int roundNo, Runnable beforeEach) {
     Long published =
         jdbc.queryForObject(
             "SELECT published_result_id FROM lotto_round WHERE round_no = ?", Long.class, roundNo);
@@ -106,6 +114,7 @@ public class ResultSlotRunner {
     int budgetBlocked = 0;
     int providerFailed = 0;
     for (long id : messages.sendable(roundNo)) {
+      beforeEach.run();
       Boolean ready;
       try {
         ready = tx.execute(status -> messages.recheck(id) && messages.startSending(id, COST_UNITS));
