@@ -142,6 +142,23 @@ public class UnknownMessageReconciler {
         roundNo);
   }
 
+  /**
+   * lease 만료로 회수한 job이 결과 알림 슬롯이면 그 회차의 IN_FLIGHT 메시지를 UNKNOWN으로 바꾼다(05 8.3절). 다른 종류의 job이면 아무것도 하지
+   * 않는다.
+   *
+   * @return 바꾼 메시지 수
+   */
+  public int markInFlightUnknownForSlotJob(long jobId) {
+    List<Integer> rounds =
+        jdbc.queryForList(
+            "SELECT CAST(JSON_EXTRACT(payload, '$.roundNo') AS SIGNED) FROM job"
+                + " WHERE id = ? AND job_type = ?",
+            Integer.class,
+            jobId,
+            ResultSlotJobHandler.JOB);
+    return rounds.isEmpty() || rounds.get(0) == null ? 0 : markInFlightUnknown(rounds.get(0));
+  }
+
   private void set(long messageId, String state, String providerId, boolean finalized) {
     jdbc.update(
         "UPDATE delivery_message SET state = ?, provider_message_id = COALESCE(?, provider_message_id),"

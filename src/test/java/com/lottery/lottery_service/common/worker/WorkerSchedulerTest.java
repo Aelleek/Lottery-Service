@@ -11,6 +11,7 @@ import com.lottery.lottery_service.common.alert.ExpiryWatch;
 import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobState;
 import com.lottery.lottery_service.common.job.JobStore;
+import com.lottery.lottery_service.common.job.RecoveredJob;
 import com.lottery.lottery_service.common.web.SecuritySignals;
 import com.lottery.lottery_service.notification.RoundJobPlanner;
 import com.lottery.lottery_service.notification.UnknownMessageReconciler;
@@ -81,6 +82,23 @@ class WorkerSchedulerTest {
         signals,
         clock,
         tm);
+  }
+
+  @Test
+  @DisplayName("회수한 job 중 결과 알림 슬롯만 IN_FLIGHT 메시지를 UNKNOWN으로 넘긴다(05 8.3절)")
+  void recoveredSlotJobsMarkInFlightUnknown() {
+    when(jobs.recoverExpired())
+        .thenReturn(
+            List.of(
+                new RecoveredJob(7L, "RESULT_SLOT", JobState.RETRY_WAIT, 1),
+                new RecoveredJob(8L, "EVALUATE_RESULT", JobState.RETRY_WAIT, 1),
+                new RecoveredJob(9L, "RESULT_SLOT", JobState.DEAD, 5)));
+
+    scheduler().recoverJobs();
+
+    verify(unknown).markInFlightUnknownForSlotJob(7L);
+    verify(unknown).markInFlightUnknownForSlotJob(9L);
+    verify(unknown, never()).markInFlightUnknownForSlotJob(8L);
   }
 
   @Test

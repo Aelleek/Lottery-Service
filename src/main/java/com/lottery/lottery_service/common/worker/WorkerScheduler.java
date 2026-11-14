@@ -5,6 +5,7 @@ import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.job.RecoveredJob;
 import com.lottery.lottery_service.common.web.SecuritySignals;
+import com.lottery.lottery_service.notification.ResultSlotJobHandler;
 import com.lottery.lottery_service.notification.RoundJobPlanner;
 import com.lottery.lottery_service.notification.UnknownMessageReconciler;
 import com.lottery.lottery_service.notification.UnknownMessageSweep;
@@ -134,12 +135,21 @@ public class WorkerScheduler {
     }
   }
 
-  /** lease가 만료된 job을 회수한다. */
+  /**
+   * lease가 만료된 job을 회수한다. 결과 알림 슬롯 job이면 그 회차의 IN_FLIGHT 메시지를 UNKNOWN으로 넘겨 대조에 맡긴다(05 8.3절). 주기 작업은
+   * 한 스레드에서 돌아 회수와 다음 job 실행이 겹치지 않는다.
+   */
   @Scheduled(fixedDelay = 60_000)
   public void recoverJobs() {
     List<RecoveredJob> recovered = jobs.recoverExpired();
     if (!recovered.isEmpty()) {
       log.warn("recovered expired jobs count={}", recovered.size());
+    }
+    for (RecoveredJob job : recovered) {
+      if (ResultSlotJobHandler.JOB.equals(job.type())) {
+        Integer marked = tx.execute(status -> unknown.markInFlightUnknownForSlotJob(job.id()));
+        log.warn("recovered result slot job={} inFlightToUnknown={}", job.id(), marked);
+      }
     }
   }
 

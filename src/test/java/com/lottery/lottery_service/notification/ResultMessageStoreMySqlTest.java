@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
@@ -419,6 +420,34 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     assertThat(state(fourthMember)).isEqualTo("UNKNOWN");
     assertThat(budgetRow()).containsEntry("reserved_units", 143L);
     assertThat(store.sendable(ROUND)).doesNotContain(a);
+  }
+
+  @Test
+  @DisplayName(
+      "회수한 job이 결과 알림 슬롯이면 그 회차의 IN_FLIGHT만 UNKNOWN으로 바꾸고, 다른 종류의 job이면 바꾸지 않는다(05 8.3절, T27)")
+  void recoveredSlotJobMarksItsRound() {
+    tx.execute(s -> store.createMissing(ROUND));
+    long a = message(fourthMember);
+    inTx(() -> store.startSending(a, 143));
+    long slotJob = job("RESULT_SLOT", "{\"roundNo\":" + ROUND + "}");
+    long otherJob = job("EVALUATE_RESULT", "{\"roundNo\":" + ROUND + "}");
+    long otherRound = job("RESULT_SLOT", "{\"roundNo\":" + (ROUND + 1) + "}");
+
+    assertThat(count(() -> reconciler().markInFlightUnknownForSlotJob(otherJob))).isZero();
+    assertThat(count(() -> reconciler().markInFlightUnknownForSlotJob(otherRound))).isZero();
+    assertThat(state(fourthMember)).isEqualTo("IN_FLIGHT");
+    assertThat(count(() -> reconciler().markInFlightUnknownForSlotJob(slotJob))).isEqualTo(1);
+    assertThat(state(fourthMember)).isEqualTo("UNKNOWN");
+  }
+
+  private long job(String type, String payload) {
+    jdbc.update(
+        "INSERT INTO job (public_id, job_type, dedupe_key, state, payload, available_at)"
+            + " VALUES (UUID_TO_BIN(UUID()), ?, ?, 'RETRY_WAIT', ?, NOW(6))",
+        type,
+        UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8),
+        payload);
+    return jdbc.queryForObject("SELECT MAX(id) FROM job", Long.class);
   }
 
   @Test
