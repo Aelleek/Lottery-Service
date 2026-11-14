@@ -110,6 +110,29 @@ class JobStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("회수 중 job별 후속 처리가 실패하면 회수 전체를 되돌리고 다음 회수에서 다시 한다")
+  void recoveryRollsBackWhenCallbackFails() {
+    store.enqueue("EVALUATE", "round:1200", "{}", T0);
+    JobLease lease = store.claim(TYPES).orElseThrow();
+    clock.set(T0.plus(LEASE));
+
+    assertThatThrownBy(
+            () ->
+                store.recoverExpired(
+                    job -> {
+                      throw new IllegalStateException("db down");
+                    }))
+        .isInstanceOf(IllegalStateException.class);
+    assertThat(jdbc.queryForObject("SELECT state FROM job WHERE id = ?", String.class, lease.id()))
+        .isEqualTo("RUNNING");
+
+    List<Long> seen = new java.util.ArrayList<>();
+    assertThat(store.recoverExpired(job -> seen.add(job.id())))
+        .containsExactly(new RecoveredJob(lease.id(), "EVALUATE", JobState.RETRY_WAIT, 1));
+    assertThat(seen).containsExactly(lease.id());
+  }
+
+  @Test
   @DisplayName("lease 만료 뒤 회수되고 새 worker가 끝낸 job에 옛 worker가 저장하면 거부되고 상태는 그대로다(T24)")
   void staleWorkerIsRejected() {
     store.enqueue("EVALUATE", "round:1200", "{}", T0);

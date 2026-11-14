@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -204,10 +205,20 @@ public class JobStore {
    * @return 회수한 job
    */
   public List<RecoveredJob> recoverExpired() {
-    return tx.execute(status -> recoverInTransaction());
+    return recoverExpired(job -> {});
   }
 
-  private List<RecoveredJob> recoverInTransaction() {
+  /**
+   * {@link #recoverExpired()}와 같고, 회수한 job마다 {@code onRecovered}를 같은 트랜잭션에서 부른다. 그것이 실패하면 회수 전체를
+   * 되돌려 다음 회수에서 다시 한다.
+   *
+   * @return 회수한 job
+   */
+  public List<RecoveredJob> recoverExpired(Consumer<RecoveredJob> onRecovered) {
+    return tx.execute(status -> recoverInTransaction(onRecovered));
+  }
+
+  private List<RecoveredJob> recoverInTransaction(Consumer<RecoveredJob> onRecovered) {
     Instant now = clock.instant();
     List<Object[]> expired =
         jdbc.query(
@@ -233,7 +244,9 @@ public class JobStore {
       if (next == JobState.DEAD) {
         enqueueDeadAlert(id, type, now);
       }
-      recovered.add(new RecoveredJob(id, type, next, attempts));
+      RecoveredJob job = new RecoveredJob(id, type, next, attempts);
+      onRecovered.accept(job);
+      recovered.add(job);
     }
     return recovered;
   }

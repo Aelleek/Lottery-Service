@@ -87,12 +87,18 @@ class WorkerSchedulerTest {
   @Test
   @DisplayName("회수한 job 중 결과 알림 슬롯만 IN_FLIGHT 메시지를 UNKNOWN으로 넘긴다(05 8.3절)")
   void recoveredSlotJobsMarkInFlightUnknown() {
-    when(jobs.recoverExpired())
-        .thenReturn(
-            List.of(
-                new RecoveredJob(7L, "RESULT_SLOT", JobState.RETRY_WAIT, 1),
-                new RecoveredJob(8L, "EVALUATE_RESULT", JobState.RETRY_WAIT, 1),
-                new RecoveredJob(9L, "RESULT_SLOT", JobState.DEAD, 5)));
+    when(jobs.recoverExpired(any()))
+        .thenAnswer(
+            inv -> {
+              java.util.function.Consumer<RecoveredJob> each = inv.getArgument(0);
+              List<RecoveredJob> recovered =
+                  List.of(
+                      new RecoveredJob(7L, "RESULT_SLOT", JobState.RETRY_WAIT, 1),
+                      new RecoveredJob(8L, "EVALUATE_RESULT", JobState.RETRY_WAIT, 1),
+                      new RecoveredJob(9L, "RESULT_SLOT", JobState.DEAD, 5));
+              recovered.forEach(each);
+              return recovered;
+            });
 
     scheduler().recoverJobs();
 
@@ -123,7 +129,7 @@ class WorkerSchedulerTest {
     scheduler.reconcileEvaluations();
     scheduler.dailyHousekeeping();
 
-    verify(jobs).recoverExpired();
+    verify(jobs).recoverExpired(any());
     verify(rounds).sealDue();
     verify(reconciler).enqueueMissing(1_000);
     verify(housekeeping).deleteFinishedJobs();

@@ -136,20 +136,21 @@ public class WorkerScheduler {
   }
 
   /**
-   * lease가 만료된 job을 회수한다. 결과 알림 슬롯 job이면 그 회차의 IN_FLIGHT 메시지를 UNKNOWN으로 넘겨 대조에 맡긴다(05 8.3절). 주기 작업은
-   * 한 스레드에서 돌아 회수와 다음 job 실행이 겹치지 않는다.
+   * lease가 만료된 job을 회수한다. 결과 알림 슬롯 job이면 같은 회수 트랜잭션에서 그 회차의 IN_FLIGHT 메시지를 UNKNOWN으로 넘겨 대조에 맡긴다(05
+   * 8.3절). 넘기기가 실패하면 회수도 되돌려져 다음 회수에서 다시 한다. 주기 작업은 한 스레드에서 돌아 회수와 다음 job 실행이 겹치지 않는다.
    */
   @Scheduled(fixedDelay = 60_000)
   public void recoverJobs() {
-    List<RecoveredJob> recovered = jobs.recoverExpired();
-    if (!recovered.isEmpty()) {
+    List<RecoveredJob> recovered =
+        jobs.recoverExpired(
+            job -> {
+              if (ResultSlotJobHandler.JOB.equals(job.type())) {
+                int marked = unknown.markInFlightUnknownForSlotJob(job.id());
+                log.warn("recovered result slot job={} inFlightToUnknown={}", job.id(), marked);
+              }
+            });
+    if (recovered != null && !recovered.isEmpty()) {
       log.warn("recovered expired jobs count={}", recovered.size());
-    }
-    for (RecoveredJob job : recovered) {
-      if (ResultSlotJobHandler.JOB.equals(job.type())) {
-        Integer marked = tx.execute(status -> unknown.markInFlightUnknownForSlotJob(job.id()));
-        log.warn("recovered result slot job={} inFlightToUnknown={}", job.id(), marked);
-      }
     }
   }
 
