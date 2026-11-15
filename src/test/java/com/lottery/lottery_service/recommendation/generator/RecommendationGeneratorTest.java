@@ -107,6 +107,33 @@ class RecommendationGeneratorTest {
   }
 
   @Test
+  @DisplayName("seed 42의 결과를 고정해, 뽑는 방식이 바뀌면 회귀 테스트가 알린다(08 3절)")
+  void seed42Golden() {
+    RecommendationCondition condition = RecommendationCondition.of(List.of(7), List.of(8, 9));
+    assertThat(
+            keys(
+                seeded(42)
+                    .generate(RecommendationCondition.none(), CandidateFilter.NONE, Set.of())))
+        .containsExactly(
+            "18 23 34 37 40 42",
+            "10 17 30 33 37 42",
+            "03 12 15 27 33 44",
+            "08 25 26 27 37 44",
+            "21 32 33 36 38 44");
+    assertThat(keys(seeded(42).generate(condition, CandidateFilter.NONE, Set.of())))
+        .containsExactly(
+            "02 04 07 17 25 27",
+            "04 07 10 33 37 45",
+            "04 07 12 17 20 36",
+            "07 12 15 22 32 33",
+            "07 12 19 20 24 26");
+  }
+
+  private static List<String> keys(GenerationOutcome outcome) {
+    return ((GenerationOutcome.Generated) outcome).sets().stream().map(LottoNumbers::key).toList();
+  }
+
+  @Test
   @DisplayName("작은 후보 공간에서 금지 조합은 나오지 않고 남은 조합은 고르게 나온다")
   void uniformOverSmallSpace() {
     RecommendationCondition ten = RecommendationCondition.of(FIVE, range(16, 45));
