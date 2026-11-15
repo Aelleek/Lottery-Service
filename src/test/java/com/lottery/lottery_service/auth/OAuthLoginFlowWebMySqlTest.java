@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -49,6 +50,7 @@ class OAuthLoginFlowWebMySqlTest extends MySqlContainerSupport {
 
   @Autowired private MockMvc mvc;
   @Autowired private JdbcTemplate jdbc;
+  @Autowired private OAuth2AuthorizedClientService authorizedClients;
 
   @DynamicPropertySource
   static void database(DynamicPropertyRegistry registry) throws SQLException {
@@ -119,6 +121,12 @@ class OAuthLoginFlowWebMySqlTest extends MySqlContainerSupport {
 
     mvc.perform(get("/api/v1/session").cookie(after)).andExpect(jsonPath("$.kind").value("MEMBER"));
     mvc.perform(get("/api/v1/session").cookie(before)).andExpect(jsonPath("$.kind").value("NONE"));
+    String principal =
+        jdbc.queryForObject(
+            "SELECT BIN_TO_UUID(m.public_id) FROM member m JOIN oauth_account o"
+                + " ON o.member_id = m.id WHERE o.provider_user_id = '4242'",
+            String.class);
+    assertThat((Object) authorizedClients.loadAuthorizedClient("kakao", principal)).isNull();
   }
 
   @Test

@@ -6,6 +6,7 @@ import com.lottery.lottery_service.account.GuestIssueService;
 import com.lottery.lottery_service.account.SubjectClaimStore;
 import com.lottery.lottery_service.auth.CsrfFilter;
 import com.lottery.lottery_service.auth.CsrfTokens;
+import com.lottery.lottery_service.auth.DiscardingAuthorizedClientRepository;
 import com.lottery.lottery_service.auth.GuestAuthenticationFilter;
 import com.lottery.lottery_service.auth.LoginFailureHandler;
 import com.lottery.lottery_service.auth.LoginSuccessHandler;
@@ -139,6 +140,7 @@ public class SecurityConfig {
         .oauth2Login(
             oauth2 ->
                 oauth2
+                    .authorizedClientRepository(new DiscardingAuthorizedClientRepository())
                     .authorizationEndpoint(
                         a ->
                             a.authorizationRequestResolver(
