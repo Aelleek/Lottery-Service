@@ -188,6 +188,11 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
     assertThat(replay.path("operationId").asText()).isEqualTo(issued.path("operationId").asText());
     assertThat(replay.path("data").path("challengeId").asText()).isEqualTo(challenge.toString());
     assertThat(sender.codes).hasSize(1);
+    setReauthenticatedAt(mine, Instant.now().minus(Duration.ofMinutes(6)));
+    mine.request("+821011112222", "0", key, token)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.challengeId").value(challenge.toString()));
+    setReauthenticatedAt(mine, Instant.now());
 
     mine.request("+821011112222", "0", UUID.randomUUID())
         .andExpect(status().isTooManyRequests())
@@ -354,6 +359,15 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
       saveSession(stored);
     }
     return new Client(member, session, csrf);
+  }
+
+  private void setReauthenticatedAt(Client client, Instant at) {
+    Session stored =
+        sessions.findById(
+            new String(
+                Base64.getDecoder().decode(client.session.getValue()), StandardCharsets.UTF_8));
+    stored.setAttribute("com.lottery.lottery_service.auth.Reauthentication.completedAt", at);
+    saveSession(stored);
   }
 
   private long challenges() {

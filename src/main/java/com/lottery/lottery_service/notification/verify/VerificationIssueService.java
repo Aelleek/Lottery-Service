@@ -97,12 +97,6 @@ public class VerificationIssueService {
       long expectedContactVersion,
       Instant reauthenticatedAt) {
     CommandToken token = tokens.verify(commandToken, subjectPublicId, OPERATION);
-    Instant now = clock.instant();
-    if (reauthenticatedAt == null
-        || reauthenticatedAt.isAfter(now)
-        || now.isAfter(reauthenticatedAt.plus(REAUTH_WINDOW))) {
-      throw new BusinessException(ErrorCode.REAUTH_REQUIRED, "다시 인증해 주세요.");
-    }
     CommandStart start =
         operations.begin(
             subjectId, token, idempotencyKey, requestHash(memberId, phone, expectedContactVersion));
@@ -116,6 +110,13 @@ public class VerificationIssueService {
       throw new BusinessException(ErrorCode.valueOf(failed.completionCode()), "요청을 처리하지 못했습니다.");
     }
     CommandStart.Started started = (CommandStart.Started) start;
+    Instant now = clock.instant();
+    if (reauthenticatedAt == null
+        || reauthenticatedAt.isAfter(now)
+        || now.isAfter(reauthenticatedAt.plus(REAUTH_WINDOW))) {
+      operations.markRetryable(started, ErrorCode.REAUTH_REQUIRED.name());
+      throw new BusinessException(ErrorCode.REAUTH_REQUIRED, "다시 인증해 주세요.");
+    }
 
     Prepared prepared;
     try {
