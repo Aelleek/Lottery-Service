@@ -158,6 +158,44 @@ class ImportCommandServiceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("가져오기 job이 DEAD로 끝난 뒤 다시 시작하면 같은 job을 처음부터 다시 실행한다")
+  void restartAfterDeadJob() {
+    String token =
+        codec.issue(member.subjectPublicId(), ImportCommandService.OPERATION, null, null);
+    imports.start(
+        member.subjectId(), member.subjectPublicId(), token, UUID.randomUUID(), claimPublicId);
+    jdbc.update(
+        "UPDATE job SET state = 'DEAD', attempt_count = 5, last_error_code = 'X',"
+            + " cursor_json = '{\"lastSourceId\":9}', finished_at = NOW(6)"
+            + " WHERE job_type = 'HISTORY_IMPORT'");
+
+    UUID retry =
+        imports.start(
+            member.subjectId(), member.subjectPublicId(), token, UUID.randomUUID(), claimPublicId);
+
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT state, attempt_count, last_error_code, cursor_json, finished_at FROM job"
+                    + " WHERE job_type = 'HISTORY_IMPORT'"))
+        .containsEntry("state", "READY")
+        .containsEntry("attempt_count", 0)
+        .containsEntry("last_error_code", null)
+        .containsEntry("cursor_json", null)
+        .containsEntry("finished_at", null);
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM job", Long.class)).isEqualTo(1);
+    OperationQuery query = new OperationQuery(jdbc, List.of(imports));
+    assertThatThrownBy(() -> query.find(member.subjectId(), retry))
+        .isInstanceOf(CommandInProgressException.class);
+
+    new JobRunner(jobs, List.of(handler), tm, clock).runOnce();
+    OperationQuery.Outcome done = query.find(member.subjectId(), retry);
+    assertThat(
+            ((ImportCommandService.ImportResult) ((OperationQuery.Outcome.Done) done).data())
+                .outcome())
+        .isEqualTo("COMPLETE");
+  }
+
+  @Test
   @DisplayName("다른 회원의 귀속이나 없는 귀속은 NOT_FOUND이고 job을 만들지 않는다")
   void otherClaimNotFound() {
     MemberLogin other = new AccountStore(jdbc, tm, clock).login(OAuthProvider.KAKAO, "other");

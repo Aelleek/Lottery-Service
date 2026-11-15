@@ -8,6 +8,7 @@ import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
 import com.lottery.lottery_service.common.job.JobStore;
 import java.time.Clock;
+import java.time.Instant;
 import org.springframework.stereotype.Component;
 
 /**
@@ -36,16 +37,16 @@ public class HistoryImportJobHandler implements JobHandler {
   }
 
   /**
-   * 가져오기를 시작한다. 같은 귀속의 job은 한 번만 등록된다. 요청한 회원 주체를 함께 남겨 실행 때 귀속의 당사자인지 다시 본다.
+   * 가져오기를 시작한다. 같은 귀속의 job은 한 번만 등록되고, 그 job이 실패(DEAD)로 끝났으면 다시 실행한다. 요청한 회원 주체를 함께 남겨 실행 때 귀속의
+   * 당사자인지 다시 본다.
    *
-   * @return 새로 등록했으면 {@code true}
+   * @return 새로 등록했거나 다시 실행하게 했으면 {@code true}
    */
   public boolean start(long memberSubjectId, long claimId) {
-    return jobs.enqueue(
-        JOB,
-        "claim:" + claimId,
-        "{\"claimId\":" + claimId + ",\"memberSubjectId\":" + memberSubjectId + "}",
-        clock.instant());
+    String key = "claim:" + claimId;
+    String payload = "{\"claimId\":" + claimId + ",\"memberSubjectId\":" + memberSubjectId + "}";
+    Instant now = clock.instant();
+    return jobs.enqueue(JOB, key, payload, now) || jobs.restartDead(JOB, key, payload, now);
   }
 
   @Override

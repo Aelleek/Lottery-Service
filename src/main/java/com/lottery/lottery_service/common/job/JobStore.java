@@ -75,6 +75,25 @@ public class JobStore {
   }
 
   /**
+   * DEAD로 끝난 job을 처음 상태로 되돌려 다시 실행하게 한다. 진행 위치와 시도 횟수를 지우고 payload를 바꾼다.
+   *
+   * @return 되돌렸으면 {@code true}. 그 job이 없거나 DEAD가 아니면 {@code false}
+   */
+  public boolean restartDead(
+      String type, String dedupeKey, String payloadJson, Instant availableAt) {
+    return jdbc.update(
+            "UPDATE job SET state = 'READY', payload = ?, cursor_json = NULL, available_at = ?,"
+                + " attempt_count = 0, cancel_requested = FALSE, last_error_code = NULL,"
+                + " finished_at = NULL, lease_token = NULL, lease_until = NULL"
+                + " WHERE job_type = ? AND dedupe_key = ? AND state = 'DEAD'",
+            payloadJson,
+            utc(availableAt),
+            type,
+            dedupeKey.getBytes(StandardCharsets.UTF_8))
+        == 1;
+  }
+
+  /**
    * 처리할 때가 된 job 하나를 가져가 RUNNING으로 바꾸고 새 lease를 준다. 다른 worker가 잠근 행은 건너뛴다.
    *
    * @return 가져간 job. 처리할 job이 없으면 빈 값
