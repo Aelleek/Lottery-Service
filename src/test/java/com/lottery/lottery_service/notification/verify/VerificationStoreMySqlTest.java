@@ -145,6 +145,18 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("재발급 60초 간격은 서울 자정을 넘어도 이어진다")
+  void resendGapCrossesMidnight() {
+    clock.set(Instant.parse("2026-11-08T14:59:30Z"));
+    issue(member);
+
+    clock.set(Instant.parse("2026-11-08T15:00:10Z"));
+    assertLimited(() -> issue(member), Instant.parse("2026-11-08T15:00:30Z"));
+    clock.set(Instant.parse("2026-11-08T15:00:30Z"));
+    assertThat(issue(member)).isNotNull();
+  }
+
+  @Test
   @DisplayName("인증 전에는 동의할 수 없고, 인증 뒤 동의하면 수신이 켜지며, 철회하거나 번호를 다시 인증하면 꺼진다")
   void consent() {
     ConsentStore consents = new ConsentStore(jdbc, clock);

@@ -212,6 +212,18 @@ public class VerificationStore {
     if (count >= DAILY_LIMIT) {
       throw limited(SeoulTime.startOfDay(day.plusDays(1)));
     }
+    for (LocalDateTime previous :
+        jdbc.queryForList(
+            "SELECT next_send_at FROM verification_rate_bucket WHERE scope_type = ?"
+                + " AND scope_hmac = ? AND business_date = ?",
+            LocalDateTime.class,
+            scope,
+            scopeHmac,
+            day.minusDays(1))) {
+      if (instant(previous).isAfter(nextAt)) {
+        nextAt = instant(previous);
+      }
+    }
     if (now.isBefore(nextAt)) {
       throw limited(nextAt);
     }
