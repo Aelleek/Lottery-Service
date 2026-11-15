@@ -102,6 +102,18 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
         .isEqualTo(admin);
     assertThat(audits("ADMIN_GRANT", "SUCCEEDED")).isEqualTo(2);
     assertThat(audits("ADMIN_REVOKE", "SUCCEEDED")).isEqualTo(1);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT CONCAT(action, '|', target_key, '|', COALESCE(JSON_UNQUOTE("
+                    + "JSON_EXTRACT(before_json, '$.role')), '-')) FROM admin_audit_event"
+                    + " WHERE action IN ('ADMIN_GRANT', 'ADMIN_REVOKE') AND target_key <> ?"
+                    + " ORDER BY id",
+                String.class,
+                "x"))
+        .endsWith(
+            "ADMIN_GRANT|" + target + "|-",
+            "ADMIN_REVOKE|" + target + "|OPERATOR",
+            "ADMIN_GRANT|" + target + "|-");
     List<String> alerts =
         jdbc.queryForList(
             "SELECT payload FROM job WHERE job_type = 'OPERATOR_ALERT'"

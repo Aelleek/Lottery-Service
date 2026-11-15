@@ -63,8 +63,9 @@ public class AdminGrants {
     tx.executeWithoutResult(
         status -> {
           long target = activeMember(memberPublicId);
+          String before = currentRole(target);
           upsertGrant(target, role, null);
-          audit.record(event(target, "ADMIN_GRANT_BY_COMMAND", target, reason, role));
+          audit.record(event(target, "ADMIN_GRANT_BY_COMMAND", target, reason, role, before));
           alert("ADMIN_GRANT_BY_COMMAND", role);
         });
   }
@@ -93,8 +94,9 @@ public class AdminGrants {
     tx.executeWithoutResult(
         status -> {
           long target = activeMember(memberPublicId);
+          String before = currentRole(target);
           apply.accept(target);
-          audit.record(event(target, action, target, reason, null));
+          audit.record(event(target, action, target, reason, null, before));
           alert(action, null);
         });
   }
@@ -145,8 +147,9 @@ public class AdminGrants {
             if (notSelf && target == actor) {
               throw new BusinessException(ErrorCode.FORBIDDEN, "자기 자신에게는 할 수 없습니다.");
             }
+            String before = currentRole(target);
             apply.accept(target);
-            audit.record(event(actor, action, target, reason, role));
+            audit.record(event(actor, action, target, reason, role, before));
             alert(action, role);
           });
     } catch (BusinessException e) {
@@ -229,17 +232,28 @@ public class AdminGrants {
     return found.get(0);
   }
 
+  /** 감사 기록. 대상 키는 거절 기록과 같은 회원 공개 ID이고, 바꾸기 전 역할(회수됐으면 null)을 남긴다. */
   private AdminAuditEvent event(
-      long actor, String action, long target, String reason, AdminRole role) {
+      long actor, String action, long target, String reason, AdminRole role, String before) {
     String after = role == null ? null : "{\"role\":\"" + role.name() + "\"}";
     return new AdminAuditEvent(
         actor,
         action,
         TARGET,
-        Long.toString(target),
+        jdbc.queryForObject(
+            "SELECT BIN_TO_UUID(public_id) FROM member WHERE id = ?", String.class, target),
         reason,
-        null,
+        before,
         after,
         AdminAuditOutcome.SUCCEEDED);
+  }
+
+  private String currentRole(long target) {
+    List<String> roles =
+        jdbc.queryForList(
+            "SELECT role FROM admin_grant WHERE member_id = ? AND revoked_at IS NULL",
+            String.class,
+            target);
+    return roles.isEmpty() ? null : "{\"role\":\"" + roles.get(0) + "\"}";
   }
 }
