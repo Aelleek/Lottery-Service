@@ -172,6 +172,31 @@ class EvaluationJobMySqlTest extends MySqlContainerSupport {
     assertThat(reconciler.enqueueMissing(100)).isEqualTo(1);
   }
 
+  @Test
+  @DisplayName("미평가 대조는 이전 게시본 때 같은 기록·버전의 job이 남아 있어도 새 게시본의 판정 job을 등록한다")
+  void reconcileAfterNewPublication() {
+    publish();
+    jdbc.update("DELETE FROM job");
+    EvaluationReconciler reconciler = new EvaluationReconciler(jdbc, jobs, clock);
+    int records = reconciler.enqueueMissing(100);
+    jdbc.update(
+        "INSERT INTO draw_result (public_id, round_no, revision, numbers_key, bonus_number,"
+            + " semantic_hash, source_hash, state, fetched_at, published_at) VALUES"
+            + " (UUID_TO_BIN(UUID()), ?, 2, '01 02 03 04 05 07', 10, ?, ?, 'VERIFIED', NOW(6),"
+            + " NOW(6))",
+        ROUND,
+        new byte[] {1},
+        new byte[] {1});
+    jdbc.update(
+        "UPDATE lotto_round SET published_result_id = (SELECT id FROM draw_result WHERE"
+            + " round_no = ? AND revision = 2) WHERE round_no = ?",
+        ROUND,
+        ROUND);
+
+    assertThat(records).isPositive();
+    assertThat(reconciler.enqueueMissing(100)).isEqualTo(records);
+  }
+
   private void publish() {
     publisher.receive(
         new OfficialDraw(

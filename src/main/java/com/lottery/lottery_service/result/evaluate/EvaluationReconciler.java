@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 판정이 빠진 기록을 찾아 판정 job을 등록한다(07 1절 미평가 대조, 05 7절 4번). 결과가 게시된 최근 35일 회차에서, 현재 게시본과 현재 기록 버전의 판정이 없는
- * 기록이 대상이다. 같은 기록·버전의 job은 한 번만 등록된다.
+ * 기록이 대상이다. 같은 기록·버전·게시본의 job은 한 번만 등록된다.
  */
 @Component
 public class EvaluationReconciler {
@@ -43,7 +43,7 @@ public class EvaluationReconciler {
     Instant now = clock.instant();
     List<Map<String, Object>> missing =
         jdbc.queryForList(
-            "SELECT l.id, l.version FROM lotto_record l JOIN lotto_round r ON r.round_no = l.round_no"
+            "SELECT l.id, l.version, r.published_result_id FROM lotto_record l JOIN lotto_round r ON r.round_no = l.round_no"
                 + " WHERE r.published_result_id IS NOT NULL AND r.draw_at >= ? AND l.deleted_at IS NULL"
                 + " AND NOT EXISTS (SELECT 1 FROM winning_evaluation e WHERE e.record_id = l.id"
                 + " AND e.result_id = r.published_result_id AND e.record_version = l.version)"
@@ -54,9 +54,10 @@ public class EvaluationReconciler {
     for (Map<String, Object> row : missing) {
       long id = ((Number) row.get("id")).longValue();
       long version = ((Number) row.get("version")).longValue();
+      long resultId = ((Number) row.get("published_result_id")).longValue();
       if (jobs.enqueue(
           PurchaseStore.EVALUATE_RECORD_JOB,
-          "record:" + id + ":v" + version,
+          "record:" + id + ":v" + version + ":r" + resultId,
           "{\"recordId\":" + id + "}",
           now)) {
         created++;
