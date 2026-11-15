@@ -1,11 +1,14 @@
 package com.lottery.lottery_service.notification;
 
+import static com.lottery.lottery_service.common.db.DbValues.utc;
+
 import com.lottery.lottery_service.common.db.RetryingTransactionTemplate;
 import com.lottery.lottery_service.common.error.ExceptionLogs;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.result.query.ResultState;
 import com.lottery.lottery_service.result.query.RoundResultQuery;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -59,7 +62,7 @@ public class ResultSlotRunner {
    * 늘리고, lease를 잃었으면 예외로 발송을 멈춘다.
    */
   public SlotResult run(int roundNo, ResultSlot slot, Runnable beforeEach) {
-    SlotResult result = execute(roundNo, beforeEach);
+    SlotResult result = execute(roundNo, slot.at(), beforeEach);
     if (!result.success()) {
       tx.executeWithoutResult(
           status -> {
@@ -96,7 +99,7 @@ public class ResultSlotRunner {
     return result;
   }
 
-  private SlotResult execute(int roundNo, Runnable beforeEach) {
+  private SlotResult execute(int roundNo, Instant slotAt, Runnable beforeEach) {
     Long published =
         jdbc.queryForObject(
             "SELECT published_result_id FROM lotto_round WHERE round_no = ?", Long.class, roundNo);
@@ -176,6 +179,7 @@ public class ResultSlotRunner {
     if (publicationChanged) {
       return new SlotResult(false, "EVALUATION_PENDING", failed, unknown, sent);
     }
+    failed = Math.max(failed, failedSince(roundNo, slotAt));
     if (failed == 0) {
       return new SlotResult(true, null, 0, unknown, sent);
     }
@@ -187,6 +191,19 @@ public class ResultSlotRunner {
         sent,
         budgetBlocked,
         providerFailed);
+  }
+
+  /**
+   * 이 슬롯 시각 뒤에 시도했는데 받지 못한 메시지 수. 같은 슬롯 job이 일부 실패 뒤 서버가 죽어 다시 돌면, 이미 실패한 메시지는 다시 보낼 대상이 아니라 이번 실행의
+   * 셈에 들어가지 않는다. 그래도 슬롯 실패와 알림이 빠지지 않게 메시지 상태로 다시 센다.
+   */
+  private int failedSince(int roundNo, Instant slotAt) {
+    return jdbc.queryForObject(
+        "SELECT COUNT(*) FROM delivery_message WHERE round_no = ? AND purpose = 'RESULT'"
+            + " AND state IN ('FAILED','UNKNOWN','RETRY_WAIT') AND last_attempt_at >= ?",
+        Integer.class,
+        roundNo,
+        utc(slotAt));
   }
 
   private static String cause(int budgetBlocked, int providerFailed, int sent) {

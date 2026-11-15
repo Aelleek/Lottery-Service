@@ -1591,6 +1591,35 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     }
   }
 
+  @Test
+  @DisplayName("일부 실패 뒤 같은 슬롯이 다시 돌아도 그 슬롯에서 받지 못한 메시지를 세어 실패와 운영자 알림을 남긴다")
+  void rerunSlotKeepsEarlierFailure() {
+    long first = jdbc.queryForObject("SELECT published_result_id FROM lotto_round", Long.class);
+    tx.execute(s -> new EvaluationStore(jdbc).evaluateBatch(first, 0, 100));
+    clock.set(Instant.parse("2026-11-14T12:30:00Z"));
+    ResultSlot slot = new ResultSlot(clock.instant(), true, false);
+    long rejected = -1;
+    tx.execute(s -> store.createMissing(ROUND));
+    rejected = message(fourthMember);
+    long target = rejected;
+    runner(
+            id ->
+                id == target ? new SendOutcome.Rejected("E") : new SendOutcome.NotAccepted("later"))
+        .run(ROUND, slot);
+    jdbc.update("DELETE FROM job WHERE job_type = 'OPERATOR_ALERT'");
+    clock.set(clock.instant().plusSeconds(120));
+
+    SlotResult again = runner(id -> new SendOutcome.Accepted("M-" + id)).run(ROUND, slot);
+
+    assertThat(state(fourthMember)).isEqualTo("FAILED");
+    assertThat(again.success()).isFalse();
+    assertThat(again.failed()).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM job WHERE job_type = 'OPERATOR_ALERT'", Long.class))
+        .isEqualTo(1);
+  }
+
   private ResultSlotRunner runner(MessageSender sender) {
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
     return new ResultSlotRunner(
