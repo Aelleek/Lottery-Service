@@ -11,6 +11,13 @@ spring:
   flyway:
     enabled: true
 
+  # 시각은 UTC로 저장하고 SQL NOW(6)도 UTC여야 한다(04 1절). DB 서버 시간대와 상관없이 연결마다 맞춘다.
+  # 격리 수준은 READ COMMITTED를 기준으로 한다(04 4절).
+  datasource:
+    hikari:
+      connection-init-sql: "SET time_zone = '+00:00'"
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+
   security:
     oauth2:
       client:

@@ -4,9 +4,6 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: ${lottery.db.username}
     password: ${lottery.db.password}
-    # 격리 수준은 READ COMMITTED를 기준으로 한다(04 4절)
-    hikari:
-      transaction-isolation: TRANSACTION_READ_COMMITTED
 
 
 # 로컬 http에서 쿠키가 붙도록 local 프로필에서만 secure를 끈다.

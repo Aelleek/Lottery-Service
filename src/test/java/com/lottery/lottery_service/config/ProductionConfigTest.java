@@ -39,6 +39,20 @@ class ProductionConfigTest {
   }
 
   @Test
+  @DisplayName("모든 프로필에서 DB 연결은 세션 시간대를 UTC로, 격리 수준을 READ COMMITTED로 둔다")
+  void datasourceSessionIsUtcReadCommitted() throws IOException {
+    PropertySource<?> main = load("src/main/resources/application.yml");
+    PropertySource<?> local = load("src/main/resources/application-local.yml");
+
+    assertThat(main.getProperty("spring.datasource.hikari.connection-init-sql"))
+        .isEqualTo("SET time_zone = '+00:00'");
+    assertThat(main.getProperty("spring.datasource.hikari.transaction-isolation"))
+        .isEqualTo("TRANSACTION_READ_COMMITTED");
+    assertThat(local.getProperty("spring.datasource.hikari.connection-init-sql")).isNull();
+    assertThat(local.getProperty("spring.datasource.hikari.transaction-isolation")).isNull();
+  }
+
+  @Test
   @DisplayName("Secure를 끄는 것은 local 프로필뿐이고 접두어 없는 쿠키 이름을 쓴다")
   void onlyLocalDisablesSecure() throws IOException {
     PropertySource<?> local = load("src/main/resources/application-local.yml");
