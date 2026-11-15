@@ -195,9 +195,30 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
     assertThat(sender.codes).hasSize(1);
 
-    mine.verify(challenge, sender.codes.get(0))
+    JsonNode polled =
+        body(
+            mine.poll(issued.path("operationId").asText())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data.challengeId").value(challenge.toString()))
+                .andReturn());
+    Instant polledExpires = Instant.parse(polled.path("data").path("expiresAt").asText());
+    assertThat(Duration.between(expiresAt, polledExpires).abs()).isLessThan(Duration.ofMillis(1));
+    assertThat(Instant.parse(polled.path("data").path("resendAt").asText()))
+        .isEqualTo(polledExpires.minus(Duration.ofMinutes(4)));
+
+    JsonNode verified =
+        body(
+            mine.verify(challenge, sender.codes.get(0))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.verifiedContactVersion").value("0"))
+                .andReturn());
+    mine.poll(verified.path("operationId").asText())
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.verifiedContactVersion").value("0"));
+    client("someone-else")
+        .poll(verified.path("operationId").asText())
+        .andExpect(status().isNotFound());
   }
 
   @Test
@@ -392,6 +413,13 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
                       + "\",\"expectedContactVersion\":\""
                       + version
                       + "\"}"));
+    }
+
+    ResultActions poll(String operationId) throws Exception {
+      return mvc.perform(
+          get("/api/v1/operations/" + operationId)
+              .cookie(session)
+              .with(oauth2Login().oauth2User(member)));
     }
 
     ResultActions verify(UUID challenge, String code) throws Exception {

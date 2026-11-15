@@ -59,7 +59,7 @@ public class OperationQuery {
       default -> {
         CommandResultLoader loader = loaders.get((String) row.get("operation"));
         if (loader == null) {
-          throw new IllegalStateException("no result loader: " + row.get("operation"));
+          throw new BusinessException(ErrorCode.NOT_FOUND, "요청한 내용을 찾을 수 없습니다.");
         }
         yield new Outcome.Done(
             operationPublicId,

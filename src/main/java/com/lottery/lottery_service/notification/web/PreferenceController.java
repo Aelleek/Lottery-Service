@@ -109,6 +109,11 @@ public class PreferenceController {
   }
 
   private Preference load(long memberId) {
+    return load(jdbc, cipher, memberId);
+  }
+
+  /** 회원의 지금 알림 설정을 읽는다. 번호는 가린 값만 준다. */
+  static Preference load(JdbcTemplate jdbc, ContactCipher cipher, long memberId) {
     List<Map<String, Object>> rows =
         jdbc.queryForList(
             "SELECT c.address_ciphertext, c.verified_at, c.version, c.notify_enabled,"

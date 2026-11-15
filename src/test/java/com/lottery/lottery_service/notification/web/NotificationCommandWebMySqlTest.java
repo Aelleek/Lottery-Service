@@ -98,6 +98,13 @@ class NotificationCommandWebMySqlTest extends MySqlContainerSupport {
     JsonNode replay =
         body(mine.change(true, version, key, token).andExpect(status().isOk()).andReturn());
     assertThat(replay.path("operationId").asText()).isEqualTo(granted.path("operationId").asText());
+    mvc.perform(
+            get("/api/v1/operations/" + granted.path("operationId").asText())
+                .with(oauth2Login().oauth2User(member)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("SUCCEEDED"))
+        .andExpect(jsonPath("$.data.enabled").value(true))
+        .andExpect(jsonPath("$.data.maskedPhoneNumber").value("010-****-5678"));
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM consent_event WHERE member_id = ?",
