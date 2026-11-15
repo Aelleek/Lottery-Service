@@ -144,6 +144,37 @@ class ImportCommandServiceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("마감 뒤 회차 목록은 만든 기록마다 만든 시각으로 판단해, 마지막 묶음이 마감 뒤에 끝나도 마감 전에 만든 기록의 회차는 넣지 않는다")
+  void lateRoundsUseCreatedTime() {
+    jdbc.update("DELETE FROM lotto_record WHERE owner_subject_id = ?", member.subjectId());
+    String token =
+        codec.issue(member.subjectPublicId(), ImportCommandService.OPERATION, null, null);
+    UUID operation =
+        imports.start(
+            member.subjectId(), member.subjectPublicId(), token, UUID.randomUUID(), claimPublicId);
+    new JobRunner(jobs, List.of(handler), tm, clock).runOnce();
+    jdbc.update("UPDATE subject_claim SET imported_at = NOW(6) + INTERVAL 2 HOUR");
+    jdbc.update(
+        "UPDATE lotto_round SET sales_close_at = NOW(6) + INTERVAL 1 HOUR, cutoff_close_at = NULL"
+            + " WHERE round_no = ?",
+        OPEN);
+    OperationQuery query = new OperationQuery(jdbc, List.of(imports));
+
+    assertThat(late(query, operation)).isEmpty();
+
+    jdbc.update(
+        "UPDATE lotto_round SET sales_close_at = NOW(6) - INTERVAL 1 HOUR WHERE round_no = ?",
+        OPEN);
+    assertThat(late(query, operation)).containsExactly(OPEN);
+  }
+
+  private List<Integer> late(OperationQuery query, UUID operation) {
+    return ((ImportCommandService.ImportResult)
+            ((OperationQuery.Outcome.Done) query.find(member.subjectId(), operation)).data())
+        .lateImportRounds();
+  }
+
+  @Test
   @DisplayName("가져오기 job이 DEAD로 끝나면 결과는 FAILED다")
   void deadJobIsFailed() {
     String token =
