@@ -20,6 +20,11 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -115,6 +120,77 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
         .isZero();
     assertThat(jdbc.queryForObject("SELECT value_count FROM usage_aggregate", Long.class))
         .isEqualTo(5);
+  }
+
+  @Test
+  @DisplayName("다른 트랜잭션이 회차에 정리 보류를 거는 중이면 그 커밋을 기다린 뒤 보류를 보고 지우지 않는다")
+  void waitsForHoldInProgress() throws Exception {
+    long losing = record(member, LOSING, false);
+    publishAndEvaluate();
+    CountDownLatch held = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    try {
+      Future<?> holder =
+          pool.submit(
+              () ->
+                  tx.executeWithoutResult(
+                      s -> {
+                        jdbc.update(
+                            "UPDATE lotto_round SET cleanup_held = TRUE WHERE round_no = ?", ROUND);
+                        held.countDown();
+                        await(release);
+                      }));
+      held.await(5, TimeUnit.SECONDS);
+      Future<Integer> cleanup = pool.submit(() -> cleanup(AFTER_RETENTION));
+      Thread.sleep(300);
+      assertThat(cleanup.isDone()).isFalse();
+      release.countDown();
+      holder.get(5, TimeUnit.SECONDS);
+
+      assertThat(cleanup.get(5, TimeUnit.SECONDS)).isZero();
+      assertThat(exists(losing)).isTrue();
+    } finally {
+      release.countDown();
+      pool.shutdownNow();
+    }
+  }
+
+  @Test
+  @DisplayName("정리는 주체 행을 잠그지 않아, 주체를 잠근 가져오기·구매 트랜잭션과 엇갈려 멈추지 않는다")
+  void doesNotLockSubjects() throws Exception {
+    long guestRecord = record(guest, LOSING, false);
+    publishAndEvaluate();
+    CountDownLatch held = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    try {
+      pool.submit(
+          () ->
+              tx.executeWithoutResult(
+                  s -> {
+                    jdbc.queryForList(
+                        "SELECT id FROM actor_subject WHERE id = ? FOR UPDATE", guest);
+                    held.countDown();
+                    await(release);
+                  }));
+      held.await(5, TimeUnit.SECONDS);
+      Future<Integer> cleanup = pool.submit(() -> cleanup(AFTER_RETENTION));
+
+      assertThat(cleanup.get(5, TimeUnit.SECONDS)).isEqualTo(1);
+      assertThat(exists(guestRecord)).isFalse();
+    } finally {
+      release.countDown();
+      pool.shutdownNow();
+    }
+  }
+
+  private static void await(CountDownLatch latch) {
+    try {
+      latch.await(10, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   @Test

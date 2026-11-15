@@ -4,6 +4,7 @@ import static com.lottery.lottery_service.common.db.DbValues.utc;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,7 +40,7 @@ public class RecordRetentionCleaner {
   }
 
   /**
-   * 한 회차에서 정리할 기록을 묶음 하나만큼 지운다.
+   * 한 회차에서 정리할 기록을 묶음 하나만큼 지운다. 회차를 공유 잠금으로 잡은 뒤 정리 조건을 보고, 기록 행만 잠근다(주체 행은 잠그지 않는다).
    *
    * @return 지운 기록 수
    */
@@ -50,7 +51,7 @@ public class RecordRetentionCleaner {
                 + " AND r.notification_plan_closed_at IS NOT NULL AND r.draw_at <= ?"
                 + " AND EXISTS (SELECT 1 FROM usage_aggregate a WHERE a.period_type = 'ROUND'"
                 + " AND a.period_key = CAST(r.round_no AS CHAR) AND a.state = 'VERIFIED')"
-                + " FROM lotto_round r WHERE r.round_no = ?",
+                + " FROM lotto_round r WHERE r.round_no = ? FOR SHARE OF r",
             Boolean.class,
             utc(clock.instant().minus(RETENTION)),
             roundNo);
@@ -66,7 +67,7 @@ public class RecordRetentionCleaner {
                 + " WHERE l.round_no = ? AND (l.correction_protected_until IS NULL"
                 + " OR l.correction_protected_until <= ?)"
                 + " AND (s.kind = 'GUEST' OR (l.purchased = FALSE AND e.rank_no IS NULL))"
-                + " ORDER BY l.id LIMIT ? FOR UPDATE",
+                + " ORDER BY l.id LIMIT ? FOR UPDATE OF l",
             Long.class,
             roundNo,
             utc(clock.instant()),
@@ -81,21 +82,49 @@ public class RecordRetentionCleaner {
    * @return 지운 기록 수
    */
   public int deleteHiddenRecords(int limit) {
-    List<Long> ids =
+    String eligible =
+        " AND NOT EXISTS (SELECT 1 FROM command_operation c"
+            + " WHERE c.resource_public_id = l.public_id AND c.marker_expires_at > ?)"
+            + " AND NOT EXISTS (SELECT 1 FROM history_import_item h"
+            + " JOIN lotto_record src ON src.id = h.source_record_id"
+            + " WHERE h.target_record_id = l.id)";
+    Instant now = clock.instant();
+    List<Integer> rounds =
         jdbc.queryForList(
-            "SELECT l.id FROM lotto_record l JOIN lotto_round r ON r.round_no = l.round_no"
-                + " WHERE l.deleted_at IS NOT NULL AND r.notification_plan_closed_at IS NOT NULL"
-                + " AND r.cleanup_held = FALSE"
-                + " AND NOT EXISTS (SELECT 1 FROM command_operation c"
-                + " WHERE c.resource_public_id = l.public_id AND c.marker_expires_at > ?)"
-                + " AND NOT EXISTS (SELECT 1 FROM history_import_item h"
-                + " JOIN lotto_record src ON src.id = h.source_record_id"
-                + " WHERE h.target_record_id = l.id)"
-                + " ORDER BY l.id LIMIT ? FOR UPDATE",
-            Long.class,
-            utc(clock.instant()),
-            limit);
-    return delete(ids);
+            "SELECT DISTINCT l.round_no FROM lotto_record l JOIN lotto_round r"
+                + " ON r.round_no = l.round_no WHERE l.deleted_at IS NOT NULL"
+                + " AND r.notification_plan_closed_at IS NOT NULL AND r.cleanup_held = FALSE"
+                + eligible
+                + " ORDER BY l.round_no",
+            Integer.class,
+            utc(now));
+    int deleted = 0;
+    for (int roundNo : rounds) {
+      if (deleted >= limit) {
+        break;
+      }
+      Boolean open =
+          jdbc.queryForObject(
+              "SELECT notification_plan_closed_at IS NOT NULL AND cleanup_held = FALSE"
+                  + " FROM lotto_round WHERE round_no = ? FOR SHARE",
+              Boolean.class,
+              roundNo);
+      if (!Boolean.TRUE.equals(open)) {
+        continue;
+      }
+      deleted +=
+          delete(
+              jdbc.queryForList(
+                  "SELECT l.id FROM lotto_record l WHERE l.round_no = ?"
+                      + " AND l.deleted_at IS NOT NULL"
+                      + eligible
+                      + " ORDER BY l.id LIMIT ? FOR UPDATE OF l",
+                  Long.class,
+                  roundNo,
+                  utc(now),
+                  limit - deleted));
+    }
+    return deleted;
   }
 
   private int delete(List<Long> ids) {

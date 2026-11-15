@@ -165,7 +165,8 @@ public class HousekeepingCleaner {
     Instant now = clock.instant();
     Boolean closed =
         jdbc.queryForObject(
-            "SELECT sales_close_at <= ? AND cleanup_held = FALSE FROM lotto_round WHERE round_no = ?",
+            "SELECT sales_close_at <= ? AND cleanup_held = FALSE FROM lotto_round WHERE round_no = ?"
+                + " FOR SHARE",
             Boolean.class,
             utc(now),
             roundNo);
