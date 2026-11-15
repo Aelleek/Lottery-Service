@@ -81,8 +81,10 @@ public class ResultCollectJobHandler implements JobHandler {
       String code = parsed instanceof ParsedDraw.NotAnnounced ? NOT_ANNOUNCED : FETCH_ERROR;
       tx.executeWithoutResult(
           status -> {
-            jdbc.update("UPDATE job SET last_error_code = ? WHERE id = ?", code, lease.id());
-            schedule(roundNo, drawAt, next);
+            jobs.saveResult(lease, code, null);
+            if (!hasWaitingAttempt(roundNo, lease.id())) {
+              schedule(roundNo, drawAt, next);
+            }
           });
     }
     return new JobStep.Done();
@@ -94,6 +96,21 @@ public class ResultCollectJobHandler implements JobHandler {
         dedupePrefix(roundNo) + at,
         "{\"roundNo\":" + roundNo + ",\"drawAt\":\"" + drawAt + "\"}",
         at);
+  }
+
+  /**
+   * 이 회차에 이 job 말고 기다리는 수집 job이 있는지 본다. 다음 시도를 등록한 뒤 끝내기 전에 서버가 죽어 이 job이 다시 돌 때, 다른 시각의 다음 시도를 또
+   * 등록해 수집 사슬이 둘이 되지 않게 한다.
+   */
+  private boolean hasWaitingAttempt(int roundNo, long selfId) {
+    return Boolean.TRUE.equals(
+        jdbc.queryForObject(
+            "SELECT EXISTS (SELECT 1 FROM job WHERE job_type = ? AND id <> ?"
+                + " AND state IN ('READY','RETRY_WAIT') AND JSON_EXTRACT(payload, '$.roundNo') = ?)",
+            Boolean.class,
+            JOB,
+            selfId,
+            roundNo));
   }
 
   /** 회차의 수집 job 중복 키 앞부분. 뒤에 시도 시각이 붙는다. */

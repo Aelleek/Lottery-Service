@@ -270,6 +270,29 @@ class JobStoreMySqlTest extends MySqlContainerSupport {
     assertThat(store.restartDead("EVALUATE", "missing", "{}", later)).isFalse();
   }
 
+  @Test
+  @DisplayName("처리기가 lease를 잃은 뒤 실패하면 실행기는 실패를 남기지 못해도 예외 없이 끝나고 job은 회수를 기다린다")
+  void failureAfterLeaseLossDoesNotEscape() {
+    store.enqueue("EVALUATE", "round:1200", "{}", T0);
+    JobHandler slow =
+        new JobHandler() {
+          @Override
+          public String type() {
+            return "EVALUATE";
+          }
+
+          @Override
+          public JobStep step(JobLease lease, String cursorJson) {
+            clock.set(T0.plus(LEASE).plusSeconds(1));
+            throw new IllegalStateException("boom");
+          }
+        };
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+
+    assertThat(new JobRunner(store, List.of(slow), tm, clock).runOnce()).isEmpty();
+    assertThat(count("job_type = 'EVALUATE' AND state = 'RUNNING'")).isEqualTo(1);
+  }
+
   private void failUntilDead(Instant start) {
     Instant now = start;
     for (int i = 1; i <= 5; i++) {

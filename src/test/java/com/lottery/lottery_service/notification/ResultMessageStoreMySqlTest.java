@@ -9,6 +9,7 @@ import com.lottery.lottery_service.admin.AdminRole;
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobProperties;
 import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobState;
@@ -1226,6 +1227,41 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
                 "SELECT COUNT(*) FROM job WHERE job_type = 'RESULT_COLLECT' AND state = 'READY'"
                     + " AND available_at = '2026-11-14 11:50:00'",
                 Long.class))
+        .isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("다음 시도를 등록한 뒤 끝내지 못한 수집 job이 다른 시각에 다시 돌아도 다음 시도는 하나뿐이다")
+  void collectRerunKeepsOneChain() {
+    jdbc.update("DELETE FROM job");
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    JobStore jobs = new JobStore(jdbc, tm, clock, new JobProperties(null, null));
+    Instant drawAt = Instant.parse("2026-11-14T11:35:00Z");
+    clock.set(drawAt.plusSeconds(600));
+    jdbc.update("UPDATE lotto_round SET published_result_id = NULL");
+    ResultCollectJobHandler handler =
+        new ResultCollectJobHandler(
+            new ResultCollector(r -> new ParsedDraw.NotAnnounced(), null), jobs, jdbc, tm, clock);
+    handler.plan(ROUND, drawAt);
+    JobLease first = jobs.claim(List.of(ResultCollectJobHandler.JOB)).orElseThrow();
+    handler.step(first, null);
+
+    clock.set(clock.instant().plus(Duration.ofMinutes(6)));
+    jobs.recoverExpired();
+    jdbc.update(
+        "UPDATE job SET available_at = ? WHERE id = ?",
+        java.time.LocalDateTime.ofInstant(drawAt, java.time.ZoneOffset.UTC),
+        first.id());
+    JobLease again = jobs.claim(List.of(ResultCollectJobHandler.JOB)).orElseThrow();
+    assertThat(again.id()).isEqualTo(first.id());
+    handler.step(again, null);
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM job WHERE job_type = 'RESULT_COLLECT'"
+                    + " AND state IN ('READY','RETRY_WAIT') AND id <> ?",
+                Long.class,
+                first.id()))
         .isEqualTo(1);
   }
 

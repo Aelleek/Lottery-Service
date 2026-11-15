@@ -79,8 +79,13 @@ public class JobRunner {
       return Optional.empty();
     } catch (RuntimeException e) {
       ExceptionLogs.warn(log, "job failed id={} type={}", e, lease.id(), lease.type());
-      return Optional.of(
-          jobs.fail(lease, e.getClass().getSimpleName(), clock.instant().plus(RETRY_DELAY)));
+      try {
+        return Optional.of(
+            jobs.fail(lease, e.getClass().getSimpleName(), clock.instant().plus(RETRY_DELAY)));
+      } catch (LeaseLostException lost) {
+        log.warn("job lease lost before recording failure id={}", lease.id());
+        return Optional.empty();
+      }
     }
   }
 
