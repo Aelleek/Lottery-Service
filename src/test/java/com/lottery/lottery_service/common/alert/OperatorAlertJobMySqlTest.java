@@ -136,6 +136,14 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
                             "{\"kind\":\"SLOT_FAILED\",\"roundNo\":1200,\"targets\":null,"
                                 + "\"cause\":\"RESULT_NOT_PUBLISHED\",\"failed\":0,\"unknown\":0}")))
         .contains("원인 RESULT_NOT_PUBLISHED, 대상 수는 판정 뒤 정해짐, 미발송 0건");
+    assertThat(
+            new OperatorAlertJobHandler(sent::add, jdbc)
+                .format(
+                    new ObjectMapper()
+                        .readTree(
+                            "{\"kind\":\"AUTOMATIC_SEND_ENDED\",\"roundNo\":1200,\"halted\":7}")))
+        .startsWith("[자동 발송 종료] 1200회 결과 알림 7건")
+        .contains("다시 보내기");
   }
 
   @Test

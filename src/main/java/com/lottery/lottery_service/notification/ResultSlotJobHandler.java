@@ -29,6 +29,9 @@ public class ResultSlotJobHandler implements JobHandler {
   /** 발송 슬롯 job 종류. */
   public static final String JOB = "RESULT_SLOT";
 
+  /** 자동 발송 시간이 지나 남은 메시지를 멈췄을 때의 운영자 알림 종류. */
+  public static final String AUTOMATIC_ENDED_ALERT = "AUTOMATIC_SEND_ENDED";
+
   /** 마지막 슬롯 시각 뒤 자동 발송을 허용하는 시간. */
   static final Duration LAST_SLOT_GRACE = Duration.ofMinutes(10);
 
@@ -84,7 +87,7 @@ public class ResultSlotJobHandler implements JobHandler {
                 roundNo));
     Instant deadline = automaticDeadline(drawAt);
     if (!clock.instant().isBefore(deadline)) {
-      return endAutomatic(roundNo, slot);
+      return endAutomatic(lease, roundNo, slot);
     }
     Long published =
         jdbc.queryForObject(
@@ -106,7 +109,7 @@ public class ResultSlotJobHandler implements JobHandler {
                 jobs.renewLease(lease);
               });
     } catch (AutomaticWindowClosedException e) {
-      return endAutomatic(roundNo, slot);
+      return endAutomatic(lease, roundNo, slot);
     }
     jobs.renewLease(lease);
     jobs.saveResult(
@@ -131,13 +134,30 @@ public class ResultSlotJobHandler implements JobHandler {
     return slots.get(slots.size() - 1).at().plus(LAST_SLOT_GRACE);
   }
 
-  private JobStep endAutomatic(int roundNo, ResultSlot slot) {
+  private JobStep endAutomatic(JobLease lease, int roundNo, ResultSlot slot) {
     int halted = messages.haltRemaining(roundNo);
     log.warn(
         "result slot skipped after automatic window round={} slot={} halted={}",
         roundNo,
         slot.at(),
         halted);
+    if (halted > 0) {
+      jobs.enqueue(
+          JobStore.OPERATOR_ALERT,
+          "automatic-ended:" + roundNo,
+          "{\"kind\":\""
+              + AUTOMATIC_ENDED_ALERT
+              + "\",\"roundNo\":"
+              + roundNo
+              + ",\"halted\":"
+              + halted
+              + "}",
+          clock.instant());
+    }
+    jobs.saveResult(
+        lease,
+        null,
+        "{\"success\":false,\"failed\":" + halted + ",\"unknown\":0,\"skipped\":true}");
     return new JobStep.Done();
   }
 

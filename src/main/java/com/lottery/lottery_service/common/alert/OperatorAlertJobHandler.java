@@ -79,6 +79,11 @@ public class OperatorAlertJobHandler implements JobHandler {
           + " 메시지 "
           + payload.path("count").asLong()
           + "건을 대조 기간 안에 확정하지 못해 실패로 끝냈습니다.";
+      case "AUTOMATIC_SEND_ENDED" -> "[자동 발송 종료] "
+          + payload.path("roundNo").asInt()
+          + "회 결과 알림 "
+          + payload.path("halted").asLong()
+          + "건을 자동 발송 시간(다음 날 12:00) 안에 보내지 못해 멈췄습니다. 원인을 고친 뒤 관리자 화면의 다시 보내기로 보내세요.";
       case "SLOT_FAILED" -> "[결과 알림 슬롯 실패] "
           + payload.path("roundNo").asInt()
           + "회"

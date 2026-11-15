@@ -778,8 +778,10 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
             clock);
     jdbc.update("DELETE FROM job WHERE job_type = 'OPERATOR_ALERT'");
 
-    assertThat(resend.resend(ROUND, AdminRole.OPERATOR).success()).isTrue();
+    AtomicInteger beats = new AtomicInteger();
+    assertThat(resend.resend(ROUND, AdminRole.OPERATOR, beats::incrementAndGet).success()).isTrue();
     assertThat(called).containsExactly(message(fourthMember));
+    assertThat(beats.get()).isEqualTo(called.size());
     assertThat(state(fourthMember)).isEqualTo("ACCEPTED");
     assertThat(
             jdbc.queryForList(
@@ -946,6 +948,24 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM delivery_message WHERE state = 'HALTED'", Long.class))
         .isEqualTo(2);
+    assertAutomaticEnded("late-slot", 2);
+  }
+
+  private void assertAutomaticEnded(String key, int halted) {
+    assertThat(
+            jdbc.queryForList(
+                "SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.kind')) FROM job"
+                    + " WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .containsExactly(ResultSlotJobHandler.AUTOMATIC_ENDED_ALERT);
+    Map<String, Object> job =
+        jdbc.queryForMap(
+            "SELECT last_error_code, cursor_json FROM job WHERE dedupe_key = ?",
+            key.getBytes(StandardCharsets.UTF_8));
+    assertThat(job).containsEntry("last_error_code", null);
+    assertThat(job.get("cursor_json").toString())
+        .contains("\"success\": false")
+        .contains("\"failed\": " + halted);
   }
 
   @Test
@@ -966,6 +986,7 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM delivery_message WHERE state = 'HALTED'", Long.class))
         .isEqualTo(1);
+    assertAutomaticEnded("edge-slot", 1);
   }
 
   private Optional<JobState> runSlotJob(

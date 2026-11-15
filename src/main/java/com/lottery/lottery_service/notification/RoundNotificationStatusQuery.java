@@ -94,11 +94,15 @@ public class RoundNotificationStatusQuery {
         continue;
       }
       String cause = (String) row.get("last_error_code");
+      JsonNode result = read((String) row.get("cursor_json"));
       String outcome =
           !finished
               ? "RUNNING"
-              : ("SUCCEEDED".equals(state) && cause == null ? "SUCCEEDED" : "FAILED");
-      JsonNode result = read((String) row.get("cursor_json"));
+              : ("SUCCEEDED".equals(state)
+                      && cause == null
+                      && result.path("success").asBoolean(true)
+                  ? "SUCCEEDED"
+                  : "FAILED");
       slots.add(
           new Slot(
               Instant.parse(payload.path("at").asText()),
