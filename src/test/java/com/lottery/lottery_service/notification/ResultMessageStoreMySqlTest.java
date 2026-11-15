@@ -1620,6 +1620,54 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
         .isEqualTo(1);
   }
 
+  @Test
+  @DisplayName("슬롯 실행기의 트랜잭션은 잠금 실패를 다시 시도하고, 제공자 호출은 한 번만 한다(04 4절)")
+  void slotTransactionsRetryLockFailures() {
+    long first = jdbc.queryForObject("SELECT published_result_id FROM lotto_round", Long.class);
+    tx.execute(s -> new EvaluationStore(jdbc).evaluateBatch(first, 0, 100));
+    java.util.concurrent.atomic.AtomicInteger begins =
+        new java.util.concurrent.atomic.AtomicInteger();
+    DataSourceTransactionManager flaky =
+        new DataSourceTransactionManager(dataSource) {
+          private static final long serialVersionUID = 1L;
+
+          @Override
+          protected void doBegin(
+              Object transaction,
+              org.springframework.transaction.TransactionDefinition definition) {
+            if (begins.incrementAndGet() % 2 == 1) {
+              throw new org.springframework.dao.CannotAcquireLockException("lock wait timeout");
+            }
+            super.doBegin(transaction, definition);
+          }
+        };
+    List<Long> called = new ArrayList<>();
+    ResultSlotRunner retrying =
+        new ResultSlotRunner(
+            jdbc,
+            store,
+            id -> {
+              called.add(id);
+              return new SendOutcome.Accepted("M-" + id);
+            },
+            new JobStore(
+                jdbc,
+                new DataSourceTransactionManager(dataSource),
+                clock,
+                new JobProperties(null, null)),
+            flaky,
+            clock);
+
+    SlotResult result = retrying.run(ROUND, new ResultSlot(clock.instant(), false, false));
+
+    assertThat(result.success()).isTrue();
+    assertThat(called).hasSize(2).doesNotHaveDuplicates();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'", Long.class))
+        .isEqualTo(2);
+  }
+
   private ResultSlotRunner runner(MessageSender sender) {
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
     return new ResultSlotRunner(

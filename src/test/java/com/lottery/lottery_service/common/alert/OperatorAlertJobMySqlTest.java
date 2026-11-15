@@ -144,6 +144,14 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
                             "{\"kind\":\"AUTOMATIC_SEND_ENDED\",\"roundNo\":1200,\"halted\":7}")))
         .startsWith("[자동 발송 종료] 1200회 결과 알림 7건")
         .contains("다시 보내기");
+    assertThat(
+            new OperatorAlertJobHandler(sent::add, jdbc)
+                .format(
+                    new ObjectMapper()
+                        .readTree(
+                            "{\"kind\":\"AUTOMATIC_SEND_ENDED\",\"roundNo\":1200,\"halted\":7,"
+                                + "\"unknown\":3}")))
+        .contains("접수 확인 중 3건");
   }
 
   @Test

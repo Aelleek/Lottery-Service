@@ -251,7 +251,7 @@ public class AdminGrants {
   private String currentRole(long target) {
     List<String> roles =
         jdbc.queryForList(
-            "SELECT role FROM admin_grant WHERE member_id = ? AND revoked_at IS NULL",
+            "SELECT role FROM admin_grant WHERE member_id = ? AND revoked_at IS NULL FOR UPDATE",
             String.class,
             target);
     return roles.isEmpty() ? null : "{\"role\":\"" + roles.get(0) + "\"}";

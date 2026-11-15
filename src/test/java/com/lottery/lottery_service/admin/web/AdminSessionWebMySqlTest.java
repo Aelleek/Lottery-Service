@@ -179,17 +179,49 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.rankCounts.losing").value(0))
         .andExpect(jsonPath("$.calculationVersion").isString());
 
+    sessionAttribute(renewed, "lastRequestAt", Instant.now().minus(Duration.ofMinutes(31)));
+    mvc.perform(admitted.apply(get(probe)))
+        .andExpect(jsonPath("$.code").value("ADMIN_AUTH_REQUIRED"));
+    assertThat(sessionValue(renewed, "authenticatedAt")).isNull();
+  }
+
+  @Test
+  @DisplayName("권한이 회수되면 관리자 세션을 끝내, 곧 다시 권한을 받아도 인증 앱 코드를 다시 넣어야 한다")
+  void revokedGrantEndsAdminSession() throws Exception {
+    MemberPrincipal admin =
+        MemberPrincipal.of(
+            accounts.login(OAuthProvider.GOOGLE, "admin-revoked"), OAuthProvider.GOOGLE);
+    jdbc.update(
+        "INSERT INTO admin_grant (member_id, role, granted_at) VALUES (?, 'ADMIN', NOW(6))",
+        admin.memberId());
+    byte[] secret = decode(mfa.enroll(admin.memberId()).secret());
+    long step = Totp.step(Instant.now());
+    mfa.confirm(admin.memberId(), Totp.code(secret, step - 1));
+    Login login = login(admin);
+    MvcResult started =
+        mvc.perform(
+                login
+                    .apply(post("/api/v1/admin/session"))
+                    .contentType("application/json")
+                    .content("{\"code\":\"" + Totp.code(secret, step) + "\"}"))
+            .andExpect(status().isOk())
+            .andReturn();
+    Cookie renewed = sessionCookie(started.getResponse().getHeader("Set-Cookie"));
+    Login admitted =
+        new Login(
+            admin,
+            renewed,
+            json.readTree(started.getResponse().getContentAsString()).get("csrfToken").asText());
+    String probe = "/api/v1/admin/rounds/1200/no-such-admin-api";
+    mvc.perform(admitted.apply(get(probe))).andExpect(status().isNotFound());
+    assertThat(sessionValue(renewed, "authenticatedAt")).isNotNull();
+
     jdbc.update("UPDATE admin_grant SET revoked_at = NOW(6) WHERE member_id = ?", admin.memberId());
     mvc.perform(admitted.apply(get(probe))).andExpect(status().isForbidden());
     assertThat(sessionValue(renewed, "authenticatedAt")).isNull();
     jdbc.update("UPDATE admin_grant SET revoked_at = NULL WHERE member_id = ?", admin.memberId());
     mvc.perform(admitted.apply(get(probe)))
         .andExpect(jsonPath("$.code").value("ADMIN_AUTH_REQUIRED"));
-
-    sessionAttribute(renewed, "lastRequestAt", Instant.now().minus(Duration.ofMinutes(31)));
-    mvc.perform(admitted.apply(get(probe)))
-        .andExpect(jsonPath("$.code").value("ADMIN_AUTH_REQUIRED"));
-    assertThat(sessionValue(renewed, "authenticatedAt")).isNull();
   }
 
   @Test

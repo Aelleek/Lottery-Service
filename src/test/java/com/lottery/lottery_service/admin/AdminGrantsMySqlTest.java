@@ -223,6 +223,8 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
     long other = member(otherId);
     grants.grantByCommand(otherId, AdminRole.ADMIN, "다른 관리자");
     mfa.enroll(other);
+    grants.grantByCommand(otherId, AdminRole.OPERATOR, "역할만 바꿈");
+    assertThat(mfaSecretIsNull(other)).isFalse();
     grants.revokeByCommand(otherId, "담당 종료");
     grants.grantByCommand(otherId, AdminRole.OPERATOR, "다시 지정");
 
