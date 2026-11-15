@@ -2,6 +2,8 @@ package com.lottery.lottery_service.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -168,7 +170,8 @@ class AdminOperationsMySqlTest extends MySqlContainerSupport {
   @DisplayName(
       "수동 다시 보내기는 OPERATOR가 할 수 있고 실행 뒤 성공 감사, 관리자 아닌 회원은 FORBIDDEN이고 거부 감사를 남긴다(2026-11-09 Q17)")
   void resend() {
-    when(resend.resend(ROUND, AdminRole.OPERATOR)).thenReturn(new SlotResult(true, null, 0, 0, 0));
+    when(resend.resend(eq(ROUND), eq(AdminRole.OPERATOR), any()))
+        .thenReturn(new SlotResult(true, null, 0, 0, 0));
 
     assertThat(operations.resendNotifications(operator, ROUND, "제공자 장애 복구").success()).isTrue();
     assertCode(() -> operations.resendNotifications(plain, ROUND, "x"), ErrorCode.FORBIDDEN);

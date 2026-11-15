@@ -54,6 +54,11 @@ public class ManualResendService {
    *     DISPATCH_WINDOW_CLOSED}
    */
   public SlotResult resend(int roundNo, AdminRole actor) {
+    return resend(roundNo, actor, () -> {});
+  }
+
+  /** {@link #resend(int, AdminRole)}와 같고, 메시지마다 보내기 전에 {@code beforeEach}를 부른다(명령 처리 권한 연장). */
+  public SlotResult resend(int roundNo, AdminRole actor, Runnable beforeEach) {
     Instant now = clock.instant();
     List<LocalDateTime> published =
         jdbc.queryForList(
@@ -71,7 +76,7 @@ public class ManualResendService {
                 "UPDATE delivery_message SET state = 'PENDING', version = version + 1"
                     + " WHERE round_no = ? AND purpose = 'RESULT' AND state IN ('HALTED','RETRY_WAIT')",
                 roundNo));
-    SlotResult result = runner.run(roundNo, new ResultSlot(now, false, false));
+    SlotResult result = runner.run(roundNo, new ResultSlot(now, false, false), beforeEach);
     jobs.enqueue(
         JobStore.OPERATOR_ALERT,
         "manual-resend:" + roundNo + ":" + now,

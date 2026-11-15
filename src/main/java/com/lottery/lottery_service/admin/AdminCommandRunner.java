@@ -13,6 +13,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -61,6 +62,27 @@ public class AdminCommandRunner {
       String canonicalRequest,
       boolean transactional,
       Function<UUID, String> change) {
+    return run(
+        subjectId,
+        operation,
+        key,
+        canonicalRequest,
+        transactional,
+        (operationId, heartbeat) -> change.apply(operationId));
+  }
+
+  /**
+   * {@link #run(long, String, UUID, String, boolean, Function)}와 같고, 변경에 처리 권한을 늘리는 {@code
+   * heartbeat}를 넘긴다. 외부 호출이 여러 번인 변경은 호출마다 앞에서 불러, 오래 걸려도 같은 키의 재시도가 같은 변경을 다시 시작하지 않게 한다. 권한을 이미
+   * 잃었으면 {@code TEMPORARILY_UNAVAILABLE}을 던진다.
+   */
+  public String run(
+      long subjectId,
+      String operation,
+      UUID key,
+      String canonicalRequest,
+      boolean transactional,
+      BiFunction<UUID, Runnable, String> change) {
     Instant now = clock.instant();
     CommandToken token =
         new CommandToken(
@@ -85,19 +107,26 @@ public class AdminCommandRunner {
       throw new BusinessException(ErrorCode.TEMPORARILY_UNAVAILABLE, "처리 중입니다. 잠시 뒤 다시 확인해 주세요.");
     }
     CommandStart.Started started = (CommandStart.Started) start;
+    Runnable heartbeat =
+        () -> {
+          if (!operations.renewLease(started)) {
+            throw new BusinessException(
+                ErrorCode.TEMPORARILY_UNAVAILABLE, "처리 권한을 잃었습니다. 잠시 뒤 다시 확인해 주세요.");
+          }
+        };
     String summary;
     try {
       if (transactional) {
         summary =
             tx.execute(
                 status -> {
-                  String s = change.apply(started.publicId());
+                  String s = change.apply(started.publicId(), heartbeat);
                   operations.succeedWithSummary(started, "SUCCEEDED", s);
                   return s;
                 });
         return summary;
       }
-      summary = change.apply(started.publicId());
+      summary = change.apply(started.publicId(), heartbeat);
     } catch (BusinessException e) {
       if (e.getCode() == ErrorCode.REAUTH_REQUIRED || e.getCode().retryable()) {
         operations.markRetryable(started, e.getCode().name());

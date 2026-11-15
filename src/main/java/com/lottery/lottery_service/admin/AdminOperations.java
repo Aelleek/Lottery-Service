@@ -113,11 +113,17 @@ public class AdminOperations {
    * @throws BusinessException 권한이 없으면 {@code FORBIDDEN}, 기한이 지났으면 {@code DISPATCH_WINDOW_CLOSED}
    */
   public SlotResult resendNotifications(long actor, int roundNo, String reason) {
+    return resendNotifications(actor, roundNo, reason, () -> {});
+  }
+
+  /** {@link #resendNotifications(long, int, String)}와 같고, 메시지마다 보내기 전에 {@code beforeEach}를 부른다. */
+  public SlotResult resendNotifications(
+      long actor, int roundNo, String reason, Runnable beforeEach) {
     AdminAuditEvent pending =
         event(actor, "NOTIFICATION_RESEND", "ROUND", Integer.toString(roundNo), reason, null, null);
     AdminRole role = authorize(actor, AdminRole.OPERATOR, pending);
     try {
-      SlotResult result = resend.resend(roundNo, role);
+      SlotResult result = resend.resend(roundNo, role, beforeEach);
       audit.recordIndependently(
           with(
               pending,

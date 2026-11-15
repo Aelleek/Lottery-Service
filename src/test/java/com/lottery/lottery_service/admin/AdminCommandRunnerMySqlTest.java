@@ -13,6 +13,7 @@ import com.lottery.lottery_service.support.TestSecrets;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -102,6 +103,51 @@ class AdminCommandRunnerMySqlTest extends MySqlContainerSupport {
     assertThat(again.replace(" ", "")).isEqualTo("{\"n\":1}");
     assertThat(calls).hasValue(2);
     assertThat(subjects()).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("외부 호출이 있는 변경이 처리 권한 시간보다 오래 걸려도 heartbeat로 늘려, 같은 키의 재시도가 변경을 다시 시작하지 않는다")
+  void heartbeatKeepsLongChangeExclusive() {
+    UUID key = UUID.randomUUID();
+    AtomicInteger calls = new AtomicInteger();
+    AtomicReference<Throwable> retry = new AtomicReference<>();
+
+    String summary =
+        runner.run(
+            subject,
+            "ADMIN_TEST",
+            key,
+            "a",
+            false,
+            (id, heartbeat) -> {
+              calls.incrementAndGet();
+              for (int i = 0; i < 3; i++) {
+                clock.set(clock.instant().plusSeconds(25));
+                heartbeat.run();
+              }
+              try {
+                runner.run(
+                    subject,
+                    "ADMIN_TEST",
+                    key,
+                    "a",
+                    false,
+                    (again, beat) -> {
+                      calls.incrementAndGet();
+                      return "{}";
+                    });
+              } catch (BusinessException e) {
+                retry.set(e);
+              }
+              return "{\"n\":1}";
+            });
+
+    assertThat(summary).isEqualTo("{\"n\":1}");
+    assertThat(calls).hasValue(1);
+    assertThat(retry.get())
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.getCode()).isEqualTo(ErrorCode.TEMPORARILY_UNAVAILABLE));
   }
 
   @Test

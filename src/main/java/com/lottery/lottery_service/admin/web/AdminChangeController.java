@@ -83,8 +83,8 @@ public class AdminChangeController {
             key(idempotencyKey),
             round + "|" + reason,
             false,
-            operationId -> {
-              operations.resendNotifications(member.memberId(), round, reason);
+            (operationId, heartbeat) -> {
+              operations.resendNotifications(member.memberId(), round, reason, heartbeat);
               return "{\"dispatchId\":\""
                   + operationId
                   + "\",\"round\":"
