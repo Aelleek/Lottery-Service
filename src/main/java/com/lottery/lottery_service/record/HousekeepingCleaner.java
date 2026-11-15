@@ -65,6 +65,14 @@ public class HousekeepingCleaner {
         limit);
   }
 
+  /** 자기 기한이 지난 인증 발송 한도 묶음을 지운다(04 6.2절 7번). */
+  public int deleteExpiredRateBuckets(int limit) {
+    return jdbc.update(
+        "DELETE FROM verification_rate_bucket WHERE expires_at <= ? ORDER BY expires_at LIMIT ?",
+        utc(clock.instant()),
+        limit);
+  }
+
   /** 보관 기한(기록 후 1년)이 지난 관리자 감사 기록을 지운다(02 8절, D-020). */
   public int deleteExpiredAuditEvents(int limit) {
     return jdbc.update(

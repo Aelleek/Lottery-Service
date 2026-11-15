@@ -124,6 +124,27 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("자기 기한이 지난 인증 발송 한도 묶음만 지운다(04 6.2절 7번)")
+  void rateBuckets() {
+    jdbc.update("DELETE FROM verification_rate_bucket");
+    for (int i = 0; i < 2; i++) {
+      jdbc.update(
+          "INSERT INTO verification_rate_bucket (scope_type, scope_hmac, business_date, send_count,"
+              + " next_send_at, expires_at) VALUES ('PHONE', ?, '2026-11-10', 1, ?, ?)",
+          new byte[] {(byte) i},
+          java.time.LocalDateTime.ofInstant(T0, java.time.ZoneOffset.UTC),
+          java.time.LocalDateTime.ofInstant(
+              T0.plus(Duration.ofDays(i + 1)), java.time.ZoneOffset.UTC));
+    }
+    HousekeepingCleaner cleaner = new HousekeepingCleaner(jdbc, clock);
+
+    clock.set(T0.plus(Duration.ofDays(1)));
+    assertThat(cleaner.deleteExpiredRateBuckets(100)).isEqualTo(1);
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM verification_rate_bucket", Long.class))
+        .isEqualTo(1);
+  }
+
+  @Test
   @DisplayName("보관 기한(1년)이 지난 관리자 감사 기록만 지운다")
   void auditEvents() {
     long actor =

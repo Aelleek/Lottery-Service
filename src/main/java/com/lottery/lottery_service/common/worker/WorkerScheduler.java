@@ -279,6 +279,7 @@ public class WorkerScheduler {
         });
     drain("command-operations", 10_000, housekeeping::deleteExpiredCommandOperations);
     drain("audit-events", 10_000, housekeeping::deleteExpiredAuditEvents);
+    drain("rate-buckets", 10_000, housekeeping::deleteExpiredRateBuckets);
     drain("guest-subjects", 1_000, housekeeping::deleteEmptyGuestSubjects);
     drain("message-copies", 10_000, housekeeping::clearMessageCopies);
     drain("challenge-targets", 10_000, housekeeping::clearChallengeTargets);

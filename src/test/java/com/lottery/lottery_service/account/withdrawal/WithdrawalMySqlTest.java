@@ -83,6 +83,7 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
     jdbc = new JdbcTemplate(dataSource);
     for (String t :
         List.of(
+            "SPRING_SESSION",
             "job",
             "usage_event",
             "message_budget",
@@ -209,6 +210,48 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
     assertThat(replay.revokeAllSessions()).isPositive();
     assertThat(jdbc.queryForObject("SELECT SUM(auth_version) FROM member", Long.class))
         .isGreaterThan(before);
+  }
+
+  @Test
+  @DisplayName("탈퇴를 접수하면 그 회원의 모든 세션을 바로 지우고, 기다리는 가져오기 job은 취소한다. 다른 회원 것은 그대로다")
+  void blockRevokesSessionsAndImports() {
+    String publicId =
+        jdbc.queryForObject(
+            "SELECT BIN_TO_UUID(public_id) FROM member WHERE id = ?",
+            String.class,
+            member.memberId());
+    for (String[] row :
+        List.of(
+            new String[] {"s1", publicId},
+            new String[] {"s2", publicId},
+            new String[] {"s3", "other"})) {
+      jdbc.update(
+          "INSERT INTO SPRING_SESSION (primary_id, session_id, creation_time, last_access_time,"
+              + " max_inactive_interval, expiry_time, principal_name) VALUES (?, ?, 0, 0, 60, ?, ?)",
+          row[0],
+          row[0] + "-id",
+          Long.MAX_VALUE,
+          row[1]);
+    }
+    jobs.enqueue(
+        "HISTORY_IMPORT",
+        "claim:1",
+        "{\"claimId\":1,\"memberSubjectId\":" + member.subjectId() + "}",
+        clock.instant());
+    jobs.enqueue(
+        "HISTORY_IMPORT", "claim:2", "{\"claimId\":2,\"memberSubjectId\":-1}", clock.instant());
+
+    new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());
+
+    assertThat(
+            jdbc.queryForList(
+                "SELECT primary_id FROM SPRING_SESSION ORDER BY primary_id", String.class))
+        .containsExactly("s3");
+    assertThat(
+            jdbc.queryForList(
+                "SELECT state FROM job WHERE job_type = 'HISTORY_IMPORT' ORDER BY id",
+                String.class))
+        .containsExactly("CANCELED", "READY");
   }
 
   @Test

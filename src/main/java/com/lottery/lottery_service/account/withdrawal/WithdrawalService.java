@@ -3,6 +3,7 @@ package com.lottery.lottery_service.account.withdrawal;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.job.JobStore;
+import com.lottery.lottery_service.record.HistoryImportJobHandler;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +40,8 @@ public class WithdrawalService {
   }
 
   /**
-   * 탈퇴를 접수하고 접근을 막는다. 이미 접수됐으면 아무것도 바꾸지 않는다.
+   * 탈퇴를 접수하고 접근을 막는다. 이 회원의 모든 세션을 지우고(02 7.2절 "즉시 회수"), 진행 중인 가져오기 job을 멈춘다(05 11절 3번). 이미 접수됐으면
+   * 아무것도 바꾸지 않는다.
    *
    * @throws BusinessException 회원이 없으면 {@code NOT_FOUND}
    */
@@ -67,6 +69,17 @@ public class WithdrawalService {
               "UPDATE delivery_message SET state = 'SUPPRESSED', version = version + 1"
                   + " WHERE member_id = ? AND state IN ('PENDING','RETRY_WAIT','HALTED')",
               memberId);
+          jdbc.update(
+              "DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME ="
+                  + " (SELECT BIN_TO_UUID(public_id) FROM member WHERE id = ?)",
+              memberId);
+          jdbc.update(
+              "UPDATE job SET state = IF(state = 'RUNNING', state, 'CANCELED'),"
+                  + " cancel_requested = TRUE, finished_at = IF(state = 'RUNNING', finished_at, NOW(6))"
+                  + " WHERE job_type = ? AND state IN ('READY','RETRY_WAIT','RUNNING')"
+                  + " AND JSON_EXTRACT(payload, '$.memberSubjectId') = ?",
+              HistoryImportJobHandler.JOB,
+              subjectId);
           jobs.enqueue(
               JOB, "member:" + memberId, "{\"memberId\":" + memberId + "}", clock.instant());
         });
