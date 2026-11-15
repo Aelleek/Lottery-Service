@@ -25,8 +25,10 @@ class RestoreCommandTest {
   @SuppressWarnings("unchecked")
   private final ObjectProvider<DeletionJournalReader> provider = mock(ObjectProvider.class);
 
+  private final RestoreWithdrawalFinisher finisher = mock(RestoreWithdrawalFinisher.class);
+
   private final RestoreCommand command =
-      new RestoreCommand(replay, provider, mock(ConfigurableApplicationContext.class));
+      new RestoreCommand(replay, finisher, provider, mock(ConfigurableApplicationContext.class));
 
   @Test
   @DisplayName("삭제 기록 저장소가 없으면 아무것도 바꾸지 않고 종료 코드 2로 끝난다")
@@ -44,9 +46,20 @@ class RestoreCommandTest {
     when(replay.replay(reader)).thenReturn(new RestoreReplay.Result(1, 0, 0));
 
     assertThat(command.execute()).isZero();
-    InOrder order = inOrder(replay);
+    InOrder order = inOrder(replay, finisher);
     order.verify(replay).replay(reader);
     order.verify(replay).revokeAllSessions();
+    order.verify(finisher).finish();
+  }
+
+  @Test
+  @DisplayName("다시 막은 회원의 삭제가 끝나지 않았으면 종료 코드 3으로 끝나 서비스를 열지 않게 한다")
+  void failsWhenDeletionsRemain() {
+    when(provider.getIfAvailable()).thenReturn(reader);
+    when(replay.replay(reader)).thenReturn(new RestoreReplay.Result(1, 0, 0));
+    when(finisher.finish()).thenReturn(1);
+
+    assertThat(command.execute()).isEqualTo(3);
   }
 
   @Test

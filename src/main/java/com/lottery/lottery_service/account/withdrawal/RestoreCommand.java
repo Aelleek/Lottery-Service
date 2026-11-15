@@ -11,8 +11,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * 복원 뒤 서버 관리 명령(07 4절 3·4번). {@code --lottery.restore.replay-journal=true}로 실행하면 삭제 기록을 다시 적용하고 모든
- * 세션을 회수한 뒤 끝난다. 삭제 기록 저장소가 없거나 읽지 못하면 실패로 끝나며, 그때는 서비스를 열지 않는다. 이 명령으로 실행하면 웹 서버와 주기 작업은 켜지지
- * 않는다({@code ServerCommandEnvironment}).
+ * 세션을 회수하고, 다시 막은 회원의 삭제 job을 끝까지 돌린 뒤 끝난다. 삭제 기록 저장소가 없거나 읽지 못하면 실패로 끝나며, 그때는 서비스를 열지 않는다. 이 명령으로
+ * 실행하면 웹 서버와 주기 작업은 켜지지 않는다({@code ServerCommandEnvironment}).
  */
 @Slf4j
 @Component
@@ -20,15 +20,18 @@ import org.springframework.stereotype.Component;
 public class RestoreCommand implements ApplicationRunner {
 
   private final RestoreReplay replay;
+  private final RestoreWithdrawalFinisher finisher;
   private final ObjectProvider<DeletionJournalReader> journal;
   private final ConfigurableApplicationContext context;
 
   /** 명령을 만든다. */
   public RestoreCommand(
       RestoreReplay replay,
+      RestoreWithdrawalFinisher finisher,
       ObjectProvider<DeletionJournalReader> journal,
       ConfigurableApplicationContext context) {
     this.replay = replay;
+    this.finisher = finisher;
     this.journal = journal;
     this.context = context;
   }
@@ -39,7 +42,10 @@ public class RestoreCommand implements ApplicationRunner {
     System.exit(SpringApplication.exit(context, () -> code));
   }
 
-  /** 삭제 기록을 다시 적용하고 세션을 회수한다. 삭제 기록 저장소가 없으면 아무것도 바꾸지 않고 2를 준다. 읽다가 실패하면 예외를 그대로 던진다. */
+  /**
+   * 삭제 기록을 다시 적용하고 세션을 회수한 뒤 탈퇴 삭제 job을 끝까지 돌린다. 삭제 기록 저장소가 없으면 아무것도 바꾸지 않고 2를, 끝나지 않은 삭제가 남으면 3을
+   * 준다. 읽다가 실패하면 예외를 그대로 던진다.
+   */
   int execute() {
     DeletionJournalReader reader = journal.getIfAvailable();
     if (reader == null) {
@@ -48,12 +54,19 @@ public class RestoreCommand implements ApplicationRunner {
     }
     RestoreReplay.Result result = replay.replay(reader);
     int revoked = replay.revokeAllSessions();
+    int unfinished = finisher.finish();
     log.info(
-        "restore replay blocked={} alreadyHandled={} missing={} sessionsRevokedMembers={}",
+        "restore replay blocked={} alreadyHandled={} missing={} sessionsRevokedMembers={}"
+            + " unfinishedWithdrawals={}",
         result.blocked(),
         result.alreadyHandled(),
         result.missing(),
-        revoked);
+        revoked,
+        unfinished);
+    if (unfinished > 0) {
+      log.error("withdrawal deletions are not finished; do not open the service");
+      return 3;
+    }
     return 0;
   }
 }

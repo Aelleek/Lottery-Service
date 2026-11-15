@@ -202,7 +202,14 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
 
     assertThat(result).isEqualTo(new RestoreReplay.Result(1, 0, 1));
     assertThat(state("member", member.memberId())).isEqualTo("WITHDRAWING");
-    assertThat(runner(journal).runOnce()).contains(JobState.SUCCEEDED);
+    RestoreWithdrawalFinisher finisher =
+        new RestoreWithdrawalFinisher(
+            jdbc,
+            jobs,
+            new WithdrawalJobHandler(jdbc, journal, budget, jobs, tm, clock),
+            tm,
+            clock);
+    assertThat(finisher.finish()).isZero();
     assertThat(state("member", member.memberId())).isEqualTo("WITHDRAWN");
     assertThat(replay.replay(journal)).isEqualTo(new RestoreReplay.Result(0, 2, 1));
 
@@ -210,6 +217,23 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
     assertThat(replay.revokeAllSessions()).isPositive();
     assertThat(jdbc.queryForObject("SELECT SUM(auth_version) FROM member", Long.class))
         .isGreaterThan(before);
+  }
+
+  @Test
+  @DisplayName("복원 명령 안에서 삭제 기록 저장소가 멈춰 삭제를 끝내지 못하면 남은 삭제 수를 돌려준다")
+  void finisherReportsUnfinished() {
+    new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());
+    RestoreWithdrawalFinisher finisher =
+        new RestoreWithdrawalFinisher(
+            jdbc,
+            jobs,
+            new WithdrawalJobHandler(
+                jdbc, new UnavailableDeletionJournal(), budget, jobs, tm, clock),
+            tm,
+            clock);
+
+    assertThat(finisher.finish()).isEqualTo(1);
+    assertThat(state("member", member.memberId())).isEqualTo("WITHDRAWING");
   }
 
   @Test
