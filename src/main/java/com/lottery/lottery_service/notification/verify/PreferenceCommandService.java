@@ -4,6 +4,7 @@ import com.lottery.lottery_service.common.command.CommandOperationStore;
 import com.lottery.lottery_service.common.command.CommandStart;
 import com.lottery.lottery_service.common.command.CommandToken;
 import com.lottery.lottery_service.common.command.CommandTokenCodec;
+import com.lottery.lottery_service.common.db.RetryingTransactionTemplate;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.error.ErrorDetails;
@@ -45,7 +46,7 @@ public class PreferenceCommandService {
     this.operations = operations;
     this.consents = consents;
     this.jdbc = jdbc;
-    this.tx = new TransactionTemplate(transactionManager);
+    this.tx = new RetryingTransactionTemplate(transactionManager);
   }
 
   /**

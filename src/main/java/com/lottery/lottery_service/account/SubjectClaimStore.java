@@ -3,6 +3,7 @@ package com.lottery.lottery_service.account;
 import static com.lottery.lottery_service.common.db.DbValues.bytes;
 import static com.lottery.lottery_service.common.db.DbValues.utc;
 
+import com.lottery.lottery_service.common.db.RetryingTransactionTemplate;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
@@ -27,7 +28,7 @@ public class SubjectClaimStore {
   public SubjectClaimStore(
       JdbcTemplate jdbc, PlatformTransactionManager transactionManager, Clock clock) {
     this.jdbc = jdbc;
-    this.tx = new TransactionTemplate(transactionManager);
+    this.tx = new RetryingTransactionTemplate(transactionManager);
     this.clock = clock;
   }
 

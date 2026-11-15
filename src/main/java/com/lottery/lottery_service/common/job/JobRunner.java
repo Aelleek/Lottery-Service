@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.common.job;
 
+import com.lottery.lottery_service.common.db.RetryingTransactionTemplate;
 import com.lottery.lottery_service.common.error.ExceptionLogs;
 import java.time.Clock;
 import java.time.Duration;
@@ -38,7 +39,7 @@ public class JobRunner {
     this.jobs = jobs;
     this.handlers =
         handlers.stream().collect(Collectors.toMap(JobHandler::type, Function.identity()));
-    this.tx = new TransactionTemplate(transactionManager);
+    this.tx = new RetryingTransactionTemplate(transactionManager);
     this.clock = clock;
   }
 

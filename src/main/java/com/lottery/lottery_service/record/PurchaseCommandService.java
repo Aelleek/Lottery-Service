@@ -8,6 +8,7 @@ import com.lottery.lottery_service.common.command.CommandStart;
 import com.lottery.lottery_service.common.command.CommandToken;
 import com.lottery.lottery_service.common.command.CommandTokenCodec;
 import com.lottery.lottery_service.common.db.DbValues;
+import com.lottery.lottery_service.common.db.RetryingTransactionTemplate;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.number.LottoNumbers;
@@ -67,7 +68,7 @@ public class PurchaseCommandService implements CommandResultLoader {
     this.operations = operations;
     this.purchases = purchases;
     this.jdbc = jdbc;
-    this.tx = new TransactionTemplate(transactionManager);
+    this.tx = new RetryingTransactionTemplate(transactionManager);
   }
 
   /**

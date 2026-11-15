@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.recommendation;
 
+import com.lottery.lottery_service.common.db.RetryingTransactionTemplate;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.number.LottoNumbers;
@@ -63,7 +64,7 @@ public class RecommendationService {
     this.filters = filters;
     this.generator = generator;
     this.usage = usage;
-    this.tx = new TransactionTemplate(transactionManager);
+    this.tx = new RetryingTransactionTemplate(transactionManager);
   }
 
   /**

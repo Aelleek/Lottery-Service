@@ -7,6 +7,7 @@ import com.lottery.lottery_service.common.command.CommandResultLoader;
 import com.lottery.lottery_service.common.command.CommandStart;
 import com.lottery.lottery_service.common.command.CommandToken;
 import com.lottery.lottery_service.common.command.CommandTokenCodec;
+import com.lottery.lottery_service.common.db.RetryingTransactionTemplate;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.recommendation.CommandInProgressException;
@@ -51,7 +52,7 @@ public class ImportCommandService implements CommandResultLoader {
     this.operations = operations;
     this.jobs = jobs;
     this.jdbc = jdbc;
-    this.tx = new TransactionTemplate(transactionManager);
+    this.tx = new RetryingTransactionTemplate(transactionManager);
   }
 
   /**
