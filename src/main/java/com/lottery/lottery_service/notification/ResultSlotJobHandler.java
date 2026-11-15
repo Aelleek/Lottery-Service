@@ -2,7 +2,6 @@ package com.lottery.lottery_service.notification;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lottery.lottery_service.common.db.DbValues;
 import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
@@ -64,9 +63,11 @@ public class ResultSlotJobHandler implements JobHandler {
     if (published == null) {
       collector.collect(roundNo);
     }
+    jobs.renewLease(lease);
     SlotResult result = runner.run(roundNo, slot, () -> jobs.renewLease(lease));
-    jdbc.update(
-        "UPDATE job SET last_error_code = ?, cursor_json = ? WHERE id = ? AND lease_token = ?",
+    jobs.renewLease(lease);
+    jobs.saveResult(
+        lease,
         result.cause(),
         "{\"success\":"
             + result.success()
@@ -74,9 +75,7 @@ public class ResultSlotJobHandler implements JobHandler {
             + result.failed()
             + ",\"unknown\":"
             + result.unknown()
-            + "}",
-        lease.id(),
-        DbValues.bytes(lease.token()));
+            + "}");
     return new JobStep.Done();
   }
 

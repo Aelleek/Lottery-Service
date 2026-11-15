@@ -230,6 +230,56 @@ class JobStoreMySqlTest extends MySqlContainerSupport {
     assertThat(count("job_type = 'OPERATOR_ALERT'")).isEqualTo(1);
   }
 
+  @Test
+  @DisplayName("lease를 늘리면 만료 시각이 밀리고, 만료 뒤나 회수 뒤에는 늘리기와 결과 저장이 거부된다")
+  void renewLeaseAndSaveResult() {
+    store.enqueue("EVALUATE", "round:1200", "{}", T0);
+    JobLease lease = store.claim(TYPES).orElseThrow();
+
+    clock.set(T0.plus(Duration.ofMinutes(4)));
+    store.renewLease(lease);
+    clock.set(T0.plus(Duration.ofMinutes(8)));
+    assertThat(store.recoverExpired()).isEmpty();
+    store.saveResult(lease, "PARTIAL_FAILURE", "{\"failed\":1}");
+    assertThat(row(lease.id())).containsEntry("last_error_code", "PARTIAL_FAILURE");
+
+    clock.set(T0.plus(Duration.ofMinutes(10)));
+    assertThatThrownBy(() -> store.renewLease(lease)).isInstanceOf(LeaseLostException.class);
+    assertThatThrownBy(() -> store.saveResult(lease, "X", "{}"))
+        .isInstanceOf(LeaseLostException.class);
+    assertThat(store.recoverExpired()).hasSize(1);
+    assertThatThrownBy(() -> store.renewLease(lease)).isInstanceOf(LeaseLostException.class);
+    assertThat(row(lease.id())).containsEntry("last_error_code", "LEASE_EXPIRED");
+  }
+
+  @Test
+  @DisplayName("DEAD에서 다시 돌린 job이 또 DEAD가 되면 운영자 알림이 한 건 더 생기고, DEAD가 아닌 job은 되돌리지 않는다")
+  void restartedJobAlertsAgain() {
+    store.enqueue("EVALUATE", "round:1200", "{}", T0);
+    failUntilDead(T0);
+    assertThat(count("job_type = 'OPERATOR_ALERT'")).isEqualTo(1);
+
+    Instant later = T0.plus(Duration.ofHours(1));
+    assertThat(store.restartDead("EVALUATE", "round:1200", "{}", later)).isTrue();
+    assertThat(store.restartDead("EVALUATE", "round:1200", "{}", later)).isFalse();
+    failUntilDead(later);
+
+    assertThat(count("job_type = 'OPERATOR_ALERT'")).isEqualTo(2);
+    store.enqueue("EVALUATE", "round:1201", "{}", later);
+    assertThat(store.restartDead("EVALUATE", "round:1201", "{}", later)).isFalse();
+    assertThat(store.restartDead("EVALUATE", "missing", "{}", later)).isFalse();
+  }
+
+  private void failUntilDead(Instant start) {
+    Instant now = start;
+    for (int i = 1; i <= 5; i++) {
+      clock.set(now);
+      JobLease lease = store.claim(TYPES).orElseThrow();
+      store.fail(lease, "SOURCE_DOWN", now.plusSeconds(30));
+      now = now.plusSeconds(30);
+    }
+  }
+
   private long count(String where) {
     return jdbc.queryForObject("SELECT COUNT(*) FROM job WHERE " + where, Long.class);
   }

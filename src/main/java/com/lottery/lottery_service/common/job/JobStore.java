@@ -170,6 +170,25 @@ public class JobStore {
   }
 
   /**
+   * job 결과 요약(오류 코드와 결과 JSON)을 남긴다. 다른 저장과 같이 lease가 자기 것이고 만료 전일 때만 바꾼다.
+   *
+   * @throws LeaseLostException lease를 잃었을 때
+   */
+  public void saveResult(JobLease lease, String errorCode, String resultJson) {
+    Instant now = clock.instant();
+    int changed =
+        jdbc.update(
+            "UPDATE job SET last_error_code = ?, cursor_json = ? WHERE id = ? AND state = 'RUNNING'"
+                + " AND lease_token = ? AND lease_until > ?",
+            errorCode,
+            resultJson,
+            lease.id(),
+            bytes(lease.token()),
+            utc(now));
+    requireHeld(lease, changed);
+  }
+
+  /**
    * job을 끝낸다(SUCCEEDED).
    *
    * @throws LeaseLostException lease를 잃었을 때
@@ -295,7 +314,7 @@ public class JobStore {
     }
     enqueue(
         OPERATOR_ALERT,
-        "job-dead:" + jobId,
+        "job-dead:" + jobId + ":" + now.toEpochMilli(),
         "{\"kind\":\"JOB_DEAD\",\"jobId\":" + jobId + "}",
         now);
   }

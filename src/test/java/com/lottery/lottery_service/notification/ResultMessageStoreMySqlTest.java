@@ -41,6 +41,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
@@ -862,6 +863,65 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'", Long.class))
         .isEqualTo(2);
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT last_error_code, cursor_json FROM job WHERE dedupe_key = ?",
+                "slow-slot".getBytes(StandardCharsets.UTF_8)))
+        .containsEntry("last_error_code", null)
+        .hasEntrySatisfying(
+            "cursor_json", v -> assertThat(v.toString()).contains("\"success\": true"));
+  }
+
+  @Test
+  @DisplayName("발송 중 lease를 잃으면 그 자리에서 멈춰 남은 메시지를 보내지 않고, 결과 기록과 운영자 알림도 남기지 않는다")
+  void lostLeaseStopsSending() {
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    JobStore jobs = new JobStore(jdbc, tm, clock, new JobProperties(null, null));
+    jdbc.update("DELETE FROM job");
+    jobs.enqueue(
+        ResultSlotJobHandler.JOB,
+        "lost-slot",
+        "{\"roundNo\":"
+            + ROUND
+            + ",\"at\":\""
+            + clock.instant()
+            + "\",\"alert\":true,\"last\":false}",
+        clock.instant());
+    AtomicInteger sent = new AtomicInteger();
+    ResultSlotJobHandler handler =
+        new ResultSlotJobHandler(
+            runner(
+                id -> {
+                  sent.incrementAndGet();
+                  clock.set(clock.instant().plus(Duration.ofMinutes(6)));
+                  return new SendOutcome.Accepted("M");
+                }),
+            new ResultCollector(r -> new ParsedDraw.NotAnnounced(), null),
+            jdbc,
+            jobs);
+
+    new JobRunner(jobs, List.of(handler), tm, clock).runOnce();
+
+    assertThat(sent.get()).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'", Long.class))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'PENDING'", Long.class))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM job WHERE job_type = 'OPERATOR_ALERT'", Long.class))
+        .isZero();
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT state, cursor_json, attempt_count FROM job WHERE dedupe_key = ?",
+                "lost-slot".getBytes(StandardCharsets.UTF_8)))
+        .containsEntry("state", "RUNNING")
+        .containsEntry("cursor_json", null)
+        .containsEntry("attempt_count", 0);
   }
 
   @Test

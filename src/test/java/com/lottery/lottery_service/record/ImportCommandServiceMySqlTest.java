@@ -137,6 +137,10 @@ class ImportCommandServiceMySqlTest extends MySqlContainerSupport {
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM job WHERE job_type = 'HISTORY_IMPORT'", Long.class))
         .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM job WHERE job_type = 'HISTORY_IMPORT'", String.class))
+        .isEqualTo("SUCCEEDED");
   }
 
   @Test
