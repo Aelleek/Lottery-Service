@@ -42,7 +42,9 @@ public class PurchaseCommandService implements CommandResultLoader {
   /** 완료 코드. */
   public static final String REGISTERED = "PURCHASE_REGISTERED";
 
-  private static final int MAX_CLIENT_ITEM_ID = 64;
+  /** 화면이 붙이는 항목 ID의 최대 길이(openapi `clientItemId`). */
+  public static final int MAX_CLIENT_ITEM_ID = 64;
+
   private static final Set<ErrorCode> FINAL_FAILURES =
       EnumSet.of(
           ErrorCode.FORBIDDEN,

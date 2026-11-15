@@ -62,9 +62,21 @@ public class PurchaseController {
     List<PurchaseCommandService.Entry> entries = new ArrayList<>();
     List<FieldErrorDetail> missing = new ArrayList<>();
     List<String> invalid = new ArrayList<>();
+    java.util.Set<String> ids = new java.util.HashSet<>();
     for (int i = 0; i < input.entries().size(); i++) {
       EntryInput entry = input.entries().get(i);
       String path = "entries[" + i + "].numbers";
+      if (entry != null) {
+        String idPath = "entries[" + i + "].clientItemId";
+        String id = entry.clientItemId();
+        if (id == null || id.isEmpty()) {
+          missing.add(new FieldErrorDetail(idPath, "REQUIRED"));
+        } else if (id.length() > PurchaseCommandService.MAX_CLIENT_ITEM_ID) {
+          missing.add(new FieldErrorDetail(idPath, "TOO_LONG"));
+        } else if (!ids.add(id)) {
+          missing.add(new FieldErrorDetail(idPath, "DUPLICATE"));
+        }
+      }
       if (entry == null || entry.numbers() == null) {
         missing.add(new FieldErrorDetail(path, "REQUIRED"));
         continue;
@@ -80,7 +92,9 @@ public class PurchaseController {
     if (!missing.isEmpty()) {
       List<FieldErrorDetail> all = new ArrayList<>(missing);
       invalid.forEach(path -> all.add(new FieldErrorDetail(path, "INVALID_NUMBERS")));
-      all.sort(java.util.Comparator.comparing(FieldErrorDetail::path, PurchaseController::byIndex));
+      all.sort(
+          java.util.Comparator.comparing(FieldErrorDetail::path, PurchaseController::byIndex)
+              .thenComparing(FieldErrorDetail::path));
       throw new BusinessException(
           ErrorCode.VALIDATION_FAILED, "입력을 확인해 주세요.", ErrorDetails.fieldErrors(all));
     }
