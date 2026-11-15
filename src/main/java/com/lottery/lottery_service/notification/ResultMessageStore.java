@@ -80,6 +80,19 @@ public class ResultMessageStore {
   }
 
   /**
+   * 회차의 현재 게시본이 {@code resultId}인지 회차 행을 공유 잠금해 확인한다. 보내기 직전에 불러, 슬롯이 시작한 뒤 정정이 승인됐으면 옛 판정으로 보내거나
+   * 아직 판정 전인 회원을 대상이 아니라고 멈추지 않게 한다.
+   */
+  public boolean publicationIs(int roundNo, long resultId) {
+    Long current =
+        jdbc.queryForObject(
+            "SELECT published_result_id FROM lotto_round WHERE round_no = ? FOR SHARE",
+            Long.class,
+            roundNo);
+    return current != null && current == resultId;
+  }
+
+  /**
    * 보내기 직전에 자격을 다시 확인한다(05 8.2절 4번). 회원이 활성 상태가 아니거나, 알림 수신이 꺼졌거나, 더는 대상 기록이 없으면 SUPPRESSED로 바꾼다.
    *
    * @return 보내도 되면 {@code true}

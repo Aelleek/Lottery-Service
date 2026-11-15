@@ -1406,6 +1406,47 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
         .isEqualTo(2);
   }
 
+  @Test
+  @DisplayName("슬롯이 보내는 도중 정정이 승인되면 남은 메시지를 멈추지 않고 그대로 두며 판정 대기로 끝난다(05 8.2절 2번)")
+  void correctionApprovedDuringSlot() {
+    long first = jdbc.queryForObject("SELECT published_result_id FROM lotto_round", Long.class);
+    tx.execute(s -> new EvaluationStore(jdbc).evaluateBatch(first, 0, 100));
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    ResultPublisher publisher =
+        new ResultPublisher(
+            jdbc,
+            tm,
+            new JobStore(jdbc, tm, clock, new JobProperties(null, null)),
+            new PrizeProperties(null, null),
+            clock);
+    publisher.receive(
+        new OfficialDraw(
+            ROUND,
+            new WinningNumbers(LottoNumbers.of(1, 2, 3, 4, 8, 10), LottoNumber.of(11)),
+            null,
+            null,
+            new byte[32]));
+    long corrected =
+        jdbc.queryForObject("SELECT id FROM draw_result WHERE state = 'QUARANTINED'", Long.class);
+    clock.set(Instant.parse("2026-11-14T13:00:00Z"));
+    List<Long> called = new ArrayList<>();
+
+    SlotResult result =
+        runner(
+                id -> {
+                  called.add(id);
+                  publisher.approve(corrected, 1);
+                  return new SendOutcome.Accepted("M-" + id);
+                })
+            .run(ROUND, new ResultSlot(clock.instant(), false, false));
+
+    assertThat(called).hasSize(1);
+    assertThat(result.success()).isFalse();
+    assertThat(result.cause()).isEqualTo("EVALUATION_PENDING");
+    assertThat(jdbc.queryForList("SELECT state FROM delivery_message ORDER BY state", String.class))
+        .containsExactly("ACCEPTED", "PENDING");
+  }
+
   private ResultSlotRunner runner(MessageSender sender) {
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
     return new ResultSlotRunner(

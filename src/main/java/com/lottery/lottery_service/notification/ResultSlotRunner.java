@@ -113,16 +113,28 @@ public class ResultSlotRunner {
     int sent = 0;
     int budgetBlocked = 0;
     int providerFailed = 0;
+    boolean publicationChanged = false;
     for (long id : messages.sendable(roundNo)) {
       beforeEach.run();
       Boolean ready;
       try {
-        ready = tx.execute(status -> messages.recheck(id) && messages.startSending(id, COST_UNITS));
+        ready =
+            tx.execute(
+                status -> {
+                  if (!messages.publicationIs(roundNo, published)) {
+                    return null;
+                  }
+                  return messages.recheck(id) && messages.startSending(id, COST_UNITS);
+                });
       } catch (RuntimeException e) {
         log.warn(
             "result message prepare failed message={} cause={}", id, e.getClass().getSimpleName());
         failed++;
         continue;
+      }
+      if (ready == null) {
+        publicationChanged = true;
+        break;
       }
       if (!Boolean.TRUE.equals(ready)) {
         if (stateOf(id).equals("PENDING") || stateOf(id).equals("RETRY_WAIT")) {
@@ -160,6 +172,9 @@ public class ResultSlotRunner {
                 + " AND state = 'UNKNOWN'",
             Integer.class,
             roundNo);
+    if (publicationChanged) {
+      return new SlotResult(false, "EVALUATION_PENDING", failed, unknown, sent);
+    }
     if (failed == 0) {
       return new SlotResult(true, null, 0, unknown, sent);
     }
