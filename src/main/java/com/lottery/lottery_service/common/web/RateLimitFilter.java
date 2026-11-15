@@ -68,6 +68,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
       }
     }
     if (retryAt.isPresent()) {
+      SecurityHeaders.apply(request, response);
       errors.resolveException(
           request,
           response,

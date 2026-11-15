@@ -30,6 +30,7 @@ public class BodySizeFilter extends OncePerRequestFilter {
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
     if (request.getContentLengthLong() > MAX_BYTES) {
+      SecurityHeaders.apply(request, response);
       errors.resolveException(
           request,
           response,

@@ -17,6 +17,7 @@ import com.lottery.lottery_service.auth.SessionRevocationFilter;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.web.OriginGuard;
+import com.lottery.lottery_service.common.web.SecurityHeaders;
 import java.time.Clock;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
@@ -42,9 +43,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
 public class SecurityConfig {
 
   /** 응답에 붙이는 CSP(03 6.2, C-29). 인라인 스크립트·스타일을 쓰지 않는 것을 전제로 한다. */
-  public static final String CONTENT_SECURITY_POLICY =
-      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;"
-          + " connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+  public static final String CONTENT_SECURITY_POLICY = SecurityHeaders.CONTENT_SECURITY_POLICY;
 
   private final MemberOAuth2UserService memberOAuth2UserService;
   private final AccountStore accounts;
@@ -94,7 +93,7 @@ public class SecurityConfig {
                         hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31_536_000))
                     .addHeaderWriter(
                         new StaticHeadersWriter(
-                            "Permissions-Policy", "camera=(self), microphone=(), geolocation=()")))
+                            "Permissions-Policy", SecurityHeaders.PERMISSIONS_POLICY)))
         .authorizeHttpRequests(
             authorize ->
                 authorize
@@ -170,12 +169,14 @@ public class SecurityConfig {
    */
   @Bean
   public RequestRejectedHandler requestRejectedHandler() {
-    return (request, response, ex) ->
-        errors.resolveException(
-            request,
-            response,
-            null,
-            new BusinessException(ErrorCode.VALIDATION_FAILED, "요청 형식을 확인해 주세요."));
+    return (request, response, ex) -> {
+      SecurityHeaders.apply(request, response);
+      errors.resolveException(
+          request,
+          response,
+          null,
+          new BusinessException(ErrorCode.VALIDATION_FAILED, "요청 형식을 확인해 주세요."));
+    };
   }
 
   private static HttpSessionRequestCache pageRequestCache() {

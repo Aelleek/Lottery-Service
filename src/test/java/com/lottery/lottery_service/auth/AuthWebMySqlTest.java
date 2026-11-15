@@ -272,6 +272,33 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
         .andExpect(header().string("Cache-Control", "no-store"));
   }
 
+  @Test
+  @DisplayName("보안 필터 앞에서 끝나는 응답(본문 상한 초과, 방화벽 거절)에도 같은 보안 헤더를 붙인다(03 6.2절)")
+  void securityHeadersBeforeChain() throws Exception {
+    for (MvcResult result :
+        List.of(
+            mvc.perform(
+                    post("/api/v1/guest-credentials")
+                        .secure(true)
+                        .contentType("application/json")
+                        .content(new byte[70_000]))
+                .andExpect(status().isBadRequest())
+                .andReturn(),
+            mvc.perform(get("/api/v1/session;x").secure(true))
+                .andExpect(status().isBadRequest())
+                .andReturn())) {
+      assertThat(result.getResponse().getHeader("Content-Security-Policy"))
+          .isEqualTo(SecurityConfig.CONTENT_SECURITY_POLICY);
+      assertThat(result.getResponse().getHeader("X-Frame-Options")).isEqualTo("DENY");
+      assertThat(result.getResponse().getHeader("X-Content-Type-Options")).isEqualTo("nosniff");
+      assertThat(result.getResponse().getHeader("Referrer-Policy"))
+          .isEqualTo("strict-origin-when-cross-origin");
+      assertThat(result.getResponse().getHeader("Strict-Transport-Security"))
+          .isEqualTo("max-age=31536000 ; includeSubDomains");
+      assertThat(result.getResponse().getHeader("Cache-Control")).isEqualTo("no-store");
+    }
+  }
+
   private long authVersion(long memberId) {
     return jdbc.queryForObject(
         "SELECT auth_version FROM member WHERE id = ?", Long.class, memberId);
