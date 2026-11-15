@@ -76,8 +76,11 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
             "recommendation_item",
             "recommendation_request",
             "lotto_record",
+            "subject_claim",
             "guest_credential",
-            "actor_subject")) {
+            "oauth_account",
+            "actor_subject",
+            "member")) {
       jdbc.update("DELETE FROM " + table);
     }
     jdbc.update("UPDATE lotto_round SET published_result_id = NULL");
@@ -347,6 +350,85 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
             + " = ?), publication_version = publication_version + 1 WHERE round_no = ?",
         roundNo,
         roundNo);
+  }
+
+  @Test
+  @DisplayName("생성하는 동안 그 비회원이 로그인으로 귀속되면 저장하지 않는다(05 4절 3번)")
+  void claimDuringGenerationSupersedes() {
+    long member =
+        new com.lottery.lottery_service.account.AccountStore(jdbc, tm, clock)
+            .login(com.lottery.lottery_service.auth.OAuthProvider.KAKAO, "claimer")
+            .subjectId();
+    java.util.concurrent.atomic.AtomicBoolean claimed =
+        new java.util.concurrent.atomic.AtomicBoolean();
+    RecommendationService racing =
+        serviceWithHook(
+            () -> {
+              if (claimed.compareAndSet(false, true)) {
+                new com.lottery.lottery_service.account.SubjectClaimStore(jdbc, tm, clock)
+                    .claim(subject, member);
+              }
+            });
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> racing.recommend(basic(7)))
+        .isInstanceOf(GenerationSupersededException.class);
+    assertThat(claimed).isTrue();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_request", Long.class))
+        .isZero();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isZero();
+  }
+
+  @Test
+  @DisplayName("생성하는 동안 그 회원이 탈퇴를 접수하면 저장하지 않는다(05 11절 3번)")
+  void withdrawalDuringGenerationSupersedes() {
+    com.lottery.lottery_service.account.MemberLogin login =
+        new com.lottery.lottery_service.account.AccountStore(jdbc, tm, clock)
+            .login(com.lottery.lottery_service.auth.OAuthProvider.KAKAO, "leaver");
+    java.util.concurrent.atomic.AtomicBoolean blocked =
+        new java.util.concurrent.atomic.AtomicBoolean();
+    RecommendationService racing =
+        serviceWithHook(
+            () -> {
+              if (blocked.compareAndSet(false, true)) {
+                new com.lottery.lottery_service.account.withdrawal.WithdrawalService(
+                        jdbc,
+                        tm,
+                        new com.lottery.lottery_service.common.job.JobStore(
+                            jdbc,
+                            tm,
+                            clock,
+                            new com.lottery.lottery_service.common.job.JobProperties(null, null)),
+                        clock)
+                    .block(login.memberId());
+              }
+            });
+    RecommendCommand command =
+        new RecommendCommand(
+            login.subjectId(), ROUND, 1, RecommendationCondition.none(), digest(8), digest(8));
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> racing.recommend(command))
+        .isInstanceOf(GenerationSupersededException.class);
+    assertThat(blocked).isTrue();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_request", Long.class))
+        .isZero();
+    jdbc.update("DELETE FROM job");
+  }
+
+  private RecommendationService serviceWithHook(Runnable duringGeneration) {
+    return new RecommendationService(
+        new GenerationLeaseStore(jdbc, tm, clock),
+        new RecommendationStore(jdbc),
+        rounds,
+        new PublishedFirstPrizes(jdbc),
+        filters,
+        new RecommendationGenerator(
+            new SplittableRandom(5),
+            () -> {
+              duringGeneration.run();
+              return System.nanoTime();
+            }),
+        new UsageEventStore(jdbc),
+        tm);
   }
 
   private RecommendCommand basic(int key) {
