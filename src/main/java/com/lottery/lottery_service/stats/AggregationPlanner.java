@@ -23,6 +23,9 @@ public class AggregationPlanner {
   /** 기간이 끝난 뒤 늦은 자료를 받는 기간. */
   public static final Duration CORRECTION = Duration.ofDays(7);
 
+  /** 한 번에 새로 계산하는 빠진 날·달의 최대 수. */
+  static final int BACKFILL_LIMIT = 31;
+
   private final JdbcTemplate jdbc;
   private final UsageAggregator aggregator;
   private final Clock clock;
@@ -55,7 +58,35 @@ public class AggregationPlanner {
             utc(now),
             utc(now.minus(CORRECTION)))
         .forEach(aggregator::recomputeRound);
+    backfillMissing(today);
     return verifyClosedPeriods(now);
+  }
+
+  /**
+   * 원천 이벤트는 있는데 집계 행이 하나도 없는 지난 날·달을 계산한다. 매시간 실행이 하루 넘게 멈추면 그 날은 다시 계산되지 않아 통계에서 빠지고, 확정되지 않아 원천
+   * 정리도 멈추기 때문이다. 한 번에 {@link #BACKFILL_LIMIT}개까지만 한다.
+   */
+  private void backfillMissing(LocalDate today) {
+    jdbc.queryForList(
+            "SELECT DISTINCT e.business_date FROM usage_event e WHERE e.business_date < ?"
+                + " AND NOT EXISTS (SELECT 1 FROM usage_aggregate a WHERE a.period_type = 'DAY'"
+                + " AND a.period_key = CAST(e.business_date AS CHAR) AND a.calculation_version = ?)"
+                + " ORDER BY e.business_date LIMIT ?",
+            LocalDate.class,
+            today.minusDays(1),
+            UsageAggregator.CALCULATION_VERSION,
+            BACKFILL_LIMIT)
+        .forEach(aggregator::recomputeDay);
+    jdbc.queryForList(
+            "SELECT DISTINCT DATE_FORMAT(e.business_date, '%Y-%m') AS m FROM usage_event e"
+                + " WHERE e.business_date < ? AND NOT EXISTS (SELECT 1 FROM usage_aggregate a"
+                + " WHERE a.period_type = 'MONTH' AND a.period_key = DATE_FORMAT(e.business_date,"
+                + " '%Y-%m') AND a.calculation_version = ?) ORDER BY m LIMIT ?",
+            String.class,
+            YearMonth.from(today).atDay(1),
+            UsageAggregator.CALCULATION_VERSION,
+            BACKFILL_LIMIT)
+        .forEach(m -> aggregator.recomputeMonth(YearMonth.parse(m)));
   }
 
   private int verifyClosedPeriods(Instant now) {

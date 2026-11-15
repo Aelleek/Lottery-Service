@@ -6,6 +6,7 @@ import com.lottery.lottery_service.account.GuestCredentialStore;
 import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.TestSecrets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import javax.sql.DataSource;
@@ -103,6 +104,28 @@ class AggregationPlannerMySqlTest extends MySqlContainerSupport {
     assertThat(state("MONTH", "2026-11")).isEqualTo("VERIFIED");
     assertThat(value("MONTH", "2026-11")).isEqualTo(15);
     assertThat(value("ROUND", "1200")).isEqualTo(10);
+  }
+
+  @Test
+  @DisplayName("매시간 실행이 하루 넘게 멈춰 집계가 없는 지난 날·달도 원천에서 계산하고, 보정 기간이 지났으면 확정한다")
+  void backfillsMissedPeriods() {
+    events.record(
+        subject,
+        ROUND,
+        UsageEventStore.RECOMMENDATION_SETS,
+        5,
+        Instant.parse("2026-10-20T01:00:00Z"));
+    events.record(
+        subject, ROUND, UsageEventStore.RECOMMENDATION_SETS, 5, TUESDAY.minus(Duration.ofDays(3)));
+
+    planner.run();
+
+    assertThat(value("DAY", "2026-11-07")).isEqualTo(5);
+    assertThat(state("DAY", "2026-11-07")).isEqualTo("BUILDING");
+    assertThat(value("DAY", "2026-10-20")).isEqualTo(5);
+    assertThat(state("DAY", "2026-10-20")).isEqualTo("VERIFIED");
+    assertThat(value("MONTH", "2026-10")).isEqualTo(5);
+    assertThat(state("MONTH", "2026-10")).isEqualTo("VERIFIED");
   }
 
   private long value(String type, String key) {
