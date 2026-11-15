@@ -111,7 +111,8 @@ public class ResultMessageStore {
     Boolean eligible =
         jdbc.queryForObject(
             "SELECT m.state = 'ACTIVE' AND COALESCE(c.notify_enabled, FALSE)"
-                + " FROM member m LEFT JOIN member_contact c ON c.member_id = m.id WHERE m.id = ?",
+                + " FROM member m LEFT JOIN member_contact c ON c.member_id = m.id WHERE m.id = ?"
+                + " FOR SHARE OF c",
             Boolean.class,
             member);
     if (Boolean.TRUE.equals(eligible) && targets.target(round, member) != null) {

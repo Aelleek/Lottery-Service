@@ -1447,6 +1447,48 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
         .containsExactly("ACCEPTED", "PENDING");
   }
 
+  @Test
+  @DisplayName("보내기 직전 재확인은 진행 중인 동의 철회의 커밋을 기다린 뒤 보고 보내지 않는다(02 6.4절)")
+  void recheckWaitsForConsentWithdrawal() throws Exception {
+    tx.execute(s -> store.createMissing(ROUND));
+    long id = message(fourthMember);
+    java.util.concurrent.CountDownLatch held = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.ExecutorService pool =
+        java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      java.util.concurrent.Future<?> withdraw =
+          pool.submit(
+              () ->
+                  tx.executeWithoutResult(
+                      s -> {
+                        jdbc.update(
+                            "UPDATE member_contact SET notify_enabled = FALSE, consent_event_id = NULL"
+                                + " WHERE member_id = ?",
+                            fourthMember);
+                        held.countDown();
+                        try {
+                          release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                        } catch (InterruptedException e) {
+                          Thread.currentThread().interrupt();
+                        }
+                      }));
+      held.await(5, java.util.concurrent.TimeUnit.SECONDS);
+      java.util.concurrent.Future<Boolean> recheck =
+          pool.submit(() -> tx.execute(s -> store.recheck(id)));
+      Thread.sleep(300);
+      assertThat(recheck.isDone()).isFalse();
+      release.countDown();
+      withdraw.get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+      assertThat(recheck.get(5, java.util.concurrent.TimeUnit.SECONDS)).isFalse();
+      assertThat(state(fourthMember)).isEqualTo("SUPPRESSED");
+    } finally {
+      release.countDown();
+      pool.shutdownNow();
+    }
+  }
+
   private ResultSlotRunner runner(MessageSender sender) {
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
     return new ResultSlotRunner(
