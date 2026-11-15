@@ -144,7 +144,10 @@ public class ApiExceptionHandler {
         HttpStatus.UNPROCESSABLE_ENTITY,
         NUMBERS_MESSAGE,
         false,
-        ErrorDetails.empty(),
+        e.paths().isEmpty()
+            ? ErrorDetails.empty()
+            : ErrorDetails.fieldErrors(
+                e.paths().stream().map(p -> new FieldErrorDetail(p, "INVALID_NUMBERS")).toList()),
         request);
   }
 

@@ -205,7 +205,7 @@ public class RecordHistoryQuery {
     try {
       String[] parts = cursor.split("\\.", -1);
       if (parts.length != 2
-          || !MessageDigest.isEqual(sign(subjectId, filter, parts[0]), DECODER.decode(parts[1]))) {
+          || !signedByAnyKey(subjectId, filter, parts[0], DECODER.decode(parts[1]))) {
         throw invalidCursor();
       }
       String[] f = new String(DECODER.decode(parts[0]), StandardCharsets.UTF_8).split("\\|");
@@ -213,6 +213,18 @@ public class RecordHistoryQuery {
     } catch (IllegalArgumentException | ArrayIndexOutOfBoundsException e) {
       throw invalidCursor();
     }
+  }
+
+  /** 남아 있는 모든 키 버전으로 확인한다(03 6.6절). 키를 바꾼 뒤에도 열려 있던 목록 cursor가 이어진다. */
+  private boolean signedByAnyKey(long subjectId, String filter, String payload, byte[] signature) {
+    String message = "record-cursor|" + subjectId + "|" + filter + "|" + payload;
+    for (byte[] candidate :
+        secrets.commandToken().signWithAll(message.getBytes(StandardCharsets.UTF_8))) {
+      if (MessageDigest.isEqual(candidate, signature)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private byte[] sign(long subjectId, String filter, String payload) {

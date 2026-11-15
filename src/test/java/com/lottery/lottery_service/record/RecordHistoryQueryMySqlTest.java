@@ -115,6 +115,24 @@ class RecordHistoryQueryMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("키를 새 버전으로 바꿔도 옛 버전이 남아 있으면 열려 있던 목록 cursor가 이어진다(03 6.6절)")
+  void cursorSurvivesKeyRotation() {
+    for (int i = 0; i < 15; i++) {
+      insert(subject, 1200, i, false);
+    }
+    RecordPage first = query.list(subject, null, null, null);
+    RecordHistoryQuery rotated =
+        new RecordHistoryQuery(
+            jdbc,
+            new RoundStore(jdbc, new DataSourceTransactionManager(dataSource)),
+            TestSecrets.commandTokenRotated(),
+            clock,
+            new RoundResultQuery(jdbc));
+
+    assertThat(rotated.list(subject, null, null, first.nextCursor()).items()).hasSize(5);
+  }
+
+  @Test
   @DisplayName("cursor를 바꾸거나 다른 필터·다른 주체에 쓰면 VALIDATION_FAILED")
   void cursorIsBound() {
     for (int i = 0; i < 11; i++) {

@@ -43,6 +43,24 @@ public final class TestSecrets {
         Map.of(1, encode(ADMIN_MFA_V1), 2, encode(ADMIN_MFA_V2)));
   }
 
+  /** 명령 토큰 키에 버전 2를 더하고 현재 버전으로 지정한 설정. 버전 1은 {@link #keys()}와 같다. */
+  public static SecretKeys commandTokenRotated() {
+    return new SecretKeys(
+        new SecretProperties(
+            new SecretProperties.Ring(
+                2,
+                Map.of(
+                    1,
+                    encode("command-token-test-key-0123456789"),
+                    2,
+                    encode("command-token-test-key-version-2x"))),
+            new SecretProperties.Ring(1, Map.of(1, encode("guest-credential-test-key-012345"))),
+            new SecretProperties.Ring(1, Map.of(1, encode("verification-code-test-key-01234"))),
+            new SecretProperties.Ring(1, Map.of(1, encode(CONTACT_V1))),
+            new SecretProperties.Ring(1, Map.of(1, encode("csrf-token-test-key-0123456789ab"))),
+            new SecretProperties.Ring(1, Map.of(1, encode(ADMIN_MFA_V1)))));
+  }
+
   /** {@link #rotated()}에서 버전 1을 지운 설정. 다시 암호화하지 않은 값은 풀리지 않는다. */
   public static SecretKeys rotatedWithoutOld() {
     return encryptionKeys(2, Map.of(2, encode(CONTACT_V2)), Map.of(2, encode(ADMIN_MFA_V2)));

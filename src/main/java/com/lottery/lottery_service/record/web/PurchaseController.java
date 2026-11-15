@@ -2,6 +2,9 @@ package com.lottery.lottery_service.record.web;
 
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.error.ErrorDetails;
+import com.lottery.lottery_service.common.error.FieldErrorDetail;
+import com.lottery.lottery_service.common.number.InvalidLottoNumberException;
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.common.web.CanonicalUuid;
 import com.lottery.lottery_service.common.web.RequestSubject;
@@ -57,12 +60,29 @@ public class PurchaseController {
       throw new BusinessException(ErrorCode.VALIDATION_FAILED, "입력 형식을 확인해 주세요.");
     }
     List<PurchaseCommandService.Entry> entries = new ArrayList<>();
-    for (EntryInput entry : input.entries()) {
+    List<FieldErrorDetail> missing = new ArrayList<>();
+    List<String> invalid = new ArrayList<>();
+    for (int i = 0; i < input.entries().size(); i++) {
+      EntryInput entry = input.entries().get(i);
+      String path = "entries[" + i + "].numbers";
       if (entry == null || entry.numbers() == null) {
-        throw new BusinessException(ErrorCode.VALIDATION_FAILED, "입력을 확인해 주세요.");
+        missing.add(new FieldErrorDetail(path, "REQUIRED"));
+        continue;
       }
-      entries.add(
-          new PurchaseCommandService.Entry(entry.clientItemId(), LottoNumbers.of(entry.numbers())));
+      try {
+        entries.add(
+            new PurchaseCommandService.Entry(
+                entry.clientItemId(), LottoNumbers.of(entry.numbers())));
+      } catch (InvalidLottoNumberException e) {
+        invalid.add(path);
+      }
+    }
+    if (!missing.isEmpty()) {
+      throw new BusinessException(
+          ErrorCode.VALIDATION_FAILED, "입력을 확인해 주세요.", ErrorDetails.fieldErrors(missing));
+    }
+    if (!invalid.isEmpty()) {
+      throw new InvalidLottoNumberException("invalid purchase entries", invalid);
     }
     PurchaseCommandService.Registered result =
         purchases.register(

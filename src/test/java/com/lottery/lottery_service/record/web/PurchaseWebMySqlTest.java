@@ -113,6 +113,26 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
             .andReturn();
     String operationId = body(registered).get("operationId").asText();
 
+    mvc.perform(
+            post("/api/v1/me/lotto/purchases")
+                .cookie(session)
+                .with(oauth2Login().oauth2User(member))
+                .header("X-CSRF-TOKEN", csrf)
+                .header("X-Command-Token", command)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(
+                    "{\"round\":"
+                        + ROUND
+                        + ",\"entries\":[{\"clientItemId\":\"a\",\"numbers\":[1,2,3,4,5,6]},"
+                        + "{\"clientItemId\":\"b\",\"numbers\":[1,2,3,4,5,46]},"
+                        + "{\"clientItemId\":\"c\",\"numbers\":[1,1,2,3,4,5]}]}"))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.details.fieldErrors.length()").value(2))
+        .andExpect(jsonPath("$.details.fieldErrors[0].path").value("entries[1].numbers"))
+        .andExpect(jsonPath("$.details.fieldErrors[1].path").value("entries[2].numbers"));
+
     MvcResult found =
         mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(member)))
             .andExpect(status().isOk())
