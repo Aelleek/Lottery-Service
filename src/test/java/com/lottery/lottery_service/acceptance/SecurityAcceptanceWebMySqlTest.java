@@ -193,7 +193,20 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
             get("/api/v1/lotto/rounds/" + ROUND + "/result").with(r -> remote(r, "198.51.100.7")))
         .andExpect(status().isTooManyRequests())
         .andExpect(header().exists("Retry-After"))
-        .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+        .andExpect(jsonPath("$.code").value("RATE_LIMITED"))
+        .andExpect(
+            header()
+                .string(
+                    "Content-Security-Policy",
+                    com.lottery.lottery_service.common.web.SecurityHeaders.CONTENT_SECURITY_POLICY))
+        .andExpect(header().string("X-Frame-Options", "DENY"))
+        .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+        .andExpect(
+            header()
+                .string(
+                    "Permissions-Policy",
+                    com.lottery.lottery_service.common.web.SecurityHeaders.PERMISSIONS_POLICY))
+        .andExpect(header().string("Cache-Control", "no-store"));
     assertThat(signals.drain().get(SecuritySignals.Kind.TOO_MANY_REQUESTS))
         .isEqualTo(new SecuritySignals.Summary(1, "/api/v1/lotto/rounds/{id}/result"));
     mvc.perform(

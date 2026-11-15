@@ -135,13 +135,17 @@ public class ResultSlotJobHandler implements JobHandler {
   }
 
   private JobStep endAutomatic(JobLease lease, int roundNo, ResultSlot slot) {
-    int halted = messages.haltRemaining(roundNo);
+    int newlyHalted = messages.haltRemaining(roundNo);
+    long halted = count(roundNo, "HALTED");
+    long unknown = count(roundNo, "UNKNOWN");
     log.warn(
-        "result slot skipped after automatic window round={} slot={} halted={}",
+        "result slot skipped after automatic window round={} slot={} halted={} newlyHalted={}",
         roundNo,
         slot.at(),
-        halted);
-    if (halted > 0) {
+        halted,
+        newlyHalted);
+    boolean alerted = halted > 0 || unknown > 0;
+    if (alerted) {
       jobs.enqueue(
           JobStore.OPERATOR_ALERT,
           "automatic-ended:" + roundNo,
@@ -151,14 +155,31 @@ public class ResultSlotJobHandler implements JobHandler {
               + roundNo
               + ",\"halted\":"
               + halted
+              + ",\"unknown\":"
+              + unknown
               + "}",
           clock.instant());
     }
     jobs.saveResult(
         lease,
         null,
-        "{\"success\":false,\"failed\":" + halted + ",\"unknown\":0,\"skipped\":true}");
+        "{\"success\":false,\"failed\":"
+            + halted
+            + ",\"unknown\":"
+            + unknown
+            + ",\"skipped\":true,\"alerted\":"
+            + alerted
+            + "}");
     return new JobStep.Done();
+  }
+
+  private long count(int roundNo, String state) {
+    return jdbc.queryForObject(
+        "SELECT COUNT(*) FROM delivery_message WHERE round_no = ? AND purpose = 'RESULT'"
+            + " AND state = ?",
+        Long.class,
+        roundNo,
+        state);
   }
 
   private static final class AutomaticWindowClosedException extends RuntimeException {

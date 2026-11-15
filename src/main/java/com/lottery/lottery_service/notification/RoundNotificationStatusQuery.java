@@ -110,7 +110,10 @@ public class RoundNotificationStatusQuery {
               outcome,
               finished ? cause : null,
               result.path("failed").asInt(0),
-              "FAILED".equals(outcome) && payload.path("alert").asBoolean()));
+              "FAILED".equals(outcome)
+                  && (result.has("alerted")
+                      ? result.path("alerted").asBoolean()
+                      : payload.path("alert").asBoolean())));
     }
 
     Map<String, Long> counts = new LinkedHashMap<>();

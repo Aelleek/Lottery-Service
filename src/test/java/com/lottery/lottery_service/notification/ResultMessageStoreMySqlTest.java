@@ -965,7 +965,73 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     assertThat(job).containsEntry("last_error_code", null);
     assertThat(job.get("cursor_json").toString())
         .contains("\"success\": false")
-        .contains("\"failed\": " + halted);
+        .contains("\"failed\": " + halted)
+        .contains("\"alerted\": true");
+    RoundNotificationStatusQuery.Slot shown =
+        new RoundNotificationStatusQuery(jdbc, clock).status(ROUND).slots().get(0);
+    assertThat(shown.outcome()).isEqualTo("FAILED");
+    assertThat(shown.causeCode()).isNull();
+    assertThat(shown.failedCount()).isEqualTo(halted);
+    assertThat(shown.operatorAlerted()).isTrue();
+  }
+
+  @Test
+  @DisplayName("자동 발송 시간이 지나 도는 슬롯에 멈출 메시지도 확인 중인 메시지도 없으면 운영자 알림을 보내지 않고 현황도 알림 없음으로 보인다")
+  void automaticEndWithNothingLeft() {
+    clock.set(Instant.parse("2026-11-15T03:10:00Z"));
+    AtomicInteger sent = new AtomicInteger();
+
+    runSlotJob("empty-late-slot", "2026-11-15T03:00:00Z", sent, Duration.ZERO);
+
+    assertThat(sent.get()).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM job WHERE job_type = 'OPERATOR_ALERT'", Long.class))
+        .isZero();
+    RoundNotificationStatusQuery.Slot shown =
+        new RoundNotificationStatusQuery(jdbc, clock).status(ROUND).slots().get(0);
+    assertThat(shown.outcome()).isEqualTo("FAILED");
+    assertThat(shown.operatorAlerted()).isFalse();
+  }
+
+  @Test
+  @DisplayName("자동 발송을 끝낼 때 접수 확인 중(UNKNOWN)인 메시지 수를 알림과 결과에 넣고, 다시 돌아도 알림은 한 번이다(02 6.2절)")
+  void automaticEndCountsUnknownOnce() {
+    tx.execute(s -> store.createMissing(ROUND));
+    jdbc.update(
+        "UPDATE delivery_message SET state = 'UNKNOWN' WHERE id = ?", message(fourthMember));
+    clock.set(Instant.parse("2026-11-15T03:10:00Z"));
+    AtomicInteger sent = new AtomicInteger();
+
+    runSlotJob("unknown-late-slot", "2026-11-15T03:00:00Z", sent, Duration.ZERO);
+    jdbc.update(
+        "INSERT INTO job (public_id, job_type, dedupe_key, state, payload, available_at)"
+            + " SELECT UUID_TO_BIN(UUID()), job_type, 'rerun-late-slot', 'READY', payload,"
+            + " available_at FROM job WHERE dedupe_key = ?",
+        "unknown-late-slot".getBytes(StandardCharsets.UTF_8));
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    JobStore jobs = new JobStore(jdbc, tm, clock, new JobProperties(null, null));
+    new JobRunner(
+            jobs,
+            List.of(
+                new ResultSlotJobHandler(
+                    runner(id -> new SendOutcome.Accepted("M")),
+                    new ResultCollector(r -> new ParsedDraw.NotAnnounced(), null),
+                    jdbc,
+                    jobs,
+                    store,
+                    clock)),
+            tm,
+            clock)
+        .runOnce();
+
+    List<String> alerts =
+        jdbc.queryForList(
+            "SELECT CAST(payload AS CHAR) FROM job WHERE job_type = 'OPERATOR_ALERT'",
+            String.class);
+    assertThat(alerts).hasSize(1);
+    assertThat(alerts.get(0)).contains("\"halted\": 1").contains("\"unknown\": 1");
+    assertThat(sent.get()).isZero();
   }
 
   @Test

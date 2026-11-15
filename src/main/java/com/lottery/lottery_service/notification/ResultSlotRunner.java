@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.notification;
 
+import com.lottery.lottery_service.common.db.RetryingTransactionTemplate;
 import com.lottery.lottery_service.common.error.ExceptionLogs;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.result.query.ResultState;
@@ -43,7 +44,7 @@ public class ResultSlotRunner {
     this.messages = messages;
     this.sender = sender;
     this.jobs = jobs;
-    this.tx = new TransactionTemplate(transactionManager);
+    this.tx = new RetryingTransactionTemplate(transactionManager);
     this.clock = clock;
     this.results = new RoundResultQuery(jdbc);
   }
