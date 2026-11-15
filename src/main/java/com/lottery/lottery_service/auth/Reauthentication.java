@@ -44,6 +44,12 @@ public final class Reauthentication {
     }
   }
 
+  /** 새로 로그인할 때 이전 로그인의 재인증 시각을 지운다. 같은 브라우저 세션에서 다른 회원이 로그인해도 이어지지 않게 한다. */
+  static void forget(HttpSession session) {
+    session.removeAttribute(PENDING);
+    session.removeAttribute(COMPLETED_AT);
+  }
+
   static void complete(HttpSession session, Instant at) {
     session.removeAttribute(PENDING);
     session.setAttribute(COMPLETED_AT, at);

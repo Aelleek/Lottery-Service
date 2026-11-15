@@ -4,6 +4,7 @@ import com.lottery.lottery_service.account.ClaimResult;
 import com.lottery.lottery_service.account.GuestCredentialStore;
 import com.lottery.lottery_service.account.GuestIssueService;
 import com.lottery.lottery_service.account.SubjectClaimStore;
+import com.lottery.lottery_service.admin.AdminSession;
 import com.lottery.lottery_service.common.error.ExceptionLogs;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -52,7 +53,10 @@ public class LoginSuccessHandler extends SavedRequestAwareAuthenticationSuccessH
     if (Reauthentication.pending(session).isPresent()) {
       Reauthentication.complete(session, clock.instant());
     } else if (authentication.getPrincipal() instanceof MemberPrincipal member) {
-      SessionLifetime.markStarted(request.getSession(), clock.instant());
+      HttpSession fresh = request.getSession();
+      AdminSession.end(fresh);
+      Reauthentication.forget(fresh);
+      SessionLifetime.markStarted(fresh, clock.instant());
       String token = GuestAuthenticationFilter.cookieValue(request, issuer.cookieName());
       if (token != null) {
         claimQuietly(token, member);

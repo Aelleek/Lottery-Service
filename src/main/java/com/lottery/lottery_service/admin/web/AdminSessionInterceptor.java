@@ -7,6 +7,7 @@ import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import java.time.Clock;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,6 +37,10 @@ public class AdminSessionInterceptor implements HandlerInterceptor {
       throw new BusinessException(ErrorCode.UNAUTHENTICATED, "로그인이 필요합니다.");
     }
     if (access.roleOf(member.memberId()).isEmpty()) {
+      HttpSession session = request.getSession(false);
+      if (session != null) {
+        AdminSession.end(session);
+      }
       throw new BusinessException(ErrorCode.FORBIDDEN, "허용되지 않은 요청입니다.");
     }
     if (!AdminSession.touch(request.getSession(false), clock.instant())) {

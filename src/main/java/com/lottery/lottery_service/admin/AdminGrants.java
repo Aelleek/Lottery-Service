@@ -197,11 +197,19 @@ public class AdminGrants {
     }
   }
 
+  /** 권한을 주거나 바꾼다. 회수된 권한을 다시 주면 이전 2차 인증 등록을 지워 새로 등록하게 한다. */
   private void upsertGrant(long target, AdminRole role, Long grantedBy) {
     jdbc.update(
         "INSERT INTO admin_grant (member_id, role, granted_at, granted_by_member_id)"
-            + " VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE role = VALUES(role),"
-            + " granted_at = VALUES(granted_at), granted_by_member_id ="
+            + " VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE"
+            + " mfa_secret = IF(revoked_at IS NULL, mfa_secret, NULL),"
+            + " mfa_key_version = IF(revoked_at IS NULL, mfa_key_version, NULL),"
+            + " mfa_enrolled_at = IF(revoked_at IS NULL, mfa_enrolled_at, NULL),"
+            + " mfa_last_step = IF(revoked_at IS NULL, mfa_last_step, NULL),"
+            + " mfa_failed_count = IF(revoked_at IS NULL, mfa_failed_count, 0),"
+            + " mfa_locked_until = IF(revoked_at IS NULL, mfa_locked_until, NULL),"
+            + " mfa_recovery_hashes = IF(revoked_at IS NULL, mfa_recovery_hashes, NULL),"
+            + " role = VALUES(role), granted_at = VALUES(granted_at), granted_by_member_id ="
             + " VALUES(granted_by_member_id), revoked_at = NULL",
         target,
         role.name(),

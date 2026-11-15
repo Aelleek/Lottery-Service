@@ -109,6 +109,23 @@ class LoginSuccessHandlerMySqlTest extends MySqlContainerSupport {
         .isTrue();
   }
 
+  @Test
+  @DisplayName("같은 브라우저 세션에서 새로 로그인하면 이전 로그인의 관리자 세션과 재인증 시각을 이어 쓰지 않는다")
+  void freshLoginClearsAdminSessionAndReauth() throws Exception {
+    MemberLogin login = accounts.login(OAuthProvider.NAVER, "naver-3");
+    MockHttpServletRequest request = new MockHttpServletRequest("GET", "/login/oauth2/code/naver");
+    com.lottery.lottery_service.admin.AdminSession.start(request.getSession(), clock.instant());
+    request.getSession().setAttribute(Reauthentication.COMPLETED_AT, clock.instant());
+
+    handler.onAuthenticationSuccess(request, new MockHttpServletResponse(), auth(login));
+
+    assertThat(
+            com.lottery.lottery_service.admin.AdminSession.touch(
+                request.getSession(false), clock.instant()))
+        .isFalse();
+    assertThat(request.getSession(false).getAttribute(Reauthentication.COMPLETED_AT)).isNull();
+  }
+
   private static OAuth2AuthenticationToken auth(MemberLogin login) {
     MemberPrincipal principal = MemberPrincipal.of(login, OAuthProvider.NAVER);
     return new OAuth2AuthenticationToken(principal, principal.getAuthorities(), "naver");

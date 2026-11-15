@@ -179,6 +179,13 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.rankCounts.losing").value(0))
         .andExpect(jsonPath("$.calculationVersion").isString());
 
+    jdbc.update("UPDATE admin_grant SET revoked_at = NOW(6) WHERE member_id = ?", admin.memberId());
+    mvc.perform(admitted.apply(get(probe))).andExpect(status().isForbidden());
+    assertThat(sessionValue(renewed, "authenticatedAt")).isNull();
+    jdbc.update("UPDATE admin_grant SET revoked_at = NULL WHERE member_id = ?", admin.memberId());
+    mvc.perform(admitted.apply(get(probe)))
+        .andExpect(jsonPath("$.code").value("ADMIN_AUTH_REQUIRED"));
+
     sessionAttribute(renewed, "lastRequestAt", Instant.now().minus(Duration.ofMinutes(31)));
     mvc.perform(admitted.apply(get(probe)))
         .andExpect(jsonPath("$.code").value("ADMIN_AUTH_REQUIRED"));

@@ -194,6 +194,41 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("사고 대응 순서대로 권한을 먼저 회수한 뒤에도 2차 인증을 초기화할 수 있고, 회수한 권한을 다시 주면 이전 등록은 남지 않는다(07 7절)")
+  void revokeThenResetAndRegrant() {
+    UUID soleId = UUID.randomUUID();
+    long sole = member(soleId);
+    grants.grantByCommand(soleId, AdminRole.ADMIN, "첫 관리자 지정");
+    mfa.enroll(sole);
+
+    grants.revokeByCommand(soleId, "계정 도용 의심");
+    grants.resetMfaByCommand(soleId, "도용된 기기");
+
+    assertThat(mfaSecretIsNull(sole)).isTrue();
+    assertThat(audits("ADMIN_MFA_RESET_BY_COMMAND", "SUCCEEDED")).isEqualTo(1);
+
+    UUID otherId = UUID.randomUUID();
+    long other = member(otherId);
+    grants.grantByCommand(otherId, AdminRole.ADMIN, "다른 관리자");
+    mfa.enroll(other);
+    grants.revokeByCommand(otherId, "담당 종료");
+    grants.grantByCommand(otherId, AdminRole.OPERATOR, "다시 지정");
+
+    assertThat(mfaSecretIsNull(other)).isTrue();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT mfa_recovery_hashes IS NULL FROM admin_grant WHERE member_id = ?",
+                Boolean.class,
+                other))
+        .isTrue();
+  }
+
+  private boolean mfaSecretIsNull(long memberId) {
+    return jdbc.queryForObject(
+        "SELECT mfa_secret IS NULL FROM admin_grant WHERE member_id = ?", Boolean.class, memberId);
+  }
+
+  @Test
   @DisplayName("하나뿐인 ADMIN도 관리 명령으로 자기 2차 인증을 초기화하고 권한을 회수할 수 있다. 감사와 운영자 알림이 남는다(C-33)")
   void soleAdminByCommand() {
     UUID soleId = UUID.randomUUID();

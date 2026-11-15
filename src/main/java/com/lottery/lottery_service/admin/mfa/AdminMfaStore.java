@@ -177,13 +177,15 @@ public class AdminMfaStore {
   /**
    * 등록을 지운다. 기기를 잃었거나 복구 코드를 다 썼을 때 ADMIN이 사유와 감사 기록을 남기며 부른다(C-33).
    *
-   * @return 바꾼 행 수. 회수되지 않은 관리자 권한이 없으면 0
+   * <p>회수된 권한에도 지운다(07 7절 "권한을 회수하고 2차 인증을 초기화한다"는 회수 뒤에 할 수 있어야 한다).
+   *
+   * @return 바꾼 행 수. 관리자 권한 행이 없으면 0
    */
   public int reset(long memberId) {
     return jdbc.update(
         "UPDATE admin_grant SET mfa_secret = NULL, mfa_key_version = NULL, mfa_enrolled_at = NULL,"
             + " mfa_last_step = NULL, mfa_failed_count = 0, mfa_locked_until = NULL,"
-            + " mfa_recovery_hashes = NULL WHERE member_id = ? AND revoked_at IS NULL",
+            + " mfa_recovery_hashes = NULL WHERE member_id = ?",
         memberId);
   }
 
