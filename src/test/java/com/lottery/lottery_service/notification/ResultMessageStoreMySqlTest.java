@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
@@ -855,7 +856,9 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
                 }),
             new ResultCollector(r -> new ParsedDraw.NotAnnounced(), null),
             jdbc,
-            jobs);
+            jobs,
+            store,
+            clock);
 
     assertThat(new JobRunner(jobs, List.of(handler), tm, clock).runOnce())
         .contains(JobState.SUCCEEDED);
@@ -898,7 +901,9 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
                 }),
             new ResultCollector(r -> new ParsedDraw.NotAnnounced(), null),
             jdbc,
-            jobs);
+            jobs,
+            store,
+            clock);
 
     new JobRunner(jobs, List.of(handler), tm, clock).runOnce();
 
@@ -925,6 +930,71 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("다음 날 12:00 슬롯 뒤 10분이 지나 도는 슬롯 job은 보내지 않고 남은 메시지를 멈춘다(02 6.2절)")
+  void noAutomaticSendAfterLastSlot() {
+    assertThat(ResultSlotJobHandler.automaticDeadline(Instant.parse("2026-11-14T11:35:00Z")))
+        .isEqualTo(Instant.parse("2026-11-15T03:10:00Z"));
+    tx.execute(s -> store.createMissing(ROUND));
+    clock.set(Instant.parse("2026-11-15T03:10:00Z"));
+    AtomicInteger sent = new AtomicInteger();
+
+    assertThat(runSlotJob("late-slot", "2026-11-14T13:00:00Z", sent, Duration.ZERO))
+        .contains(JobState.SUCCEEDED);
+
+    assertThat(sent.get()).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'HALTED'", Long.class))
+        .isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("발송 중에 자동 발송 끝 시각을 넘기면 그 자리에서 멈추고 남은 메시지를 멈춘다")
+  void stopsAtAutomaticDeadline() {
+    clock.set(Instant.parse("2026-11-15T03:09:00Z"));
+    AtomicInteger sent = new AtomicInteger();
+
+    assertThat(runSlotJob("edge-slot", "2026-11-15T03:00:00Z", sent, Duration.ofMinutes(2)))
+        .contains(JobState.SUCCEEDED);
+
+    assertThat(sent.get()).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'ACCEPTED'", Long.class))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'HALTED'", Long.class))
+        .isEqualTo(1);
+  }
+
+  private Optional<JobState> runSlotJob(
+      String key, String slotAt, AtomicInteger sent, Duration perMessage) {
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    JobStore jobs = new JobStore(jdbc, tm, clock, new JobProperties(null, null));
+    jdbc.update("DELETE FROM job");
+    jobs.enqueue(
+        ResultSlotJobHandler.JOB,
+        key,
+        "{\"roundNo\":" + ROUND + ",\"at\":\"" + slotAt + "\",\"alert\":true,\"last\":true}",
+        clock.instant());
+    ResultSlotJobHandler handler =
+        new ResultSlotJobHandler(
+            runner(
+                id -> {
+                  sent.incrementAndGet();
+                  clock.set(clock.instant().plus(perMessage));
+                  return new SendOutcome.Accepted("M");
+                }),
+            new ResultCollector(r -> new ParsedDraw.NotAnnounced(), null),
+            jdbc,
+            jobs,
+            store,
+            clock);
+    return new JobRunner(jobs, List.of(handler), tm, clock).runOnce();
+  }
+
+  @Test
   @DisplayName("회차 일정으로 슬롯 job 12개를 한 번만 등록하고, 때가 된 슬롯 job은 실행기 트랜잭션 밖에서 발송한다")
   void slotJobs() {
     DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
@@ -947,7 +1017,9 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
             runner(id -> new SendOutcome.Accepted("M")),
             new ResultCollector(r -> new ParsedDraw.NotAnnounced(), null),
             jdbc,
-            jobs);
+            jobs,
+            store,
+            clock);
     assertThat(new JobRunner(jobs, List.of(handler), tm, clock).runOnce())
         .contains(JobState.SUCCEEDED);
     assertThat(
