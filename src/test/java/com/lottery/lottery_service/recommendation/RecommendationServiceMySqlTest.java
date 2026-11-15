@@ -71,6 +71,7 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
     jdbc = new JdbcTemplate(dataSource);
     for (String table :
         List.of(
+            "job",
             "usage_event",
             "recommendation_seen",
             "recommendation_item",
@@ -411,7 +412,6 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
     assertThat(blocked).isTrue();
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_request", Long.class))
         .isZero();
-    jdbc.update("DELETE FROM job");
   }
 
   private RecommendationService serviceWithHook(Runnable duringGeneration) {

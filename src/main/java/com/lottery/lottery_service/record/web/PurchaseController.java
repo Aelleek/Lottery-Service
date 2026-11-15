@@ -78,8 +78,11 @@ public class PurchaseController {
       }
     }
     if (!missing.isEmpty()) {
+      List<FieldErrorDetail> all = new ArrayList<>(missing);
+      invalid.forEach(path -> all.add(new FieldErrorDetail(path, "INVALID_NUMBERS")));
+      all.sort(java.util.Comparator.comparing(FieldErrorDetail::path, PurchaseController::byIndex));
       throw new BusinessException(
-          ErrorCode.VALIDATION_FAILED, "입력을 확인해 주세요.", ErrorDetails.fieldErrors(missing));
+          ErrorCode.VALIDATION_FAILED, "입력을 확인해 주세요.", ErrorDetails.fieldErrors(all));
     }
     if (!invalid.isEmpty()) {
       throw new InvalidLottoNumberException("invalid purchase entries", invalid);
@@ -126,4 +129,12 @@ public class PurchaseController {
       String status,
       PurchaseCommandService.PurchaseData data,
       Instant serverTime) {}
+
+  private static int byIndex(String a, String b) {
+    return Integer.compare(index(a), index(b));
+  }
+
+  private static int index(String path) {
+    return Integer.parseInt(path.substring(path.indexOf('[') + 1, path.indexOf(']')));
+  }
 }

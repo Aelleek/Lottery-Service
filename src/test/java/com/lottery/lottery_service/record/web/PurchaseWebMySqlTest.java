@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oauth2Login;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -45,6 +46,7 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
   @Autowired private RoundStore rounds;
   @Autowired private AccountStore accounts;
   @Autowired private ObjectMapper json;
+  @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
   @DynamicPropertySource
   static void database(DynamicPropertyRegistry registry) throws SQLException {
@@ -131,7 +133,34 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
         .andExpect(jsonPath("$.details.fieldErrors.length()").value(2))
         .andExpect(jsonPath("$.details.fieldErrors[0].path").value("entries[1].numbers"))
-        .andExpect(jsonPath("$.details.fieldErrors[1].path").value("entries[2].numbers"));
+        .andExpect(jsonPath("$.details.fieldErrors[0].reason").value("INVALID_NUMBERS"))
+        .andExpect(jsonPath("$.details.fieldErrors[1].path").value("entries[2].numbers"))
+        .andExpect(
+            content()
+                .string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("46"))));
+    long recordsBefore = jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class);
+    mvc.perform(
+            post("/api/v1/me/lotto/purchases")
+                .cookie(session)
+                .with(oauth2Login().oauth2User(member))
+                .header("X-CSRF-TOKEN", csrf)
+                .header("X-Command-Token", command)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(
+                    "{\"round\":"
+                        + ROUND
+                        + ",\"entries\":[{\"clientItemId\":\"a\",\"numbers\":[1,2,3,4,5,46]},"
+                        + "{\"clientItemId\":\"b\",\"numbers\":null},"
+                        + "{\"clientItemId\":\"c\",\"numbers\":[13,14,15,16,17,18]}]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.details.fieldErrors.length()").value(2))
+        .andExpect(jsonPath("$.details.fieldErrors[0].path").value("entries[0].numbers"))
+        .andExpect(jsonPath("$.details.fieldErrors[0].reason").value("INVALID_NUMBERS"))
+        .andExpect(jsonPath("$.details.fieldErrors[1].path").value("entries[1].numbers"))
+        .andExpect(jsonPath("$.details.fieldErrors[1].reason").value("REQUIRED"));
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class))
+        .isEqualTo(recordsBefore);
 
     MvcResult found =
         mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(member)))

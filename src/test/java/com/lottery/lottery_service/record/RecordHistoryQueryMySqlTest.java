@@ -155,6 +155,14 @@ class RecordHistoryQueryMySqlTest extends MySqlContainerSupport {
             new RoundResultQuery(jdbc));
 
     assertThat(rotated.list(subject, null, null, first.nextCursor()).items()).hasSize(5);
+    RecordHistoryQuery oldRemoved =
+        new RecordHistoryQuery(
+            jdbc,
+            new RoundStore(jdbc, new DataSourceTransactionManager(dataSource)),
+            TestSecrets.commandTokenRotatedWithoutOld(),
+            clock,
+            new RoundResultQuery(jdbc));
+    assertInvalid(() -> oldRemoved.list(subject, null, null, first.nextCursor()));
   }
 
   @Test
