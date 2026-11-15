@@ -2,6 +2,7 @@ package com.lottery.lottery_service.record;
 
 import static com.lottery.lottery_service.common.db.DbValues.utc;
 
+import com.lottery.lottery_service.common.db.RetryingTransactionTemplate;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.notification.NotificationPlanCloser;
 import java.time.Clock;
@@ -61,7 +62,7 @@ public class RoundMaintenance {
     this.cleaner = cleaner;
     this.housekeeping = housekeeping;
     this.jobs = jobs;
-    this.tx = new TransactionTemplate(transactionManager);
+    this.tx = new RetryingTransactionTemplate(transactionManager);
     this.clock = clock;
   }
 

@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.common.worker;
 
 import com.lottery.lottery_service.common.alert.ExpiryWatch;
+import com.lottery.lottery_service.common.db.RetryingTransactionTemplate;
 import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.job.RecoveredJob;
@@ -123,7 +124,7 @@ public class WorkerScheduler {
     this.expiry = expiry;
     this.signals = signals;
     this.clock = clock;
-    this.tx = new TransactionTemplate(transactionManager);
+    this.tx = new RetryingTransactionTemplate(transactionManager);
   }
 
   /** 처리할 job을 차례로 처리한다. */

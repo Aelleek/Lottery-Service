@@ -215,7 +215,7 @@ public class VerificationStore {
     for (LocalDateTime previous :
         jdbc.queryForList(
             "SELECT next_send_at FROM verification_rate_bucket WHERE scope_type = ?"
-                + " AND scope_hmac = ? AND business_date = ?",
+                + " AND scope_hmac = ? AND business_date = ? FOR SHARE",
             LocalDateTime.class,
             scope,
             scopeHmac,
