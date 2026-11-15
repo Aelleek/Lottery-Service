@@ -255,6 +255,44 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
     assertThat(verify(member, c, c.code())).isEqualTo(VerificationResult.VERIFIED);
   }
 
+  @Test
+  @DisplayName("자정 직전 발급이 커밋되기 전에 자정 직후 같은 번호로 요청하면 그 커밋을 기다려 60초 간격을 지킨다")
+  void resendGapWaitsAcrossMidnight() throws Exception {
+    clock.set(Instant.parse("2026-11-08T14:59:59Z"));
+    java.util.concurrent.CountDownLatch held = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.ExecutorService pool =
+        java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      java.util.concurrent.Future<?> first =
+          pool.submit(
+              () ->
+                  tx.executeWithoutResult(
+                      s -> {
+                        store.issue(member, PHONE, 0);
+                        held.countDown();
+                        try {
+                          release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                        } catch (InterruptedException e) {
+                          Thread.currentThread().interrupt();
+                        }
+                      }));
+      held.await(5, java.util.concurrent.TimeUnit.SECONDS);
+      clock.set(Instant.parse("2026-11-08T15:00:10Z"));
+      java.util.concurrent.Future<IssuedChallenge> second = pool.submit(() -> issue(other));
+      Thread.sleep(300);
+      assertThat(second.isDone()).isFalse();
+      release.countDown();
+      first.get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+      assertThatThrownBy(() -> second.get(5, java.util.concurrent.TimeUnit.SECONDS))
+          .hasCauseInstanceOf(BusinessException.class);
+    } finally {
+      release.countDown();
+      pool.shutdownNow();
+    }
+  }
+
   private IssuedChallenge issue(long memberId) {
     return tx.execute(s -> store.issue(memberId, PHONE, 0));
   }
