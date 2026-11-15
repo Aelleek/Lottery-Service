@@ -262,6 +262,30 @@ class PurchaseStoreMySqlTest extends MySqlContainerSupport {
     assertThat(count("job WHERE job_type = 'EVALUATE_RECORD'")).isEqualTo(2);
   }
 
+  @Test
+  @DisplayName("결과가 게시된 회차에서 추천 출신 기록의 구매를 취소하면 새 버전의 판정 job을 등록한다")
+  void cancelAfterPublishedEnqueuesEvaluation() {
+    jdbc.update(
+        "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key,"
+            + " recommended_at) VALUES (UUID_TO_BIN(UUID()), ?, ?, ?, NOW(6))",
+        member,
+        ROUND,
+        A.key());
+    PurchaseResult result = register(List.of(A, B));
+    UUID recommended = result.items().get(0).recordPublicId();
+    UUID direct = result.items().get(1).recordPublicId();
+    publish();
+
+    cancel(recommended, 1);
+    cancel(direct, 0);
+
+    long id = idOf(recommended);
+    assertThat(count("job WHERE job_type = 'EVALUATE_RECORD'")).isEqualTo(1);
+    assertThat(
+            count("job WHERE job_type = 'EVALUATE_RECORD' AND dedupe_key = 'record:" + id + ":v2'"))
+        .isEqualTo(1);
+  }
+
   private PurchaseResult register(List<LottoNumbers> sets) {
     return tx.execute(s -> store.register(member, ROUND, sets));
   }
@@ -275,6 +299,28 @@ class PurchaseStoreMySqlTest extends MySqlContainerSupport {
         "SELECT created_at FROM lotto_record WHERE public_id = UUID_TO_BIN(?)",
         LocalDateTime.class,
         id.toString());
+  }
+
+  private void publish() {
+    jdbc.update(
+        "INSERT INTO draw_result (public_id, round_no, revision, numbers_key, bonus_number,"
+            + " semantic_hash, source_hash, state, fetched_at, published_at) VALUES"
+            + " (UUID_TO_BIN(UUID()), ?, 1, '01 02 03 04 05 06', 7, ?, ?, 'VERIFIED', NOW(6),"
+            + " NOW(6))",
+        ROUND,
+        new byte[32],
+        new byte[32]);
+    jdbc.update(
+        "UPDATE lotto_round SET published_result_id = (SELECT id FROM draw_result) WHERE"
+            + " round_no = ?",
+        ROUND);
+  }
+
+  private long idOf(UUID publicId) {
+    return jdbc.queryForObject(
+        "SELECT id FROM lotto_record WHERE public_id = UUID_TO_BIN(?)",
+        Long.class,
+        publicId.toString());
   }
 
   private long count(String from) {

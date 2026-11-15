@@ -138,7 +138,7 @@ public class PurchaseStore {
     lockMemberSubject(subjectId);
     List<Map<String, Object>> rows =
         jdbc.queryForList(
-            "SELECT id, version, purchased, recommended_at, deleted_at FROM lotto_record"
+            "SELECT id, round_no, version, purchased, recommended_at, deleted_at FROM lotto_record"
                 + " WHERE public_id = ? AND owner_subject_id = ? FOR UPDATE",
             bytes(recordPublicId),
             subjectId);
@@ -158,6 +158,13 @@ public class PurchaseStore {
           "UPDATE lotto_record SET purchased = FALSE, purchased_at = NULL, version = version + 1"
               + " WHERE id = ?",
           id);
+      if (published(((Number) row.get("round_no")).intValue())) {
+        jobs.enqueue(
+            EVALUATE_RECORD_JOB,
+            "record:" + id + ":v" + (version + 1),
+            "{\"recordId\":" + id + "}",
+            rounds.dbNow());
+      }
     } else {
       jdbc.update(
           "UPDATE lotto_record SET deleted_at = NOW(6), purchased = FALSE, purchased_at = NULL,"
