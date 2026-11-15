@@ -29,6 +29,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class RecordHistoryQuery {
 
+  /**
+   * 보관 정리로 지워질 날(02 8절). 비회원 기록과, 판정이 낙첨인 회원의 미구매 기록은 추첨일+30일과 정정 보호 기한 중 늦은 날이다. 그 밖(당첨, 구매, 미판정
+   * 회원 기록)은 기한 없음.
+   */
+  private static final String EXPIRES_AT =
+      "CASE WHEN s.kind = 'GUEST' OR (l.purchased = FALSE AND e.record_id IS NOT NULL"
+          + " AND e.rank_no IS NULL) THEN GREATEST(r.draw_at + INTERVAL 30 DAY,"
+          + " COALESCE(l.correction_protected_until, r.draw_at)) ELSE l.expires_at END";
+
   /** 한 쪽 크기. */
   public static final int PAGE_SIZE = 10;
 
@@ -109,9 +118,12 @@ public class RecordHistoryQuery {
     List<Map<String, Object>> rows =
         jdbc.queryForList(
             "SELECT l.id, l.public_id, l.round_no, l.numbers_key, l.recommended_at, l.purchased,"
-                + " l.version, l.expires_at, r.published_result_id, r.publication_version,"
+                + " l.version, "
+                + EXPIRES_AT
+                + " AS expires_at, r.published_result_id, r.publication_version,"
                 + " e.record_id AS evaluated, e.rank_no, p.prize_per_game"
                 + " FROM lotto_record l JOIN lotto_round r ON r.round_no = l.round_no"
+                + " JOIN actor_subject s ON s.id = l.owner_subject_id"
                 + " LEFT JOIN winning_evaluation e ON e.record_id = l.id"
                 + " AND e.result_id = r.published_result_id AND e.record_version = l.version"
                 + " LEFT JOIN draw_prize p ON p.result_id = e.result_id AND p.rank_no = e.rank_no"

@@ -210,6 +210,73 @@ class RecordHistoryQueryMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("지워질 기록에는 만료 예정일(추첨일+30일과 정정 보호 기한 중 늦은 날)을 주고, 당첨·구매·미판정 회원 기록은 기한이 없다(02 8절)")
+  void expiryDates() {
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    long member =
+        new com.lottery.lottery_service.account.AccountStore(jdbc, tm, clock)
+            .login(com.lottery.lottery_service.auth.OAuthProvider.KAKAO, "expiry")
+            .subjectId();
+    Instant drawPlus30 = OPEN_1200.minus(Duration.ofHours(9)).plus(Duration.ofDays(30));
+    Instant protectedUntil = drawPlus30.plus(Duration.ofDays(5));
+    insertFor(member, LottoNumbers.of(10, 20, 30, 40, 41, 42), false, null);
+    insertFor(member, LottoNumbers.of(11, 20, 30, 40, 41, 42), true, null);
+    insertFor(member, LottoNumbers.of(12, 20, 30, 40, 41, 42), false, protectedUntil);
+    insertFor(member, LottoNumbers.of(1, 2, 3, 4, 20, 30), false, null);
+    insertNumbers(1199, LottoNumbers.of(13, 20, 30, 40, 41, 42));
+    new ResultPublisher(
+            jdbc,
+            tm,
+            new JobStore(jdbc, tm, clock, new JobProperties(null, null)),
+            new PrizeProperties(null, null),
+            clock)
+        .receive(
+            new OfficialDraw(
+                1199,
+                new WinningNumbers(LottoNumbers.of(1, 2, 3, 4, 5, 6), LottoNumber.of(7)),
+                null,
+                null,
+                new byte[32]));
+    long result =
+        jdbc.queryForObject(
+            "SELECT published_result_id FROM lotto_round WHERE round_no = 1199", Long.class);
+    new TransactionTemplate(tm)
+        .execute(s -> new EvaluationStore(jdbc).evaluateBatch(result, 0, 100));
+    insertFor(member, LottoNumbers.of(14, 20, 30, 40, 41, 42), false, null);
+
+    assertThat(query.list(member, 1199, null, null, null).items())
+        .extracting(r -> r.numbers().key(), r -> r.expiresAt())
+        .containsExactlyInAnyOrder(
+            org.assertj.core.groups.Tuple.tuple(
+                LottoNumbers.of(10, 20, 30, 40, 41, 42).key(), drawPlus30),
+            org.assertj.core.groups.Tuple.tuple(
+                LottoNumbers.of(11, 20, 30, 40, 41, 42).key(), null),
+            org.assertj.core.groups.Tuple.tuple(
+                LottoNumbers.of(12, 20, 30, 40, 41, 42).key(), protectedUntil),
+            org.assertj.core.groups.Tuple.tuple(LottoNumbers.of(1, 2, 3, 4, 20, 30).key(), null),
+            org.assertj.core.groups.Tuple.tuple(
+                LottoNumbers.of(14, 20, 30, 40, 41, 42).key(), null));
+    assertThat(query.list(subject, 1199, null, null, null).items())
+        .singleElement()
+        .satisfies(r -> assertThat(r.expiresAt()).isEqualTo(drawPlus30));
+  }
+
+  private void insertFor(
+      long owner, LottoNumbers numbers, boolean purchased, Instant protectedUntil) {
+    jdbc.update(
+        "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key,"
+            + " recommended_at, purchased, purchased_at, correction_protected_until)"
+            + " VALUES (UUID_TO_BIN(UUID()), ?, 1199, ?, NOW(6), ?, IF(?, NOW(6), NULL), ?)",
+        owner,
+        numbers.key(),
+        purchased,
+        purchased,
+        protectedUntil == null
+            ? null
+            : java.time.LocalDateTime.ofInstant(protectedUntil, java.time.ZoneOffset.UTC));
+  }
+
+  @Test
   @DisplayName("게시 전 회차의 마지막 수집 시도가 실패했으면 기록 판정은 DELAYED(낙첨 아님)")
   void delayedCollection() {
     insertNumbers(1200, LottoNumbers.of(1, 2, 3, 4, 5, 6));
