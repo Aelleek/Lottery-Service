@@ -26,6 +26,12 @@ class ProductionConfigTest {
     assertThat(main.getProperty("server.servlet.session.cookie.same-site")).isEqualTo("Lax");
     assertThat(main.getProperty("server.servlet.session.timeout")).isEqualTo("14d");
     assertThat(main.getProperty("spring.h2.console.enabled")).isNull();
+    for (String provider : List.of("google", "kakao", "naver")) {
+      assertThat(
+              main.getProperty(
+                  "spring.security.oauth2.client.registration." + provider + ".redirect-uri"))
+          .isEqualTo("{baseUrl}/login/oauth2/code/{registrationId}");
+    }
   }
 
   @Test

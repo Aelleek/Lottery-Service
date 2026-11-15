@@ -22,6 +22,7 @@ import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.Base64;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -117,6 +118,25 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
             .andReturn();
     assertThat(again.getResponse().getHeader("Set-Cookie")).isNull();
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM actor_subject", Long.class)).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("로그인 없이 보호된 페이지를 열면 첫 화면으로 보내고 서버 세션을 만들지 않는다. 기본 로그인·로그아웃 페이지는 없다")
+  void anonymousPagesCreateNoSession() throws Exception {
+    long before = jdbc.queryForObject("SELECT COUNT(*) FROM SPRING_SESSION", Long.class);
+
+    for (String path : List.of("/some-page", "/login", "/logout")) {
+      MvcResult result =
+          mvc.perform(get(path).accept("text/html"))
+              .andExpect(status().is3xxRedirection())
+              .andReturn();
+      assertThat(result.getResponse().getHeader("Location")).as(path).endsWith("/");
+      assertThat(result.getResponse().getHeader("Set-Cookie")).as(path).isNull();
+      assertThat(result.getRequest().getSession(false)).as(path).isNull();
+    }
+    mvc.perform(get("/some-page")).andExpect(status().isUnauthorized());
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM SPRING_SESSION", Long.class))
+        .isEqualTo(before);
   }
 
   @Test

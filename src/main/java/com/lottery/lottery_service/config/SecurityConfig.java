@@ -140,6 +140,7 @@ public class SecurityConfig {
         .oauth2Login(
             oauth2 ->
                 oauth2
+                    .loginPage("/")
                     .authorizedClientRepository(new DiscardingAuthorizedClientRepository())
                     .authorizationEndpoint(
                         a ->
@@ -180,6 +181,7 @@ public class SecurityConfig {
   private static HttpSessionRequestCache pageRequestCache() {
     HttpSessionRequestCache cache = new HttpSessionRequestCache();
     cache.setRequestMatcher(new NegatedRequestMatcher(new AntPathRequestMatcher("/api/**")));
+    cache.setCreateSessionAllowed(false);
     return cache;
   }
 }
