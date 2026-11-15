@@ -87,8 +87,13 @@ public class RecordHistoryQuery {
   public RecordPage list(
       long subjectId, Integer round, Boolean purchased, String rank, String cursor) {
     String rankClause = rankClause(rank);
+    Integer cursorRound = cursor == null ? null : cursorRound(cursor);
     int selected =
-        round != null ? round : rounds.calendar().contextAt(clock.instant()).currentRound();
+        round != null
+            ? round
+            : cursorRound != null
+                ? cursorRound
+                : rounds.calendar().contextAt(clock.instant()).currentRound();
     String filter = selected + "|" + purchased + (rank == null ? "" : "|" + rank);
     long afterId = Long.MAX_VALUE;
     long snapshot;
@@ -195,8 +200,23 @@ public class RecordHistoryQuery {
     return new RecordEvaluation("EVALUATED", revision, rank, prize);
   }
 
+  /**
+   * cursor에 담긴 회차(서명 확인 전). 회차를 고르지 않고 연 목록은 첫 쪽의 회차로 이어 간다(06 2.1절 "첫 페이지 시점을 기준으로"). 서명은 이 회차를 넣은
+   * 조건으로 다시 확인한다.
+   */
+  private static Integer cursorRound(String cursor) {
+    try {
+      String[] f =
+          new String(DECODER.decode(cursor.split("\\.", -1)[0]), StandardCharsets.UTF_8)
+              .split("\\|");
+      return f.length == 3 ? Integer.valueOf(f[2]) : null;
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+  }
+
   private String encode(long subjectId, String filter, long lastId, long snapshot) {
-    String body = lastId + "|" + snapshot;
+    String body = lastId + "|" + snapshot + "|" + filter.substring(0, filter.indexOf('|'));
     String payload = ENCODER.encodeToString(body.getBytes(StandardCharsets.UTF_8));
     return payload + "." + ENCODER.encodeToString(sign(subjectId, filter, payload));
   }

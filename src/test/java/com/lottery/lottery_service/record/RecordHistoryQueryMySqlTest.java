@@ -115,6 +115,31 @@ class RecordHistoryQueryMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("회차를 고르지 않고 연 목록은 다음 회차가 열려도 첫 쪽의 회차로 이어진다(06 2.1절)")
+  void defaultRoundCursorKeepsFirstPageRound() {
+    new RoundStore(jdbc, new DataSourceTransactionManager(dataSource))
+        .register(
+            new RoundSchedule(
+                1201,
+                OPEN_1200.plus(Duration.ofDays(7)),
+                OPEN_1200.plus(Duration.ofDays(13)),
+                OPEN_1200.plus(Duration.ofDays(13)),
+                1));
+    for (int i = 0; i < 15; i++) {
+      insert(subject, 1200, i, false);
+    }
+    RecordPage first = query.list(subject, null, null, null);
+    clock.set(OPEN_1200.plus(Duration.ofDays(8)));
+
+    RecordPage second = query.list(subject, null, null, first.nextCursor());
+
+    assertThat(first.selectedRound()).isEqualTo(1200);
+    assertThat(second.selectedRound()).isEqualTo(1200);
+    assertThat(second.items()).hasSize(5);
+    assertInvalid(() -> query.list(subject, 1201, null, first.nextCursor()));
+  }
+
+  @Test
   @DisplayName("키를 새 버전으로 바꿔도 옛 버전이 남아 있으면 열려 있던 목록 cursor가 이어진다(03 6.6절)")
   void cursorSurvivesKeyRotation() {
     for (int i = 0; i < 15; i++) {
