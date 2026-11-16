@@ -263,11 +263,13 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("다른 회원의 요청 ID로는 확인할 수 없고, 원래 회원의 요청은 그대로 남는다")
+  @DisplayName("다른 회원의 요청 ID나 없는 ID는 NOT_FOUND(404)이고, 원래 회원의 요청은 그대로 남는다")
   void otherMemberCannotVerify() {
     IssuedChallenge c = issue(member);
 
-    assertThat(verify(other, c, c.code())).isEqualTo(VerificationResult.EXPIRED);
+    assertThat(verify(other, c, c.code())).isEqualTo(VerificationResult.NOT_FOUND);
+    assertThat(verify(member, new IssuedChallenge(0, UUID.randomUUID(), "000000", null), "000000"))
+        .isEqualTo(VerificationResult.NOT_FOUND);
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM member_contact WHERE member_id = ?", Long.class, other))

@@ -54,7 +54,8 @@ public class VerifyCommandService {
    *
    * @return 명령 ID와 인증된 연락처의 지금 버전({@code verifiedContactVersion})
    * @throws BusinessException 틀리면 {@code VALIDATION_FAILED}, 잠기면 {@code ATTEMPTS_EXCEEDED}, 만료면
-   *     {@code CHALLENGE_EXPIRED}, 연락처가 바뀌었으면 {@code CONTACT_CHANGED}
+   *     {@code CHALLENGE_EXPIRED}, 연락처가 바뀌었으면 {@code CONTACT_CHANGED}, 이 회원의 요청이 없으면 {@code
+   *     NOT_FOUND}
    */
   public Verified verify(
       long memberId,

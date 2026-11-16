@@ -10,6 +10,8 @@ public enum VerificationResult {
   WRONG(ErrorCode.VALIDATION_FAILED),
   /** 오답이 상한에 닿아 잠겼다. */
   LOCKED(ErrorCode.ATTEMPTS_EXCEEDED),
+  /** 이 회원의 인증 요청이 없다. 다른 회원의 요청도 여기에 든다. */
+  NOT_FOUND(ErrorCode.NOT_FOUND),
   /** 만료됐거나 다시 발급돼 무효다. */
   EXPIRED(ErrorCode.CHALLENGE_EXPIRED),
   /** 인증 중 연락처 버전이 바뀌었다. */

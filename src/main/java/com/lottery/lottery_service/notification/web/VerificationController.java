@@ -27,7 +27,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 인증 코드 발급({@code POST /me/notification-verifications})과 확인({@code POST
- * /me/notification-verifications/{challengeId}/verify}). 회원은 세션에서만 정하고, 다른 회원의 요청 ID는 만료와 같게 답한다.
+ * /me/notification-verifications/{challengeId}/verify}). 회원은 세션에서만 정하고, 없거나 다른 회원의 요청 ID는 존재 여부를 알
+ * 수 없게 404로 답한다.
  */
 @RestController
 @RequestMapping("/api/v1")

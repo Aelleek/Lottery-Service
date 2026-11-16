@@ -117,7 +117,7 @@ public class VerificationStore {
             bytes(publicId),
             memberId);
     if (rows.isEmpty()) {
-      return VerificationResult.EXPIRED;
+      return VerificationResult.NOT_FOUND;
     }
     Map<String, Object> row = rows.get(0);
     long id = ((Number) row.get("id")).longValue();
