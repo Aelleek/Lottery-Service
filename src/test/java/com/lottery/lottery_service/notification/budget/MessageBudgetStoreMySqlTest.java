@@ -198,6 +198,41 @@ class MessageBudgetStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("11월에 예약한 UNKNOWN 메시지가 12월에 확정·반환돼도 비용은 11월 카운터에 남고 12월 카운터는 그대로다(T19)")
+  void unknownCostStaysInReservedMonth() {
+    long spentLater = message();
+    long releasedLater = message();
+    reserve(spentLater, MessagePurpose.RESULT, 143);
+    reserve(releasedLater, MessagePurpose.RESULT, 143);
+    jdbc.update(
+        "UPDATE delivery_message SET state = 'UNKNOWN' WHERE id IN (?, ?)",
+        spentLater,
+        releasedLater);
+    LocalDate dec = LocalDate.parse("2026-12-01");
+    long decMessage = message();
+    tx.execute(
+        s ->
+            store.reserve(
+                decMessage, MessagePurpose.RESULT, 143, Instant.parse("2026-12-02T00:00:00Z")));
+
+    assertThat(inTx(() -> store.spend(spentLater))).isTrue();
+    assertThat(inTx(() -> store.release(releasedLater))).isTrue();
+
+    assertThat(budget(NOV_MONTH))
+        .containsEntry("reserved_units", 0L)
+        .containsEntry("spent_units", 143L);
+    assertThat(budget(dec)).containsEntry("reserved_units", 143L).containsEntry("spent_units", 0L);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT budget_month FROM delivery_message WHERE id = ?",
+                LocalDate.class,
+                spentLater))
+        .isEqualTo(NOV_MONTH);
+    assertThat(store.matchesMessages(NOV_MONTH)).isTrue();
+    assertThat(store.matchesMessages(dec)).isTrue();
+  }
+
+  @Test
   @DisplayName("서울 기준 달로 나눈다. UTC 11월 30일 15:00는 서울 12월 1일이다")
   void seoulMonth() {
     long message = message();
