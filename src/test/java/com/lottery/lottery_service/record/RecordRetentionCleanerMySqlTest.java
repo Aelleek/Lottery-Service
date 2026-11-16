@@ -201,7 +201,7 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("정리와 구매 취소가 겹치면 정리는 기록 잠금을 기다린 뒤 바뀐 버전을 보고, 새 판정 전에는 지우지 않는다(T20)")
+  @DisplayName("정리와 구매 취소가 겹쳐도 구매 기록은 정리 후보가 아니고, 취소가 커밋된 뒤에도 새 판정 전에는 지우지 않는다(T20)")
   void cancelRacingCleanupKeepsRecordUntilReevaluated() throws Exception {
     long bought = record(member, LOSING, true);
     publishAndEvaluate();
@@ -210,12 +210,18 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
             cleanupWhileRecordChanges(
                 "UPDATE lotto_record SET purchased = FALSE, purchased_at = NULL,"
                     + " version = version + 1 WHERE id = ?",
-                bought))
+                bought,
+                false))
         .isZero();
     assertThat(exists(bought)).isTrue();
   }
 
   private int cleanupWhileRecordChanges(String change, long recordId) throws Exception {
+    return cleanupWhileRecordChanges(change, recordId, true);
+  }
+
+  private int cleanupWhileRecordChanges(String change, long recordId, boolean waits)
+      throws Exception {
     CountDownLatch held = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
     ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -232,7 +238,9 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
       assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
       Future<Integer> cleanup = pool.submit(() -> cleanup(AFTER_RETENTION));
       Thread.sleep(300);
-      assertThat(cleanup.isDone()).isFalse();
+      if (waits) {
+        assertThat(cleanup.isDone()).isFalse();
+      }
       release.countDown();
       holder.get(5, TimeUnit.SECONDS);
       return cleanup.get(5, TimeUnit.SECONDS);

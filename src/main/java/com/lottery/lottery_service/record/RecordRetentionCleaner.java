@@ -5,6 +5,7 @@ import static com.lottery.lottery_service.common.db.DbValues.utc;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -40,7 +41,8 @@ public class RecordRetentionCleaner {
   }
 
   /**
-   * 한 회차에서 정리할 기록을 묶음 하나만큼 지운다. 회차를 공유 잠금으로 잡은 뒤 정리 조건을 보고, 기록 행만 잠근다(주체 행은 잠그지 않는다).
+   * 한 회차에서 정리할 기록을 묶음 하나만큼 지운다. 회차를 공유 잠금으로 잡은 뒤 정리 조건을 보고, 기록 행만 잠근다(주체 행은 잠그지 않는다). 후보를 잠금 없이 고른
+   * 뒤 그 후보만 같은 조건으로 다시 읽으며 잠가, 지울 행 말고는 잠그지 않고 잠근 뒤의 지금 상태로 다시 확인한다.
    *
    * @return 지운 기록 수
    */
@@ -58,20 +60,30 @@ public class RecordRetentionCleaner {
     if (!Boolean.TRUE.equals(ready)) {
       return 0;
     }
+    String eligible =
+        "SELECT l.id FROM lotto_record l JOIN actor_subject s ON s.id = l.owner_subject_id"
+            + " JOIN lotto_round r ON r.round_no = l.round_no"
+            + " JOIN winning_evaluation e ON e.record_id = l.id"
+            + " AND e.result_id = r.published_result_id AND e.record_version = l.version"
+            + " WHERE l.round_no = ? AND (l.correction_protected_until IS NULL"
+            + " OR l.correction_protected_until <= ?)"
+            + " AND (s.kind = 'GUEST' OR (l.purchased = FALSE AND e.rank_no IS NULL))";
+    Object now = utc(clock.instant());
+    List<Long> candidates =
+        jdbc.queryForList(eligible + " ORDER BY l.id LIMIT ?", Long.class, roundNo, now, limit);
+    if (candidates.isEmpty()) {
+      return 0;
+    }
+    List<Object> args = new ArrayList<>(List.of(roundNo, now));
+    args.addAll(candidates);
     List<Long> ids =
         jdbc.queryForList(
-            "SELECT l.id FROM lotto_record l JOIN actor_subject s ON s.id = l.owner_subject_id"
-                + " JOIN lotto_round r ON r.round_no = l.round_no"
-                + " JOIN winning_evaluation e ON e.record_id = l.id"
-                + " AND e.result_id = r.published_result_id AND e.record_version = l.version"
-                + " WHERE l.round_no = ? AND (l.correction_protected_until IS NULL"
-                + " OR l.correction_protected_until <= ?)"
-                + " AND (s.kind = 'GUEST' OR (l.purchased = FALSE AND e.rank_no IS NULL))"
-                + " ORDER BY l.id LIMIT ? FOR UPDATE OF l",
+            eligible
+                + " AND l.id IN ("
+                + String.join(",", Collections.nCopies(candidates.size(), "?"))
+                + ") ORDER BY l.id FOR UPDATE OF l",
             Long.class,
-            roundNo,
-            utc(clock.instant()),
-            limit);
+            args.toArray());
     return delete(ids);
   }
 

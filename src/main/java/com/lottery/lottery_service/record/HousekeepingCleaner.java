@@ -5,6 +5,7 @@ import static com.lottery.lottery_service.common.db.DbValues.utc;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -106,20 +107,38 @@ public class HousekeepingCleaner {
 
   /**
    * 최종 상태가 된 뒤 30일이 지난 메시지의 본문과 수신자 사본을 비운다(02 8절). 접수 확인 중(UNKNOWN)과 아직 보낼 메시지는 건드리지 않는다. 메시지 행과
-   * 상태·비용, 안내 요약은 남긴다(예산 대조와 정정 영향 계산에 쓴다). 최종 시각은 끝난 시각, 없으면 마지막 시도 시각, 그것도 없으면 유효기간 끝이다.
+   * 상태·비용, 안내 요약은 남긴다(예산 대조와 정정 영향 계산에 쓴다). 최종 시각은 끝난 시각, 없으면 마지막 시도 시각, 그것도 없으면 유효기간 끝이다. 후보를 잠금
+   * 없이 고른 뒤 그 ID만 같은 조건으로 바꿔, 바꿀 행 말고는 잠그지 않는다.
    *
    * @return 비운 메시지 수
    */
   public int clearMessageCopies(int limit) {
+    String due =
+        " WHERE state IN ('ACCEPTED','DELIVERED','FAILED','SUPPRESSED','EXPIRED','HALTED')"
+            + " AND (payload_ciphertext IS NOT NULL OR recipient_ciphertext IS NOT NULL"
+            + " OR payload_hash IS NOT NULL)"
+            + " AND COALESCE(finalized_at, last_attempt_at, expires_at) <= ?";
+    Object cutoff = utc(clock.instant().minus(MESSAGE_COPY_RETENTION));
+    List<Long> ids =
+        jdbc.queryForList(
+            "SELECT id FROM delivery_message" + due + " ORDER BY id LIMIT ?",
+            Long.class,
+            cutoff,
+            limit);
+    if (ids.isEmpty()) {
+      return 0;
+    }
+    List<Object> args = new ArrayList<>();
+    args.add(cutoff);
+    args.addAll(ids);
     return jdbc.update(
         "UPDATE delivery_message SET payload_ciphertext = NULL, recipient_ciphertext = NULL,"
             + " payload_hash = NULL, version = version + 1"
-            + " WHERE state IN ('ACCEPTED','DELIVERED','FAILED','SUPPRESSED','EXPIRED','HALTED')"
-            + " AND (payload_ciphertext IS NOT NULL OR recipient_ciphertext IS NOT NULL"
-            + " OR payload_hash IS NOT NULL)"
-            + " AND COALESCE(finalized_at, last_attempt_at, expires_at) <= ? ORDER BY id LIMIT ?",
-        utc(clock.instant().minus(MESSAGE_COPY_RETENTION)),
-        limit);
+            + due
+            + " AND id IN ("
+            + String.join(",", Collections.nCopies(ids.size(), "?"))
+            + ")",
+        args.toArray());
   }
 
   /**
