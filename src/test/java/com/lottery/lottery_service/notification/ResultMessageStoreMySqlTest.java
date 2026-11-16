@@ -559,8 +559,12 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("결과가 없으면 RESULT_NOT_PUBLISHED로 실패하고, 운영자 알림 슬롯에서만 알린다(T36)")
+  @DisplayName(
+      "결과가 없으면 RESULT_NOT_PUBLISHED로 실패하고 운영자 알림 슬롯에서만 알리며, 그 뒤 게시되면 다음 슬롯은 보내고 운영자 알림은 늘지 않는다(T36)")
   void slotWithoutResult() {
+    Long published =
+        jdbc.queryForObject(
+            "SELECT published_result_id FROM lotto_round WHERE round_no = ?", Long.class, ROUND);
     jdbc.update("UPDATE lotto_round SET published_result_id = NULL");
 
     assertThat(runner(id -> new SendOutcome.Accepted("x")).run(ROUND, slot(false, false)).cause())
@@ -575,6 +579,14 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
                     + " WHERE job_type = 'OPERATOR_ALERT'",
                 String.class))
         .isEqualTo("NULL");
+
+    jdbc.update(
+        "UPDATE lotto_round SET published_result_id = ? WHERE round_no = ?", published, ROUND);
+    SlotResult next = runner(id -> new SendOutcome.Accepted("x")).run(ROUND, slot(false, false));
+    assertThat(next.success()).isTrue();
+    assertThat(next.cause()).isNull();
+    assertThat(next.sent()).isPositive();
+    assertThat(alerts()).isEqualTo(1);
   }
 
   @Test
