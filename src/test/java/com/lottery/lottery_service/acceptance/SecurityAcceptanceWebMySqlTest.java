@@ -251,6 +251,27 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("퍼센트 인코딩한 회원·관리자 경로도 로그인 없이는 401이고, 회원은 관리자 경로에서 403이다")
+  void encodedPathsKeepAuthorization() throws Exception {
+    registerRound();
+    for (String path :
+        List.of(
+            "/%61pi/v1/me/lotto/records",
+            "/api/v1/%6De/lotto/records",
+            "/%61pi/v1/admin/rounds/" + ROUND + "/notification-status",
+            "/api/v1/%61dmin/stats/daily")) {
+      mvc.perform(get(java.net.URI.create(path)).with(r -> remote(r, "198.51.100.20")))
+          .andExpect(status().isUnauthorized());
+    }
+    MemberPrincipal member = member("encoded-admin");
+    mvc.perform(
+            get(java.net.URI.create("/api/v1/%61dmin/rounds/" + ROUND + "/notification-status"))
+                .with(oauth2Login().oauth2User(member))
+                .with(r -> remote(r, "198.51.100.21")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
   @DisplayName("T65: 번호가 틀린 요청의 오류 응답과 로그에 보낸 번호 원문이 없다")
   void noRawNumbersInErrors(CapturedOutput output) throws Exception {
     registerRound();
