@@ -21,6 +21,7 @@ import com.lottery.lottery_service.notification.UnknownMessageReconciler;
 import com.lottery.lottery_service.notification.budget.BudgetProperties;
 import com.lottery.lottery_service.notification.budget.MessageBudgetStore;
 import com.lottery.lottery_service.notification.budget.MessagePurpose;
+import com.lottery.lottery_service.record.HistoryImportStore;
 import com.lottery.lottery_service.stats.UsageEventStore;
 import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
@@ -441,6 +442,39 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM job WHERE job_type = ?", Long.class, WithdrawalService.JOB))
         .isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("탈퇴를 접수한 뒤나 삭제가 끝난 뒤에 가져오기 묶음이 돌아도 NOT_FOUND이고 기록을 되살리지 않는다(T22 일부)")
+  void lateImportAfterWithdrawal() {
+    long claim = jdbc.queryForObject("SELECT id FROM subject_claim", Long.class);
+    HistoryImportStore imports = new HistoryImportStore(jdbc, jobs);
+    TransactionTemplate tx = new TransactionTemplate(tm);
+    new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());
+
+    assertImportNotFound(tx, imports, claim);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM lotto_record WHERE owner_subject_id = ?",
+                Long.class,
+                member.subjectId()))
+        .isEqualTo(1);
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM history_import_item", Long.class))
+        .isZero();
+
+    assertThat(runner(journal()).runOnce()).contains(JobState.SUCCEEDED);
+    assertImportNotFound(tx, imports, claim);
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isZero();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM history_import_item", Long.class))
+        .isZero();
+  }
+
+  private void assertImportNotFound(
+      TransactionTemplate tx, HistoryImportStore imports, long claim) {
+    assertThatThrownBy(
+            () -> tx.execute(s -> imports.importBatch(member.subjectId(), claim, 0, 200)))
+        .isInstanceOfSatisfying(
+            BusinessException.class, e -> assertThat(e.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
   }
 
   private DeletionJournal journal() {
