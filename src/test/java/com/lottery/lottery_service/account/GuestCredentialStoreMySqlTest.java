@@ -121,7 +121,8 @@ class GuestCredentialStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("키를 새 버전으로 바꿔도 옛 키로 만든 자격을 찾고, 다른 키로는 찾지 못한다")
+  @DisplayName(
+      "키를 새 버전으로 바꿔도 옛 키로 만든 자격을 찾고, 다른 키로는 찾지 못한다. 옛 버전을 지우면 옛 자격은 거부되고 새 버전 자격은 통과한다(T64)")
   void keyRotation() {
     GuestCredential issued = store.issue();
     String oldKey =
@@ -138,5 +139,15 @@ class GuestCredentialStoreMySqlTest extends MySqlContainerSupport {
         .isPresent();
     assertThat(new GuestCredentialStore(jdbc, tm, clock, unrelated).resolve(issued.token()))
         .isEmpty();
+
+    GuestCredential fresh = new GuestCredentialStore(jdbc, tm, clock, rotated).issue();
+    SecretKeys withoutOld =
+        new SecretKeys(new SecretProperties(null, new SecretProperties.Ring(2, Map.of(2, newKey))));
+    GuestCredentialStore after = new GuestCredentialStore(jdbc, tm, clock, withoutOld);
+    assertThat(after.resolve(issued.token())).isEmpty();
+    assertThat(after.resolve(fresh.token()))
+        .get()
+        .extracting(GuestSubject::subjectId)
+        .isEqualTo(fresh.subjectId());
   }
 }
