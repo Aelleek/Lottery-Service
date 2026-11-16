@@ -44,6 +44,16 @@ class RateLimitFilterTest {
   }
 
   @Test
+  @DisplayName("퍼센트 인코딩하거나 세미콜론을 붙인 경로도 디코딩한 경로로 세어 한도를 피하지 못한다")
+  void encodedPathsCountAsTheSamePath() throws Exception {
+    assertThat(send("POST", "/%61pi/v1/lotto/check", "10.0.0.7", 10)).isEqualTo(10);
+    assertThat(send("POST", "/api/v1/lotto/%63heck", "10.0.0.7", 10)).isEqualTo(10);
+    assertThat(send("POST", "/api/v1/lotto/check;x=1", "10.0.0.7", 10)).isEqualTo(10);
+    assertThat(send("POST", "/api/v1/lotto/check", "10.0.0.7", 1)).isZero();
+    assertThat(send("GET", "/%6Fauth2/authorization/kakao", "10.0.0.8", 21)).isEqualTo(20);
+  }
+
+  @Test
   @DisplayName("회차 조회는 1분 120회, 로그인 시작은 1분 20회다")
   void lookupAndLoginLimits() throws Exception {
     assertThat(send("GET", "/api/v1/lotto/context", "10.0.0.1", 121)).isEqualTo(120);

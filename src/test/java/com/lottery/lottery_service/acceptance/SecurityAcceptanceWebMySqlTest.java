@@ -233,6 +233,24 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("T61: 경로를 퍼센트 인코딩해도(/%61pi/...) 같은 화면 경로로 처리되고 같은 한도로 세어 121번째는 429다")
+  void encodedPathCannotBypassRateLimit() throws Exception {
+    registerRound();
+    java.net.URI encoded = java.net.URI.create("/%61pi/v1/lotto/rounds/" + ROUND + "/result");
+    for (int i = 0; i < 120; i++) {
+      mvc.perform(get(encoded).with(r -> remote(r, "198.51.100.9")))
+          .andExpect(status().is2xxSuccessful());
+    }
+    mvc.perform(get(encoded).with(r -> remote(r, "198.51.100.9")))
+        .andExpect(status().isTooManyRequests())
+        .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+    mvc.perform(
+            get("/api/v1/lotto/rounds/" + ROUND + "/result").with(r -> remote(r, "198.51.100.9")))
+        .andExpect(status().isTooManyRequests());
+    signals.drain();
+  }
+
+  @Test
   @DisplayName("T65: 번호가 틀린 요청의 오류 응답과 로그에 보낸 번호 원문이 없다")
   void noRawNumbersInErrors(CapturedOutput output) throws Exception {
     registerRound();

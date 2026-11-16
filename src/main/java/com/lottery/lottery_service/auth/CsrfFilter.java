@@ -3,6 +3,7 @@ package com.lottery.lottery_service.auth;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.web.OriginGuard;
+import com.lottery.lottery_service.common.web.RequestPaths;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,7 +45,7 @@ public class CsrfFilter extends OncePerRequestFilter {
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
-    String path = request.getRequestURI().substring(request.getContextPath().length());
+    String path = RequestPaths.of(request);
     if (SAFE_METHODS.contains(request.getMethod().toUpperCase(Locale.ROOT))
         || EXEMPT.contains(path)) {
       chain.doFilter(request, response);
