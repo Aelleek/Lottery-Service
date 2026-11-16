@@ -1673,6 +1673,88 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName(
+      "계획 완료가 회차 행을 잡고 있는 동안 다시 보내기와 메시지 만들기는 기다렸다가, 완료가 커밋되면 거부하고 새 메시지를 만들지 않는다(05 8.7절)")
+  void resendWaitsForPlanClose() throws Exception {
+    Instant published =
+        jdbc.queryForObject("SELECT published_at FROM draw_result", LocalDateTime.class)
+            .toInstant(ZoneOffset.UTC);
+    clock.set(published.plusSeconds(3600));
+    List<Long> called = new ArrayList<>();
+    ManualResendService resend =
+        new ManualResendService(
+            jdbc,
+            runner(
+                id -> {
+                  called.add(id);
+                  return new SendOutcome.Accepted("M");
+                }),
+            new JobStore(
+                jdbc,
+                new DataSourceTransactionManager(dataSource),
+                clock,
+                new JobProperties(null, null)),
+            new DataSourceTransactionManager(dataSource),
+            clock);
+    java.util.concurrent.CountDownLatch held = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.ExecutorService pool =
+        java.util.concurrent.Executors.newFixedThreadPool(3);
+    try {
+      java.util.concurrent.Future<?> closing =
+          pool.submit(
+              () ->
+                  tx.executeWithoutResult(
+                      s -> {
+                        jdbc.queryForList(
+                            "SELECT round_no FROM lotto_round WHERE round_no = ? FOR UPDATE",
+                            ROUND);
+                        jdbc.update(
+                            "UPDATE lotto_round SET notification_plan_closed_at = NOW(6)"
+                                + " WHERE round_no = ?",
+                            ROUND);
+                        held.countDown();
+                        try {
+                          release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                        } catch (InterruptedException e) {
+                          Thread.currentThread().interrupt();
+                        }
+                      }));
+      held.await(5, java.util.concurrent.TimeUnit.SECONDS);
+      java.util.concurrent.Future<Object> resending =
+          pool.submit(
+              () -> {
+                try {
+                  return resend.resend(ROUND, AdminRole.OPERATOR);
+                } catch (RuntimeException e) {
+                  return e;
+                }
+              });
+      java.util.concurrent.Future<Integer> creating =
+          pool.submit(() -> tx.<Integer>execute(st -> store.createMissing(ROUND)));
+      Thread.sleep(300);
+      assertThat(resending.isDone()).isFalse();
+      assertThat(creating.isDone()).isFalse();
+      release.countDown();
+      closing.get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+      assertThat(resending.get(5, java.util.concurrent.TimeUnit.SECONDS))
+          .isInstanceOfSatisfying(
+              BusinessException.class,
+              e -> assertThat(e.getCode()).isEqualTo(ErrorCode.DISPATCH_WINDOW_CLOSED));
+      assertThat(creating.get(5, java.util.concurrent.TimeUnit.SECONDS)).isZero();
+      assertThat(called).isEmpty();
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT COUNT(*) FROM delivery_message WHERE purpose = 'RESULT'", Long.class))
+          .isZero();
+    } finally {
+      release.countDown();
+      pool.shutdownNow();
+    }
+  }
+
+  @Test
   @DisplayName("일부 실패 뒤 같은 슬롯이 다시 돌아도 그 슬롯에서 받지 못한 메시지를 세어 실패와 운영자 알림을 남긴다")
   void rerunSlotKeepsEarlierFailure() {
     long first = jdbc.queryForObject("SELECT published_result_id FROM lotto_round", Long.class);

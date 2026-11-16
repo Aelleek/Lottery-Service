@@ -57,32 +57,42 @@ public class ManualResendService {
     return resend(roundNo, actor, () -> {});
   }
 
-  /** {@link #resend(int, AdminRole)}와 같고, 메시지마다 보내기 전에 {@code beforeEach}를 부른다(명령 처리 권한 연장). */
+  /**
+   * {@link #resend(int, AdminRole)}와 같고, 메시지마다 보내기 전에 {@code beforeEach}를 부른다(명령 처리 권한 연장). 재판정 중이면
+   * 아무것도 바꾸지 않고 {@code EVALUATION_PENDING}을 돌려준다. 되돌린 직후 정정이 게시되면 슬롯 절차가 판정 대기로 끝나 대기(PENDING)가 남지만
+   * 보내지는 않고, 다음 다시 보내기나 계획 완료가 처리한다.
+   */
   public SlotResult resend(int roundNo, AdminRole actor, Runnable beforeEach) {
     Instant now = clock.instant();
-    tx.executeWithoutResult(
-        status -> {
-          List<LocalDateTime> published =
-              jdbc.queryForList(
-                  "SELECT d.published_at FROM lotto_round r"
-                      + " JOIN draw_result d ON d.id = r.published_result_id"
-                      + " WHERE r.round_no = ? AND r.notification_plan_closed_at IS NULL"
-                      + " FOR SHARE OF r",
-                  LocalDateTime.class,
+    Boolean pending =
+        tx.execute(
+            status -> {
+              List<LocalDateTime> published =
+                  jdbc.queryForList(
+                      "SELECT d.published_at FROM lotto_round r"
+                          + " JOIN draw_result d ON d.id = r.published_result_id"
+                          + " WHERE r.round_no = ? AND r.notification_plan_closed_at IS NULL"
+                          + " FOR SHARE OF r",
+                      LocalDateTime.class,
+                      roundNo);
+              if (published.isEmpty()
+                  || !now.isBefore(instant(published.get(0)).plus(ResultMessageStore.VALIDITY))) {
+                throw new BusinessException(ErrorCode.DISPATCH_WINDOW_CLOSED, "다시 보내기 기한이 지났습니다.");
+              }
+              if (runner.evaluationPending(roundNo)) {
+                return true;
+              }
+              jdbc.update(
+                  "UPDATE delivery_message SET state = 'PENDING', version = version + 1"
+                      + " WHERE round_no = ? AND purpose = 'RESULT'"
+                      + " AND state IN ('HALTED','RETRY_WAIT')",
                   roundNo);
-          if (published.isEmpty()
-              || !now.isBefore(instant(published.get(0)).plus(ResultMessageStore.VALIDITY))) {
-            throw new BusinessException(ErrorCode.DISPATCH_WINDOW_CLOSED, "다시 보내기 기한이 지났습니다.");
-          }
-          if (!runner.evaluationPending(roundNo)) {
-            jdbc.update(
-                "UPDATE delivery_message SET state = 'PENDING', version = version + 1"
-                    + " WHERE round_no = ? AND purpose = 'RESULT'"
-                    + " AND state IN ('HALTED','RETRY_WAIT')",
-                roundNo);
-          }
-        });
-    SlotResult result = runner.run(roundNo, new ResultSlot(now, false, false), beforeEach);
+              return false;
+            });
+    SlotResult result =
+        Boolean.TRUE.equals(pending)
+            ? new SlotResult(false, "EVALUATION_PENDING", 0, 0, 0)
+            : runner.run(roundNo, new ResultSlot(now, false, false), beforeEach);
     jobs.enqueue(
         JobStore.OPERATOR_ALERT,
         "manual-resend:" + roundNo + ":" + now,

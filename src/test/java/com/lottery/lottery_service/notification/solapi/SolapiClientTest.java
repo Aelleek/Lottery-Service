@@ -126,6 +126,10 @@ class SolapiClientTest {
     status.set(200);
     responseBody.set("<html>login</html>");
     assertThat(send()).isInstanceOf(SendOutcome.Unknown.class);
+    responseBody.set(
+        "{\"messageList\":[{\"messageId\":\"M4V1\",\"statusCode\":\"2000\"}],"
+            + "\"failedMessageList\":[],\"groupInfo\":{}}<html>");
+    assertThat(send()).isInstanceOf(SendOutcome.Unknown.class);
     responseBody.set("{}");
     assertThat(send()).isInstanceOf(SendOutcome.Unknown.class);
   }
@@ -145,6 +149,15 @@ class SolapiClientTest {
 
     responseBody.set(
         "{\"messageList\":{\"M4V7\":{\"messageId\":\"M4V7\",\"statusCode\":\"4000\"}}}");
+    assertThat(lookup.lookup(new MessageLookup.UnknownMessage(1, key, "M4V1", at)))
+        .isEqualTo(new ProviderStatus.NotFound());
+    responseBody.set(
+        "{\"messageList\":{\"M4V7\":{\"messageId\":\"M4V7\",\"statusCode\":\"4000\"},"
+            + "\"M4V1\":{\"messageId\":\"M4V1\",\"statusCode\":\"3000\"}}}");
+    assertThat(lookup.lookup(new MessageLookup.UnknownMessage(1, key, "M4V1", at)))
+        .isEqualTo(new ProviderStatus.Accepted("M4V1"));
+    responseBody.set(
+        "{\"messageList\":{\"M4V1\":{\"messageId\":\"M4V1\",\"statusCode\":\"4000\"}}}<html>");
     assertThat(lookup.lookup(new MessageLookup.UnknownMessage(1, key, "M4V1", at)))
         .isEqualTo(new ProviderStatus.NotFound());
 
