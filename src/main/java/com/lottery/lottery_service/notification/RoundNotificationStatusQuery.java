@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -24,6 +25,15 @@ import org.springframework.stereotype.Component;
 public class RoundNotificationStatusQuery {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final Set<String> CAUSE_CODES =
+      Set.of(
+          "RESULT_NOT_PUBLISHED",
+          "RESULT_FETCH_ERROR",
+          "RESULT_QUARANTINED",
+          "EVALUATION_PENDING",
+          "PROVIDER_ERROR",
+          "BUDGET_EXHAUSTED",
+          "PARTIAL_FAILURE");
   private static final List<String> STATES =
       List.of(
           "PENDING",
@@ -108,7 +118,7 @@ public class RoundNotificationStatusQuery {
               Instant.parse(payload.path("at").asText()),
               "AUTO",
               outcome,
-              finished ? cause : null,
+              finished && cause != null && CAUSE_CODES.contains(cause) ? cause : null,
               result.path("failed").asInt(0),
               "FAILED".equals(outcome)
                   && (result.has("alerted")

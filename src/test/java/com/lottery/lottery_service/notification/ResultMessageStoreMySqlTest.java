@@ -1129,7 +1129,8 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("알림 현황은 실행 중·실패·원인 있는 성공 슬롯을 구분하고, 실행 전·취소 슬롯은 빼며, 격리·미게시 결과와 마감을 보여 준다")
+  @DisplayName(
+      "알림 현황은 실행 중·실패·원인 있는 성공 슬롯을 구분하고, 계약에 없는 내부 오류 코드는 원인으로 내보내지 않으며, 실행 전·취소 슬롯은 빼며, 격리·미게시 결과와 마감을 보여 준다")
   void notificationStatusBranches() {
     jdbc.update("DELETE FROM job");
     slotJob("a", "SUCCEEDED", "2026-11-14T12:30:00Z", false, false, null, null);
@@ -1139,6 +1140,8 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
     slotJob("e", "RUNNING", "2026-11-14T14:30:00Z", false, false, null, null);
     slotJob("f", "READY", "2026-11-15T03:00:00Z", false, true, null, null);
     slotJob("g", "CANCELED", "2026-11-15T03:30:00Z", false, false, null, null);
+    slotJob("h", "DEAD", "2026-11-14T15:00:00Z", false, false, "LEASE_EXPIRED", null);
+    slotJob("i", "DEAD", "2026-11-14T15:30:00Z", false, false, "DataAccessException", null);
     Instant published =
         jdbc.queryForObject("SELECT published_at FROM draw_result", LocalDateTime.class)
             .toInstant(ZoneOffset.UTC);
@@ -1157,7 +1160,9 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
             tuple("FAILED", "PARTIAL_FAILURE", 2, true),
             tuple("FAILED", "BUDGET_EXHAUSTED", 1, false),
             tuple("RUNNING", null, 3, false),
-            tuple("RUNNING", null, 0, false));
+            tuple("RUNNING", null, 0, false),
+            tuple("FAILED", null, 0, false),
+            tuple("FAILED", null, 0, false));
     assertThat(status.autoDispatchClosed()).isFalse();
     assertThat(status.manualDispatchUntil())
         .isEqualTo(published.plus(NotificationPlanCloser.RESEND_WINDOW));
