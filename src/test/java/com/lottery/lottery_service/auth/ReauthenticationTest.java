@@ -111,7 +111,7 @@ class ReauthenticationTest {
   }
 
   @Test
-  @DisplayName("재인증이 성공하면 세션에 시각을 적고, 실패하거나 새로 시작하면 앞서 마친 재인증 시각도 지우며 세션은 남긴다(03 6.3)")
+  @DisplayName("재인증이 성공하면 세션에 시각을 적고, 실패하면 기다리는 값만 지우고 세션은 남긴다")
   void handlersRecordOrClear() throws Exception {
     Instant now = Instant.parse("2026-11-08T15:00:00Z");
     MockHttpServletRequest ok = new MockHttpServletRequest();
@@ -126,22 +126,13 @@ class ReauthenticationTest {
 
     MockHttpServletRequest failed = new MockHttpServletRequest();
     MockHttpSession session = pendingSession();
-    session.setAttribute(Reauthentication.COMPLETED_AT, now.minusSeconds(240));
     failed.setSession(session);
     MockHttpServletResponse response = new MockHttpServletResponse();
     new LoginFailureHandler()
         .onAuthenticationFailure(failed, response, new BadCredentialsException("x"));
     assertThat(response.getRedirectedUrl()).isEqualTo("/?reauth=failed");
     assertThat(Reauthentication.pending(session)).isEmpty();
-    assertThat(Reauthentication.lastAt(failed)).isEmpty();
     assertThat(session.isInvalid()).isFalse();
-
-    MockHttpSession again = new MockHttpSession();
-    again.setAttribute(Reauthentication.COMPLETED_AT, now.minusSeconds(240));
-    Reauthentication.start(again, 7);
-    MockHttpServletRequest restarted = new MockHttpServletRequest();
-    restarted.setSession(again);
-    assertThat(Reauthentication.lastAt(restarted)).isEmpty();
   }
 
   private MemberOAuth2UserService userService(String providerUserId) {

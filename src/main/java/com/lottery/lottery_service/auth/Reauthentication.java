@@ -28,9 +28,7 @@ public final class Reauthentication {
     return Optional.ofNullable((Instant) session.getAttribute(COMPLETED_AT));
   }
 
-  /** 재인증을 시작한다. 앞서 마친 재인증 시각은 지운다. 새 시도가 실패하거나 끝나지 않으면 민감한 작업을 다시 막기 위해서다(03 6.3). */
   static void start(HttpSession session, long memberId) {
-    session.removeAttribute(COMPLETED_AT);
     session.setAttribute(PENDING, memberId);
   }
 
@@ -43,14 +41,6 @@ public final class Reauthentication {
   static void clear(HttpSession session) {
     if (session != null) {
       session.removeAttribute(PENDING);
-    }
-  }
-
-  /** 재인증이 실패하거나 취소됐다. 기다리는 값과 재인증 시각을 지우고 세션은 그대로 둔다(03 6.3). */
-  static void fail(HttpSession session) {
-    if (session != null) {
-      session.removeAttribute(PENDING);
-      session.removeAttribute(COMPLETED_AT);
     }
   }
 
