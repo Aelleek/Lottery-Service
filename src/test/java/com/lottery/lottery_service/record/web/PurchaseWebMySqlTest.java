@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oauth2Login;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -136,8 +135,13 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.details.fieldErrors[0].reason").value("INVALID_NUMBERS"))
         .andExpect(jsonPath("$.details.fieldErrors[1].path").value("entries[2].numbers"))
         .andExpect(
-            content()
-                .string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("46"))));
+            result ->
+                assertThat(
+                        result
+                            .getResponse()
+                            .getContentAsString()
+                            .replaceAll("\"requestId\":\"[^\"]*\"", ""))
+                    .doesNotContain("46"));
     long recordsBefore = jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class);
     mvc.perform(
             post("/api/v1/me/lotto/purchases")
