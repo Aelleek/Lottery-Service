@@ -25,7 +25,7 @@ public class DiscordWebhookSender implements OperatorAlertSender {
   private final HttpClient http = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
   private final String webhookUrl;
 
-  /** 웹훅 주소로 만든다. 비어 있으면 보낼 때 실패한다. */
+  /** 웹훅 주소로 만든다. 비어 있으면 보낼 때 실패한다. 실패 예외에는 주소(토큰 포함)를 넣지 않는다. */
   public DiscordWebhookSender(
       @Value("${lottery.integrations.discord-webhook-url:}") String webhookUrl) {
     this.webhookUrl = webhookUrl;
@@ -36,9 +36,15 @@ public class DiscordWebhookSender implements OperatorAlertSender {
     if (webhookUrl == null || webhookUrl.isBlank()) {
       throw new IllegalStateException("discord webhook is not configured");
     }
+    URI target;
+    try {
+      target = URI.create(webhookUrl.strip());
+    } catch (IllegalArgumentException e) {
+      throw new IllegalStateException("discord webhook url is invalid");
+    }
     try {
       HttpRequest request =
-          HttpRequest.newBuilder(URI.create(webhookUrl))
+          HttpRequest.newBuilder(target)
               .timeout(TIMEOUT)
               .header("Content-Type", "application/json")
               .POST(
@@ -52,8 +58,8 @@ public class DiscordWebhookSender implements OperatorAlertSender {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("interrupted", e);
-    } catch (IOException e) {
-      throw new IllegalStateException("discord webhook failed", e);
+    } catch (IOException | IllegalArgumentException e) {
+      throw new IllegalStateException("discord webhook failed: " + e.getClass().getSimpleName());
     }
   }
 }

@@ -80,7 +80,7 @@ class DiscordWebhookSenderTest {
 
     assertThatThrownBy(() -> new DiscordWebhookSender(webhook).send("x"))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessage("discord webhook failed")
+        .hasMessageStartingWith("discord webhook failed")
         .satisfies(e -> assertThat(e.getMessage()).doesNotContain("/hook"));
   }
 
@@ -96,9 +96,24 @@ class DiscordWebhookSenderTest {
           () ->
               assertThatThrownBy(() -> new DiscordWebhookSender(webhook).send("x"))
                   .isInstanceOf(IllegalStateException.class)
-                  .hasMessage("discord webhook failed"));
+                  .hasMessageStartingWith("discord webhook failed"));
     } finally {
       slow.stop(0);
+    }
+  }
+
+  @Test
+  @org.junit.jupiter.api.DisplayName("주소가 잘못돼 실패해도 예외 메시지와 원인에 주소(토큰)가 들어가지 않는다")
+  void invalidUrlDoesNotLeakToken() {
+    for (String bad :
+        List.of(
+            "https://discord.example/api/webhooks/1/SECRET token",
+            "ftp://discord.example/api/webhooks/1/SECRET")) {
+      assertThatThrownBy(() -> new DiscordWebhookSender(bad).send("x"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasNoCause()
+          .message()
+          .doesNotContain("SECRET");
     }
   }
 
