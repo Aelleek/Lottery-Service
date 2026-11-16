@@ -18,6 +18,7 @@ import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.recommendation.filter.DifferenceKindsFilter;
 import com.lottery.lottery_service.recommendation.filter.EndDigitSumFilter;
+import com.lottery.lottery_service.recommendation.filter.FilterContext;
 import com.lottery.lottery_service.recommendation.filter.GenerationFilterPipeline;
 import com.lottery.lottery_service.recommendation.filter.LowHighFilter;
 import com.lottery.lottery_service.recommendation.filter.OddEvenFilter;
@@ -390,6 +391,44 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
     assertThat(keysOf(second)).hasSize(5).containsExactlyInAnyOrderElementsOf(keysOf(first));
   }
 
+  @Test
+  @DisplayName("회원과 비회원의 기본 추천 1,000회(각 500회)의 모든 세트가 필터 7개를 통과하고 요청마다 필터 버전이 남는다(T34)")
+  void thousandBasicRecommendationsPassFilters() {
+    long memberSubject =
+        new AccountStore(jdbc, tm, clock).login(OAuthProvider.KAKAO, "t34").subjectId();
+    for (int i = 0; i < 500; i++) {
+      clock.set(T0.plusSeconds(i));
+      service.recommend(
+          new RecommendCommand(
+              memberSubject,
+              ROUND,
+              1,
+              RecommendationCondition.none(),
+              digest(10_000 + i),
+              digest(10_000 + i)));
+      service.recommend(basic(20_000 + i));
+    }
+
+    FilterContext context = new FilterContext(ROUND, java.util.Set.of());
+    List<String> keys =
+        jdbc.queryForList("SELECT numbers_key FROM recommendation_item", String.class);
+    assertThat(keys).hasSize(5_000);
+    assertThat(keys)
+        .allSatisfy(
+            k -> assertThat(filters.firstFailure(LottoNumbers.fromKey(k), context)).isEmpty());
+    assertThat(
+            jdbc.queryForList(
+                "SELECT DISTINCT CONCAT(generation_mode, ':', COALESCE(filter_version, '-'))"
+                    + " FROM recommendation_request",
+                String.class))
+        .singleElement()
+        .asString()
+        .startsWith("BASIC:")
+        .doesNotEndWith(":-");
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_request", Long.class))
+        .isEqualTo(1_000);
+  }
+
   private List<String> keysOf(long subjectId) {
     return jdbc.queryForList(
         "SELECT numbers_key FROM lotto_record WHERE owner_subject_id = ? ORDER BY id",
@@ -586,6 +625,8 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
   private static byte[] digest(int value) {
     byte[] b = new byte[32];
     b[0] = (byte) value;
+    b[1] = (byte) (value >>> 8);
+    b[2] = (byte) (value >>> 16);
     return b;
   }
 }
