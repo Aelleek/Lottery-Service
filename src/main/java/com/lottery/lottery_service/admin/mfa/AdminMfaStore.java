@@ -235,10 +235,17 @@ public class AdminMfaStore {
           "UPDATE admin_grant SET mfa_failed_count = 0, mfa_locked_until = ? WHERE member_id = ?",
           utc(now.plus(LOCK)),
           memberId);
+      String role =
+          jdbc.queryForObject(
+              "SELECT role FROM admin_grant WHERE member_id = ?", String.class, memberId);
       jobs.enqueue(
           "OPERATOR_ALERT",
           "admin-mfa-locked:" + UUID.randomUUID(),
-          "{\"kind\":\"ADMIN_MFA_LOCKED\",\"lockMinutes\":" + LOCK.toMinutes() + "}",
+          "{\"kind\":\"ADMIN_MFA_LOCKED\",\"lockMinutes\":"
+              + LOCK.toMinutes()
+              + ",\"role\":\""
+              + role
+              + "\"}",
           now);
       return Outcome.LOCKED;
     }

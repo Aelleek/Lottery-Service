@@ -113,7 +113,7 @@ class AdminMfaStoreMySqlTest extends MySqlContainerSupport {
             jdbc.queryForObject(
                 "SELECT JSON_KEYS(payload) FROM job WHERE job_type = 'OPERATOR_ALERT'",
                 String.class))
-        .isEqualTo("[\"kind\", \"lockMinutes\"]");
+        .isEqualTo("[\"kind\", \"role\", \"lockMinutes\"]");
 
     clock.set(T0.plusSeconds(120).plus(AdminMfaStore.LOCK));
     assertThat(store.verify(admin, code(secret, 0))).isEqualTo(AdminMfaStore.Outcome.OK);

@@ -95,9 +95,10 @@ public class AdminGrants {
         status -> {
           long target = activeMember(memberPublicId);
           String before = currentRole(target);
+          AdminRole shown = roleOf(target);
           apply.accept(target);
           audit.record(event(target, action, target, reason, null, before));
-          alert(action, null);
+          alert(action, shown);
         });
   }
 
@@ -148,9 +149,10 @@ public class AdminGrants {
               throw new BusinessException(ErrorCode.FORBIDDEN, "자기 자신에게는 할 수 없습니다.");
             }
             String before = currentRole(target);
+            AdminRole shown = role != null ? role : roleOf(target);
             apply.accept(target);
             audit.record(event(actor, action, target, reason, role, before));
-            alert(action, role);
+            alert(action, shown);
           });
     } catch (BusinessException e) {
       audit.recordIndependently(
@@ -167,7 +169,7 @@ public class AdminGrants {
     }
   }
 
-  /** 운영자에게 사건 종류와 역할만 알린다(07 2.1). 회원 ID와 사유는 넣지 않는다. */
+  /** 운영자에게 사건 종류와 역할만 알린다(07 2.1). 회원 ID와 사유는 넣지 않는다. 역할은 부여면 새 역할, 회수·2차 인증 초기화면 바꾸기 전 역할이다. */
   private void alert(String action, AdminRole role) {
     jobs.enqueue(
         JobStore.OPERATOR_ALERT,
@@ -246,6 +248,15 @@ public class AdminGrants {
         before,
         after,
         AdminAuditOutcome.SUCCEEDED);
+  }
+
+  private AdminRole roleOf(long target) {
+    List<String> roles =
+        jdbc.queryForList(
+            "SELECT role FROM admin_grant WHERE member_id = ? AND revoked_at IS NULL",
+            String.class,
+            target);
+    return roles.isEmpty() ? null : AdminRole.valueOf(roles.get(0));
   }
 
   private String currentRole(long target) {

@@ -275,6 +275,15 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
                 String.class))
         .containsExactly(
             "ADMIN_GRANT_BY_COMMAND", "ADMIN_MFA_RESET_BY_COMMAND", "ADMIN_REVOKE_BY_COMMAND");
+    assertThat(
+            jdbc.queryForList(
+                "SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.role')) FROM job"
+                    + " WHERE job_type = 'OPERATOR_ALERT'"
+                    + " AND JSON_EXTRACT(payload, '$.action') IN"
+                    + " ('ADMIN_MFA_RESET_BY_COMMAND', 'ADMIN_REVOKE_BY_COMMAND') ORDER BY id",
+                String.class))
+        .hasSize(2)
+        .allSatisfy(r -> assertThat(r).isIn("OPERATOR", "ADMIN"));
   }
 
   @Test
