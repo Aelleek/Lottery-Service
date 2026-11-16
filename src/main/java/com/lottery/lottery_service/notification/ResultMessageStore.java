@@ -42,18 +42,22 @@ public class ResultMessageStore {
   }
 
   /**
-   * 대상인데 아직 메시지가 없는 회원에게 PENDING 메시지를 만든다. 회원·회차 유일 제약으로 두 번 생기지 않는다.
+   * 대상인데 아직 메시지가 없는 회원에게 PENDING 메시지를 만든다. 회원·회차 유일 제약으로 두 번 생기지 않는다. 알림 계획을 닫은 회차에는 만들지 않는다(05
+   * 8.7절). 회차 행을 공유 잠금으로 읽어 계획 완료와 줄을 세운다.
    *
    * @return 새로 만든 메시지 수
    */
   public int createMissing(int roundNo) {
-    Instant published =
-        jdbc.queryForObject(
-                "SELECT d.published_at FROM lotto_round r JOIN draw_result d ON d.id = r.published_result_id"
-                    + " WHERE r.round_no = ?",
-                LocalDateTime.class,
-                roundNo)
-            .toInstant(ZoneOffset.UTC);
+    List<LocalDateTime> open =
+        jdbc.queryForList(
+            "SELECT d.published_at FROM lotto_round r JOIN draw_result d ON d.id = r.published_result_id"
+                + " WHERE r.round_no = ? AND r.notification_plan_closed_at IS NULL FOR SHARE OF r",
+            LocalDateTime.class,
+            roundNo);
+    if (open.isEmpty()) {
+      return 0;
+    }
+    Instant published = open.get(0).toInstant(ZoneOffset.UTC);
     int created = 0;
     for (NotificationTarget target : targets.targets(roundNo)) {
       if (insertIfAbsent(target.memberId(), roundNo, published.plus(VALIDITY))) {

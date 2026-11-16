@@ -60,22 +60,28 @@ public class ManualResendService {
   /** {@link #resend(int, AdminRole)}와 같고, 메시지마다 보내기 전에 {@code beforeEach}를 부른다(명령 처리 권한 연장). */
   public SlotResult resend(int roundNo, AdminRole actor, Runnable beforeEach) {
     Instant now = clock.instant();
-    List<LocalDateTime> published =
-        jdbc.queryForList(
-            "SELECT d.published_at FROM lotto_round r JOIN draw_result d ON d.id = r.published_result_id"
-                + " WHERE r.round_no = ? AND r.notification_plan_closed_at IS NULL",
-            LocalDateTime.class,
-            roundNo);
-    if (published.isEmpty()
-        || !now.isBefore(instant(published.get(0)).plus(ResultMessageStore.VALIDITY))) {
-      throw new BusinessException(ErrorCode.DISPATCH_WINDOW_CLOSED, "다시 보내기 기한이 지났습니다.");
-    }
     tx.executeWithoutResult(
-        status ->
+        status -> {
+          List<LocalDateTime> published =
+              jdbc.queryForList(
+                  "SELECT d.published_at FROM lotto_round r"
+                      + " JOIN draw_result d ON d.id = r.published_result_id"
+                      + " WHERE r.round_no = ? AND r.notification_plan_closed_at IS NULL"
+                      + " FOR SHARE OF r",
+                  LocalDateTime.class,
+                  roundNo);
+          if (published.isEmpty()
+              || !now.isBefore(instant(published.get(0)).plus(ResultMessageStore.VALIDITY))) {
+            throw new BusinessException(ErrorCode.DISPATCH_WINDOW_CLOSED, "다시 보내기 기한이 지났습니다.");
+          }
+          if (!runner.evaluationPending(roundNo)) {
             jdbc.update(
                 "UPDATE delivery_message SET state = 'PENDING', version = version + 1"
-                    + " WHERE round_no = ? AND purpose = 'RESULT' AND state IN ('HALTED','RETRY_WAIT')",
-                roundNo));
+                    + " WHERE round_no = ? AND purpose = 'RESULT'"
+                    + " AND state IN ('HALTED','RETRY_WAIT')",
+                roundNo);
+          }
+        });
     SlotResult result = runner.run(roundNo, new ResultSlot(now, false, false), beforeEach);
     jobs.enqueue(
         JobStore.OPERATOR_ALERT,

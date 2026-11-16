@@ -213,7 +213,8 @@ public class ResultSlotRunner {
     return providerFailed > 0 && sent == 0 ? "PROVIDER_ERROR" : "PARTIAL_FAILURE";
   }
 
-  private boolean evaluationPending(int roundNo) {
+  /** 마감 전 회원 기록 중 지금 게시본으로 아직 판정하지 않은 것이 있으면 {@code true}. */
+  boolean evaluationPending(int roundNo) {
     List<Integer> pending =
         jdbc.queryForList(
             "SELECT 1 FROM lotto_record l JOIN lotto_round r ON r.round_no = l.round_no"

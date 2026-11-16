@@ -812,7 +812,7 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("알림 계획을 닫은 회차는 정정으로 게시 시각이 바뀌어도 다시 보내지 않고 새 메시지도 만들지 않는다(05 8.7절)")
+  @DisplayName("알림 계획을 닫은 회차는 정정으로 게시 시각이 바뀌어도 다시 보내지 않고, 메시지 만들기를 직접 불러도 새 메시지를 만들지 않는다(05 8.7절)")
   void resendRejectedAfterPlanClosed() {
     jdbc.update("UPDATE lotto_round SET notification_plan_closed_at = NOW(6)");
     jdbc.update(
@@ -841,10 +841,51 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
             BusinessException.class,
             e -> assertThat(e.getCode()).isEqualTo(ErrorCode.DISPATCH_WINDOW_CLOSED));
     assertThat(called).isEmpty();
+    assertThat(tx.<Integer>execute(st -> store.createMissing(ROUND))).isZero();
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM delivery_message WHERE purpose = 'RESULT'", Long.class))
         .isZero();
+  }
+
+  @Test
+  @DisplayName("재판정이 끝나지 않은 동안 수동 다시 보내기는 HALTED를 대기로 바꾸지 않고 아무것도 보내지 않는다(05 8.2절 2번)")
+  void resendWaitsForEvaluation() {
+    Instant published =
+        jdbc.queryForObject("SELECT published_at FROM draw_result", LocalDateTime.class)
+            .toInstant(ZoneOffset.UTC);
+    clock.set(published.plusSeconds(3600));
+    runner(
+            id ->
+                id == message(fourthMember)
+                    ? new SendOutcome.NotAccepted("E")
+                    : new SendOutcome.Accepted("M"))
+        .run(ROUND, new ResultSlot(clock.instant(), true, true));
+    assertThat(state(fourthMember)).isEqualTo("HALTED");
+    jdbc.update(
+        "UPDATE lotto_record l JOIN actor_subject s ON s.id = l.owner_subject_id"
+            + " SET l.version = l.version + 1 WHERE s.member_id = ?",
+        thirdMember);
+    List<Long> called = new ArrayList<>();
+    ManualResendService resend =
+        new ManualResendService(
+            jdbc,
+            runner(
+                id -> {
+                  called.add(id);
+                  return new SendOutcome.Accepted("M2");
+                }),
+            new JobStore(
+                jdbc,
+                new DataSourceTransactionManager(dataSource),
+                clock,
+                new JobProperties(null, null)),
+            new DataSourceTransactionManager(dataSource),
+            clock);
+
+    assertThat(resend.resend(ROUND, AdminRole.OPERATOR).cause()).isEqualTo("EVALUATION_PENDING");
+    assertThat(called).isEmpty();
+    assertThat(state(fourthMember)).isEqualTo("HALTED");
   }
 
   @Test
