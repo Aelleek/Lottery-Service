@@ -186,8 +186,21 @@ class RecommendationCommandServiceMySqlTest extends MySqlContainerSupport {
     List<Object> outcomes =
         race(() -> recommend(token, UUID.randomUUID(), RecommendationCondition.none(), 1));
 
-    assertThat(outcomes.stream().filter(RecommendationView.class::isInstance).count())
-        .isEqualTo(count("recommendation_request"));
+    List<RecommendationView> views =
+        outcomes.stream()
+            .filter(RecommendationView.class::isInstance)
+            .map(RecommendationView.class::cast)
+            .toList();
+    assertThat(views).hasSize(1);
+    assertThat(views.get(0).sets()).hasSize(5).doesNotHaveDuplicates();
+    assertThat(outcomes)
+        .filteredOn(o -> !(o instanceof RecommendationView))
+        .singleElement()
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.getCode()).isEqualTo(ErrorCode.GENERATION_BUSY));
+    assertThat(count("recommendation_request")).isEqualTo(1);
+    assertThat(count("recommendation_item")).isEqualTo(5);
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) - COUNT(DISTINCT numbers_key) FROM recommendation_seen"
