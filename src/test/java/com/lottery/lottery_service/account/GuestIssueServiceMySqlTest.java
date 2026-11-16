@@ -73,12 +73,15 @@ class GuestIssueServiceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("회원 세션이면 FORBIDDEN, 한 IP의 새 발급이 한도를 넘으면 RATE_LIMITED와 다시 시도할 시각(T40), 다른 IP는 영향 없음")
+  @DisplayName(
+      "회원 세션이면 FORBIDDEN, 한 IP의 새 발급이 한도를 넘으면 RATE_LIMITED와 다시 시도할 시각(T40), 다른 IP와 이미 발급된 자격은 영향 없음")
   void memberSessionAndRateLimit() {
     assertThatThrownBy(() -> service.issue(null, true, "10.0.0.1"))
         .isInstanceOfSatisfying(
             BusinessException.class, e -> assertThat(e.getCode()).isEqualTo(ErrorCode.FORBIDDEN));
-    for (int i = 0; i < GuestIssueRateLimiter.LIMIT; i++) {
+    GuestIssueService.Outcome.Issued firstIssued =
+        (GuestIssueService.Outcome.Issued) service.issue(null, false, "10.0.0.2");
+    for (int i = 1; i < GuestIssueRateLimiter.LIMIT; i++) {
       service.issue(null, false, "10.0.0.2");
     }
 
@@ -91,5 +94,11 @@ class GuestIssueServiceMySqlTest extends MySqlContainerSupport {
             });
     assertThat(service.issue(null, false, "10.0.0.3"))
         .isInstanceOf(GuestIssueService.Outcome.Issued.class);
+
+    GuestIssueService.Outcome kept =
+        service.issue(firstIssued.cookie().getValue(), false, "10.0.0.2");
+    assertThat(kept).isInstanceOf(GuestIssueService.Outcome.Existing.class);
+    assertThat(((GuestIssueService.Outcome.Existing) kept).subject().subjectId())
+        .isEqualTo(firstIssued.credential().subjectId());
   }
 }
