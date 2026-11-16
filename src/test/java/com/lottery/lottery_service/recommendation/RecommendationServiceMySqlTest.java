@@ -328,9 +328,10 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
             digest(2),
             digest(2)));
     clock.set(T0.plusSeconds(2));
-    service.recommend(
-        new RecommendCommand(
-            memberSubject, ROUND, 1, RecommendationCondition.none(), digest(3), digest(3)));
+    serviceWithHook(() -> {})
+        .recommend(
+            new RecommendCommand(
+                memberSubject, ROUND, 1, RecommendationCondition.none(), digest(3), digest(3)));
 
     List<String> seen =
         jdbc.queryForList(
@@ -347,6 +348,27 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
         .hasSize(15)
         .doesNotHaveDuplicates()
         .containsAll(first);
+  }
+
+  @Test
+  @DisplayName("비회원이 추천받은 뒤 회원에 귀속되면 그 회원의 다음 추천은 비회원 이력까지 합쳐 빼고, 기록은 각 주체에 따로 남는다(T13)")
+  void claimedGuestHistoryExcludedForMember() {
+    service.recommend(basic(1));
+    List<String> guestSets = keysOf(subject);
+    long memberSubject =
+        new AccountStore(jdbc, tm, clock).login(OAuthProvider.KAKAO, "t13").subjectId();
+    new com.lottery.lottery_service.account.SubjectClaimStore(jdbc, tm, clock)
+        .claim(subject, memberSubject);
+
+    clock.set(T0.plusSeconds(1));
+    serviceWithHook(() -> {})
+        .recommend(
+            new RecommendCommand(
+                memberSubject, ROUND, 1, RecommendationCondition.none(), digest(2), digest(2)));
+
+    List<String> memberSets = keysOf(memberSubject);
+    assertThat(memberSets).hasSize(5).doesNotContainAnyElementsOf(guestSets);
+    assertThat(keysOf(subject)).containsExactlyElementsOf(guestSets);
   }
 
   private List<String> keysOf(long subjectId) {
