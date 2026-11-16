@@ -72,7 +72,7 @@ public class UnknownMessageReconciler {
     }
     Instant now = clock.instant();
     if (status instanceof ProviderStatus.Accepted a) {
-      set(messageId, "ACCEPTED", a.providerMessageId(), false);
+      set(messageId, "ACCEPTED", a.providerMessageId(), true);
       budget.spend(messageId);
       return "ACCEPTED";
     }

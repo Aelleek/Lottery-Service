@@ -96,9 +96,10 @@ public class NotificationPlanCloser {
   /** 다시 보내기 기한이 지나도록 못 보낸 결과 알림을 EXPIRED로 바꾼다. */
   private int expireUnsent(int roundNo) {
     return jdbc.update(
-        "UPDATE delivery_message SET state = 'EXPIRED', next_attempt_at = NULL,"
+        "UPDATE delivery_message SET state = 'EXPIRED', next_attempt_at = NULL, finalized_at = ?,"
             + " version = version + 1 WHERE round_no = ? AND purpose = 'RESULT'"
             + " AND state IN ('PENDING','RETRY_WAIT','HALTED')",
+        utc(clock.instant()),
         roundNo);
   }
 }

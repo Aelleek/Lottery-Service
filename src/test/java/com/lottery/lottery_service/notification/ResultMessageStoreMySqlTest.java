@@ -1471,6 +1471,29 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("접수 확인 중이던 메시지는 대조를 마친 날부터 30일 뒤에 본문과 수신자 사본을 비운다(02 8절)")
+  void copiesKeptThirtyDaysAfterReconcile() {
+    long id = unknownMessage(fourthMember);
+    jdbc.update(
+        "UPDATE delivery_message SET payload_ciphertext = ?, recipient_ciphertext = ? WHERE id = ?",
+        new byte[] {9},
+        new byte[] {8},
+        id);
+    Instant sent = clock.instant();
+    clock.set(sent.plus(Duration.ofDays(19)));
+    tx.execute(s -> reconciler().apply(id, new ProviderStatus.Accepted("M-late")));
+
+    clock.set(sent.plus(Duration.ofDays(31)));
+    assertThat(
+            tx.<Integer>execute(s -> new HousekeepingCleaner(jdbc, clock).clearMessageCopies(100)))
+        .isZero();
+    clock.set(sent.plus(Duration.ofDays(19 + 30)));
+    assertThat(
+            tx.<Integer>execute(s -> new HousekeepingCleaner(jdbc, clock).clearMessageCopies(100)))
+        .isEqualTo(1);
+  }
+
+  @Test
   @DisplayName("알림 본문 정리 뒤 정정돼도 안내 요약으로 영향 회원 수를 세고, 다시 보내지 않으며 사본은 되살아나지 않는다(T28)")
   void correctionAfterCopyCleanup() {
     tx.execute(s -> store.createMissing(ROUND));

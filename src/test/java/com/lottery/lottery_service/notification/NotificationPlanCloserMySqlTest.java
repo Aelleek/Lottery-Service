@@ -133,7 +133,7 @@ class NotificationPlanCloserMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("기한이 지나도록 못 보낸 메시지는 EXPIRED가 되고 계획을 닫는다. 기한 전에는 그대로 둔다")
+  @DisplayName("기한이 지나도록 못 보낸 메시지는 EXPIRED와 끝난 시각을 남기고 계획을 닫는다. 기한 전에는 그대로 둔다")
   void expiresUnsentMessagesAfterDeadline() {
     AccountStore accounts = new AccountStore(jdbc, tm, clock);
     for (String state : List.of("HALTED", "RETRY_WAIT", "PENDING")) {
@@ -164,6 +164,12 @@ class NotificationPlanCloserMySqlTest extends MySqlContainerSupport {
     clock.set(ready);
     assertThat(close(closer)).isTrue();
     assertThat(expired()).isEqualTo(3);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM delivery_message WHERE state = 'EXPIRED' AND finalized_at = ?",
+                Long.class,
+                java.time.LocalDateTime.ofInstant(ready, java.time.ZoneOffset.UTC)))
+        .isEqualTo(3);
   }
 
   private long expired() {
