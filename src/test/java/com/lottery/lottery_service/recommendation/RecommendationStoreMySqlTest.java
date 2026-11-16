@@ -158,23 +158,26 @@ class RecommendationStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("같은 주체의 동시 저장 2건이 겹치면 주체 잠금 뒤 하나만 성공하고 중복은 0이다(T03 저장 부분)")
+  @DisplayName(
+      "같은 주체의 동시 저장 2건이 겹치면 생성 권한 확인(주체 잠금) 뒤 하나만 성공하고 중복은 0이며 실패한 쪽 쓰기는 남지 않는다(T03 저장 부분)")
   void concurrentOverlappingSaves() throws Exception {
+    GenerationLeaseStore leases =
+        new GenerationLeaseStore(
+            jdbc, new DataSourceTransactionManager(dataSource), Clock.fixed(T0, ZoneOffset.UTC));
+    GenerationLease lease = leases.acquire(subject);
     CountDownLatch start = new CountDownLatch(1);
     List<CompletableFuture<Boolean>> calls =
-        List.of(1, 1).stream()
+        List.of(1, 2).stream()
             .map(
-                seed ->
+                call ->
                     CompletableFuture.supplyAsync(
                         () -> {
                           try {
                             start.await();
                             tx.executeWithoutResult(
-                                s -> {
-                                  jdbc.queryForList(
-                                      "SELECT id FROM actor_subject WHERE id = ? FOR UPDATE",
-                                      subject);
-                                  save(subject, sets(seed));
+                                st -> {
+                                  leases.requireCurrent(lease);
+                                  save(subject, sets(1), call);
                                 });
                             return true;
                           } catch (RecommendationConflictException e) {
@@ -193,9 +196,17 @@ class RecommendationStoreMySqlTest extends MySqlContainerSupport {
     }
     assertThat(ok).isEqualTo(1);
     assertThat(count("recommendation_seen")).isEqualTo(5);
+    assertThat(count("recommendation_request")).isEqualTo(1);
+    assertThat(count("lotto_record")).isEqualTo(5);
   }
 
   private SavedRecommendation save(long subjectId, List<LottoNumbers> sets) {
+    return save(subjectId, sets, 0);
+  }
+
+  private SavedRecommendation save(long subjectId, List<LottoNumbers> sets, int key) {
+    byte[] digest = new byte[32];
+    digest[0] = (byte) key;
     return tx.execute(
         s ->
             store.save(
@@ -204,8 +215,8 @@ class RecommendationStoreMySqlTest extends MySqlContainerSupport {
                     ROUND,
                     sets,
                     T0,
-                    new byte[32],
-                    new byte[32],
+                    digest,
+                    digest,
                     1,
                     GenerationFilterPipeline.VERSION,
                     null,
@@ -233,13 +244,17 @@ class RecommendationStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("받은 조합 조회는 귀속한 비회원 이력까지 (주체, 회차) 기본 키로 읽고 회차 전체를 훑지 않는다")
+  @DisplayName("받은 조합 조회는 귀속한 비회원 이력까지 (주체, 회차) 두 열로 찾고 회차 전체를 훑지 않는다")
   void seenUsesPrimaryKey() {
     List<Map<String, Object>> plan =
         jdbc.queryForList("EXPLAIN " + RecommendationStore.SEEN_SQL.replace("?", "1"));
     assertThat(plan)
         .filteredOn(r -> "recommendation_seen".equals(r.get("table")) || "s".equals(r.get("table")))
         .hasSize(2)
-        .allSatisfy(r -> assertThat(r.get("key")).isEqualTo("PRIMARY"));
+        .allSatisfy(
+            r -> {
+              assertThat(r.get("key")).isIn("PRIMARY", "fk_recommendation_seen_1");
+              assertThat(String.valueOf(r.get("ref"))).contains(",");
+            });
   }
 }
