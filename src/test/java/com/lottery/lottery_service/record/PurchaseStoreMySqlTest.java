@@ -188,6 +188,32 @@ class PurchaseStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName(
+      "마감 전 등록을 마감 뒤 취소하고 다시 등록하면 행을 되살려 created_at·purchased_at을 마감 뒤로 다시 찍고, 결과에 마감 뒤 등록을 알린다(D-041, T50)")
+  void reRegisterAfterCloseIsLate() {
+    PurchaseResult before = register(List.of(B));
+    UUID id = before.items().get(0).recordPublicId();
+    assertThat(before.afterSalesClose()).isFalse();
+    jdbc.update(
+        "UPDATE lotto_round SET sales_close_at = NOW(6) - INTERVAL 1 SECOND WHERE round_no = ?",
+        ROUND);
+    cancel(id, 0);
+
+    PurchaseResult again = register(List.of(B));
+
+    assertThat(again.items().get(0)).isEqualTo(new PurchaseItem(B, id, PurchaseOutcome.CREATED));
+    assertThat(again.afterSalesClose()).isTrue();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT l.created_at >= r.sales_close_at AND l.purchased_at >= r.sales_close_at"
+                    + " FROM lotto_record l JOIN lotto_round r ON r.round_no = l.round_no"
+                    + " WHERE l.public_id = UUID_TO_BIN(?)",
+                Boolean.class,
+                id.toString()))
+        .isTrue();
+  }
+
+  @Test
   @DisplayName("화면이 본 버전이 다르면 VERSION_CONFLICT와 현재 버전. 다시 구매한 뒤 옛 취소는 새 구매를 취소하지 않는다(T11)")
   void staleCancel() {
     UUID id = register(List.of(B)).items().get(0).recordPublicId();
