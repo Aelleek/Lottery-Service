@@ -93,6 +93,26 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("빈 비회원 주체 정리는 앞 묶음이 지운 가장 큰 ID 뒤부터 이어 읽는다")
+  void guestsInKeysetBatches() {
+    GuestCredentialStore guests = new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys());
+    List<Long> ids = new java.util.ArrayList<>();
+    for (int i = 0; i < 3; i++) {
+      ids.add(guests.issue().subjectId());
+    }
+    jdbc.update("DELETE FROM guest_credential");
+    HousekeepingCleaner cleaner = new HousekeepingCleaner(jdbc, clock);
+
+    assertThat(cleaner.deleteEmptyGuestSubjects(0, 2))
+        .isEqualTo(new HousekeepingCleaner.GuestBatch(2, ids.get(1)));
+    assertThat(cleaner.deleteEmptyGuestSubjects(ids.get(1), 2))
+        .isEqualTo(new HousekeepingCleaner.GuestBatch(1, ids.get(2)));
+    assertThat(cleaner.deleteEmptyGuestSubjects(ids.get(2), 2))
+        .isEqualTo(new HousekeepingCleaner.GuestBatch(0, ids.get(2)));
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM actor_subject", Long.class)).isZero();
+  }
+
+  @Test
   @DisplayName("표시 기한이 지난 멱등 기록만 지우고, 기한 전 기록은 남긴다(02 8절)")
   void commandOperations() {
     GuestCredential guest = new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys()).issue();

@@ -84,9 +84,19 @@ public class HousekeepingCleaner {
 
   /** 남은 자료가 없는 비회원 주체를 지운다. */
   public int deleteEmptyGuestSubjects(int limit) {
+    return deleteEmptyGuestSubjects(0, limit).deleted();
+  }
+
+  /**
+   * {@link #deleteEmptyGuestSubjects(int)}를 {@code afterId}보다 큰 주체부터 한다. 다음 묶음은 돌려준 {@code lastId}
+   * 뒤부터 보면 남는 주체(회원, 기록이 있는 비회원)를 묶음마다 처음부터 다시 읽지 않는다.
+   *
+   * @return 지운 수와 이번에 지운 가장 큰 주체 ID(지운 것이 없으면 {@code afterId})
+   */
+  public GuestBatch deleteEmptyGuestSubjects(long afterId, int limit) {
     List<Long> ids =
         jdbc.queryForList(
-            "SELECT s.id FROM actor_subject s WHERE s.kind = 'GUEST'"
+            "SELECT s.id FROM actor_subject s WHERE s.id > ? AND s.kind = 'GUEST'"
                 + " AND NOT EXISTS (SELECT 1 FROM lotto_record l WHERE l.owner_subject_id = s.id)"
                 + " AND NOT EXISTS (SELECT 1 FROM recommendation_seen r WHERE r.subject_id = s.id)"
                 + " AND NOT EXISTS (SELECT 1 FROM recommendation_request q WHERE q.subject_id = s.id)"
@@ -94,16 +104,26 @@ public class HousekeepingCleaner {
                 + " AND NOT EXISTS (SELECT 1 FROM guest_credential g WHERE g.subject_id = s.id)"
                 + " ORDER BY s.id LIMIT ? FOR UPDATE",
             Long.class,
+            afterId,
             limit);
     if (ids.isEmpty()) {
-      return 0;
+      return new GuestBatch(0, afterId);
     }
     String in = String.join(",", Collections.nCopies(ids.size(), "?"));
     Object[] args = ids.toArray();
     jdbc.update("DELETE FROM command_operation WHERE subject_id IN (" + in + ")", args);
     jdbc.update("UPDATE usage_event SET subject_id = NULL WHERE subject_id IN (" + in + ")", args);
-    return jdbc.update("DELETE FROM actor_subject WHERE id IN (" + in + ")", args);
+    int deleted = jdbc.update("DELETE FROM actor_subject WHERE id IN (" + in + ")", args);
+    return new GuestBatch(deleted, ids.get(ids.size() - 1));
   }
+
+  /**
+   * 빈 비회원 주체 정리 한 묶음의 결과.
+   *
+   * @param deleted 지운 주체 수
+   * @param lastId 이번 묶음에서 지운 가장 큰 주체 ID
+   */
+  public record GuestBatch(int deleted, long lastId) {}
 
   /**
    * 최종 상태가 된 뒤 30일이 지난 메시지의 본문과 수신자 사본을 비운다(02 8절). 접수 확인 중(UNKNOWN)과 아직 보낼 메시지는 건드리지 않는다. 메시지 행과

@@ -131,7 +131,7 @@ class WorkerSchedulerTest {
 
     org.mockito.InOrder order = org.mockito.Mockito.inOrder(maintenance, housekeeping);
     order.verify(maintenance).cleanupRecords(WorkerScheduler.RECORD_CLEANUP_BATCH);
-    order.verify(housekeeping).deleteEmptyGuestSubjects(1_000);
+    order.verify(housekeeping).deleteEmptyGuestSubjects(0L, 1_000);
     verify(jobs).recoverExpired(any());
     verify(rounds).sealDue();
     verify(reconciler).enqueueMissing(1_000);
@@ -139,7 +139,7 @@ class WorkerSchedulerTest {
     verify(housekeeping).deleteExpiredGuestCredentials();
     verify(housekeeping).deleteExpiredCommandOperations(10_000);
     verify(housekeeping).deleteExpiredAuditEvents(10_000);
-    verify(housekeeping).deleteEmptyGuestSubjects(1_000);
+    verify(housekeeping).deleteEmptyGuestSubjects(0L, 1_000);
     verify(housekeeping).clearMessageCopies(10_000);
     verify(housekeeping).clearChallengeTargets(10_000);
     verify(housekeeping).deleteAggregatedUsageEvents(10_000);
@@ -159,14 +159,18 @@ class WorkerSchedulerTest {
   @DisplayName("상한이 있는 매일 정리는 묶음이 가득 차면 남은 것이 없을 때까지 다시 하고, 덜 차면 멈춘다(2026-11-09 Q24)")
   void housekeepingRepeatsFullBatches() {
     when(housekeeping.deleteExpiredCommandOperations(10_000)).thenReturn(10_000, 10_000, 3);
-    when(housekeeping.deleteEmptyGuestSubjects(1_000)).thenReturn(1_000, 0);
+    when(housekeeping.deleteEmptyGuestSubjects(0L, 1_000))
+        .thenReturn(new HousekeepingCleaner.GuestBatch(1_000, 77));
+    when(housekeeping.deleteEmptyGuestSubjects(77L, 1_000))
+        .thenReturn(new HousekeepingCleaner.GuestBatch(0, 77));
     when(housekeeping.clearMessageCopies(10_000)).thenReturn(10_000);
 
     scheduler().dailyHousekeeping();
 
     verify(housekeeping, times(3)).deleteExpiredCommandOperations(10_000);
     verify(housekeeping, times(1)).deleteExpiredAuditEvents(10_000);
-    verify(housekeeping, times(2)).deleteEmptyGuestSubjects(1_000);
+    verify(housekeeping).deleteEmptyGuestSubjects(0L, 1_000);
+    verify(housekeeping).deleteEmptyGuestSubjects(77L, 1_000);
     verify(housekeeping, times(WorkerScheduler.MAX_HOUSEKEEPING_BATCHES))
         .clearMessageCopies(10_000);
   }

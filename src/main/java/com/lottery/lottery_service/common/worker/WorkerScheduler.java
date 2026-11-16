@@ -287,7 +287,7 @@ public class WorkerScheduler {
     drain("usage-events", 10_000, housekeeping::deleteAggregatedUsageEvents);
     int closed = maintenance.closeNotificationPlans();
     int deleted = maintenance.cleanupRecords(RECORD_CLEANUP_BATCH);
-    drain("guest-subjects", 1_000, housekeeping::deleteEmptyGuestSubjects);
+    drainGuestSubjects();
     Integer delayed = tx.execute(status -> maintenance.alertDelayedCleanup());
     tx.executeWithoutResult(status -> budget.reconcile());
     tx.executeWithoutResult(status -> expiry.check());
@@ -296,6 +296,20 @@ public class WorkerScheduler {
         closed,
         deleted,
         delayed);
+  }
+
+  private void drainGuestSubjects() {
+    long after = 0;
+    for (int i = 0; i < MAX_HOUSEKEEPING_BATCHES; i++) {
+      long from = after;
+      HousekeepingCleaner.GuestBatch done =
+          tx.execute(status -> housekeeping.deleteEmptyGuestSubjects(from, 1_000));
+      if (done == null || done.deleted() < 1_000) {
+        return;
+      }
+      after = done.lastId();
+    }
+    log.warn("daily cleanup stopped at batch limit kind={}", "guest-subjects");
   }
 
   private void drain(String name, int limit, IntUnaryOperator batch) {
