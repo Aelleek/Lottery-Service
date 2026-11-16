@@ -268,8 +268,9 @@ public class WorkerScheduler {
   static final int MAX_HOUSEKEEPING_BATCHES = 1_000;
 
   /**
-   * 매일 보관 정리. 상한이 있는 정리는 묶음마다 커밋하고, 묶음이 가득 찼으면 남은 것이 없을 때까지 다시 한다(2026-11-09 Q24). 고장으로 끝나지 않는 것을
-   * 막으려고 한 종류에 {@value #MAX_HOUSEKEEPING_BATCHES}묶음까지만 돈다.
+   * 매일 보관 정리. 빈 비회원 주체는 기록 정리 뒤에 지워 그날 비게 된 주체도 바로 지운다. 상한이 있는 정리는 묶음마다 커밋하고, 묶음이 가득 찼으면 남은 것이 없을
+   * 때까지 다시 한다(2026-11-09 Q24). 고장으로 끝나지 않는 것을 막으려고 한 종류에 {@value #MAX_HOUSEKEEPING_BATCHES}묶음까지만
+   * 돈다.
    */
   @Scheduled(cron = "0 0 4 * * *", zone = "Asia/Seoul")
   public void dailyHousekeeping() {
@@ -281,12 +282,12 @@ public class WorkerScheduler {
     drain("command-operations", 10_000, housekeeping::deleteExpiredCommandOperations);
     drain("audit-events", 10_000, housekeeping::deleteExpiredAuditEvents);
     drain("rate-buckets", 10_000, housekeeping::deleteExpiredRateBuckets);
-    drain("guest-subjects", 1_000, housekeeping::deleteEmptyGuestSubjects);
     drain("message-copies", 10_000, housekeeping::clearMessageCopies);
     drain("challenge-targets", 10_000, housekeeping::clearChallengeTargets);
     drain("usage-events", 10_000, housekeeping::deleteAggregatedUsageEvents);
     int closed = maintenance.closeNotificationPlans();
     int deleted = maintenance.cleanupRecords(RECORD_CLEANUP_BATCH);
+    drain("guest-subjects", 1_000, housekeeping::deleteEmptyGuestSubjects);
     Integer delayed = tx.execute(status -> maintenance.alertDelayedCleanup());
     tx.executeWithoutResult(status -> budget.reconcile());
     tx.executeWithoutResult(status -> expiry.check());

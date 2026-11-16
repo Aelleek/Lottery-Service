@@ -129,6 +129,9 @@ class WorkerSchedulerTest {
     scheduler.reconcileEvaluations();
     scheduler.dailyHousekeeping();
 
+    org.mockito.InOrder order = org.mockito.Mockito.inOrder(maintenance, housekeeping);
+    order.verify(maintenance).cleanupRecords(WorkerScheduler.RECORD_CLEANUP_BATCH);
+    order.verify(housekeeping).deleteEmptyGuestSubjects(1_000);
     verify(jobs).recoverExpired(any());
     verify(rounds).sealDue();
     verify(reconciler).enqueueMissing(1_000);
