@@ -170,6 +170,16 @@ public class HousekeepingCleaner {
    * @return 지운 추천 요청 수
    */
   public int deleteOrphanRoundHistory(int roundNo) {
+    return deleteOrphanRoundHistory(roundNo, Integer.MAX_VALUE).requests();
+  }
+
+  /**
+   * {@link #deleteOrphanRoundHistory(int)}를 표마다 {@code limit}행까지만 한다. 한 회차 이력이 수십만 행이어도 묶음마다 커밋할 수
+   * 있게 한다. 추천 요청은 남은 항목과 이력이 없을 때만 지우므로 묶음 사이에 끊겨도 순서가 깨지지 않는다.
+   *
+   * @return 표마다 지운 수
+   */
+  public OrphanBatch deleteOrphanRoundHistory(int roundNo, int limit) {
     Instant now = clock.instant();
     Boolean closed =
         jdbc.queryForObject(
@@ -179,7 +189,7 @@ public class HousekeepingCleaner {
             utc(now),
             roundNo);
     if (!Boolean.TRUE.equals(closed)) {
-      return 0;
+      return new OrphanBatch(0, 0, 0);
     }
     String noRecords =
         " AND NOT EXISTS (SELECT 1 FROM lotto_record l JOIN actor_subject a ON a.id = l.owner_subject_id"
@@ -188,18 +198,45 @@ public class HousekeepingCleaner {
             + " OR NOT (l.purchased = TRUE OR EXISTS (SELECT 1 FROM winning_evaluation e"
             + " WHERE e.record_id = l.id AND e.result_id = r.published_result_id"
             + " AND e.record_version = l.version AND e.rank_no IS NOT NULL))))";
-    jdbc.update(
-        "DELETE s FROM recommendation_seen s WHERE s.round_no = ?" + noRecords.formatted("s", "s"),
-        roundNo);
-    jdbc.update(
-        "DELETE i FROM recommendation_item i JOIN recommendation_request q ON q.id = i.request_id"
-            + " WHERE q.round_no = ?"
-            + noRecords.formatted("q", "q"),
-        roundNo);
-    return jdbc.update(
-        "DELETE q FROM recommendation_request q WHERE q.round_no = ?"
-            + noRecords.formatted("q", "q")
-            + " AND NOT EXISTS (SELECT 1 FROM recommendation_seen s WHERE s.first_request_id = q.id)",
-        roundNo);
+    int seen =
+        jdbc.update(
+            "DELETE FROM recommendation_seen s WHERE s.round_no = ?"
+                + noRecords.formatted("s", "s")
+                + " LIMIT ?",
+            roundNo,
+            limit);
+    int items =
+        jdbc.update(
+            "DELETE FROM recommendation_item WHERE request_id IN (SELECT q.id FROM"
+                + " recommendation_request q WHERE q.round_no = ?"
+                + noRecords.formatted("q", "q")
+                + ") LIMIT ?",
+            roundNo,
+            limit);
+    int requests =
+        jdbc.update(
+            "DELETE FROM recommendation_request q WHERE q.round_no = ?"
+                + noRecords.formatted("q", "q")
+                + " AND NOT EXISTS (SELECT 1 FROM recommendation_seen s WHERE s.first_request_id = q.id)"
+                + " AND NOT EXISTS (SELECT 1 FROM recommendation_item i WHERE i.request_id = q.id)"
+                + " LIMIT ?",
+            roundNo,
+            limit);
+    return new OrphanBatch(seen, items, requests);
+  }
+
+  /**
+   * 한 묶음에서 표마다 지운 수.
+   *
+   * @param seen 지운 추천 이력 수
+   * @param items 지운 추천 항목 수
+   * @param requests 지운 추천 요청 수
+   */
+  public record OrphanBatch(int seen, int items, int requests) {
+
+    /** 어느 표든 상한만큼 지웠으면 남은 것이 있을 수 있다. */
+    public boolean full(int limit) {
+      return seen >= limit || items >= limit || requests >= limit;
+    }
   }
 }

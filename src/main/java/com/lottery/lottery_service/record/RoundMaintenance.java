@@ -42,6 +42,9 @@ public class RoundMaintenance {
   /** 숨긴 기록 정리가 하루에 도는 최대 묶음 수. */
   static final int MAX_HIDDEN_BATCHES = 1_000;
 
+  /** 회차 추천 이력 정리에서 표마다 한 트랜잭션에 지울 행 수. */
+  static final int HISTORY_BATCH = 5_000;
+
   private final RecordRetentionCleaner cleaner;
   private final HousekeepingCleaner housekeeping;
   private final JobStore jobs;
@@ -119,7 +122,13 @@ public class RoundMaintenance {
                 + " FROM recommendation_request q WHERE q.round_no = r.round_no) ORDER BY r.round_no",
             Integer.class,
             utc(clock.instant().minus(RecordRetentionCleaner.RETENTION)))) {
-      tx.execute(status -> housekeeping.deleteOrphanRoundHistory(round));
+      for (int i = 0; i < MAX_HIDDEN_BATCHES; i++) {
+        HousekeepingCleaner.OrphanBatch done =
+            tx.execute(status -> housekeeping.deleteOrphanRoundHistory(round, HISTORY_BATCH));
+        if (done == null || !done.full(HISTORY_BATCH)) {
+          break;
+        }
+      }
     }
     return deleted;
   }

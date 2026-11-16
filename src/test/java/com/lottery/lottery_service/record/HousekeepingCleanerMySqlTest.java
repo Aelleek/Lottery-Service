@@ -223,6 +223,42 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("회차 추천 이력 정리는 표마다 상한만큼 나눠 지우고, 요청은 이력이 다 지워진 뒤에 지운다")
+  void roundHistoryInBatches() {
+    long subject =
+        new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys()).issue().subjectId();
+    jdbc.update(
+        "INSERT INTO lotto_round (round_no, sales_open_at, sales_close_at, draw_at, schedule_version)"
+            + " VALUES (1199, '2026-10-01', '2026-10-05', '2026-10-05', 1)");
+    jdbc.update(
+        "INSERT INTO recommendation_request (public_id, subject_id, round_no, key_digest, request_hash,"
+            + " accepted_at, policy_version, generation_mode, filter_version, response_expires_at)"
+            + " VALUES (UUID_TO_BIN(UUID()), ?, 1199, ?, ?, NOW(6), 1, 'BASIC', 'FILTER_V1', NOW(6))",
+        subject,
+        new byte[32],
+        new byte[32]);
+    long request = jdbc.queryForObject("SELECT MAX(id) FROM recommendation_request", Long.class);
+    for (String key : List.of("01 02 03 04 05 06", "01 02 03 04 05 07", "01 02 03 04 05 08")) {
+      jdbc.update(
+          "INSERT INTO recommendation_seen (subject_id, round_no, numbers_key, first_request_id)"
+              + " VALUES (?, 1199, ?, ?)",
+          subject,
+          key,
+          request);
+    }
+    HousekeepingCleaner cleaner = new HousekeepingCleaner(jdbc, clock);
+
+    HousekeepingCleaner.OrphanBatch first = cleaner.deleteOrphanRoundHistory(1199, 2);
+    assertThat(first).isEqualTo(new HousekeepingCleaner.OrphanBatch(2, 0, 0));
+    assertThat(first.full(2)).isTrue();
+    HousekeepingCleaner.OrphanBatch second = cleaner.deleteOrphanRoundHistory(1199, 2);
+    assertThat(second).isEqualTo(new HousekeepingCleaner.OrphanBatch(1, 0, 1));
+    assertThat(second.full(2)).isFalse();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_request", Long.class))
+        .isZero();
+  }
+
+  @Test
   @DisplayName("회원의 구매 기록만 남은 회차는 추천 이력·요청·항목을 지우고, 아직 정리할 기록이 남은 회원은 남긴다(04 5절)")
   void roundHistoryWithKeptRecords() {
     AccountStore accounts = new AccountStore(jdbc, tm, clock);
