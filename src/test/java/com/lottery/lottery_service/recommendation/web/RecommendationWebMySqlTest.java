@@ -4,12 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oauth2Login;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
+import com.lottery.lottery_service.account.GuestIssueRateLimiter;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.command.CommandOperationStore;
@@ -52,6 +54,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
   @Autowired private CommandTokenCodec codec;
   @Autowired private AccountStore accounts;
   @Autowired private JdbcTemplate jdbc;
+  @Autowired private GuestIssueRateLimiter guestLimiter;
   @Autowired private ObjectMapper json;
 
   @DynamicPropertySource
@@ -268,6 +271,68 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
                         + ",\"scheduleVersion\":\"1\",\"include\":[3],\"exclude\":[3]}"))
         .andExpect(status().isUnprocessableEntity())
         .andExpect(jsonPath("$.code").value("CONDITION_INVALID"));
+  }
+
+  @Test
+  @DisplayName("한 IP의 자격 발급이 한도를 넘어 429와 Retry-After를 받아도, 그 IP에서 먼저 받은 자격으로는 추천할 수 있다(T40)")
+  void issueLimitDoesNotBlockExistingGuest() throws Exception {
+    int round = ROUND + 2;
+    Instant now = rounds.dbNow();
+    rounds.register(
+        new RoundSchedule(
+            round, now.minus(Duration.ofDays(1)), now.plusSeconds(3600), now.plusSeconds(7200), 1));
+    String ip = "10.40.0.1";
+    MvcResult issued =
+        mvc.perform(post("/api/v1/guest-credentials").with(remote(ip)))
+            .andExpect(status().isCreated())
+            .andReturn();
+    Cookie guest = issued.getResponse().getCookie("__Host-lottery_guest");
+    String csrf = body(issued).get("csrfToken").asText();
+    for (int i = 1; i < GuestIssueRateLimiter.LIMIT; i++) {
+      assertThat(guestLimiter.tryAcquire(ip)).isEmpty();
+    }
+
+    mvc.perform(post("/api/v1/guest-credentials").with(remote(ip)))
+        .andExpect(status().isTooManyRequests())
+        .andExpect(jsonPath("$.code").value("RATE_LIMITED"))
+        .andExpect(header().exists("Retry-After"));
+    String command =
+        body(mvc.perform(
+                    post("/api/v1/command-tokens")
+                        .with(remote(ip))
+                        .cookie(guest)
+                        .header("X-CSRF-TOKEN", csrf)
+                        .contentType("application/json")
+                        .content(
+                            "{\"operation\":\"RECOMMEND\",\"round\":"
+                                + round
+                                + ",\"scheduleVersion\":\"1\"}"))
+                .andExpect(status().isOk())
+                .andReturn())
+            .get("token")
+            .asText();
+    mvc.perform(
+            post("/api/v1/lotto/recommendations")
+                .with(remote(ip))
+                .cookie(guest)
+                .header("X-CSRF-TOKEN", csrf)
+                .header("X-Command-Token", command)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(
+                    "{\"round\":"
+                        + round
+                        + ",\"scheduleVersion\":\"1\",\"include\":[],\"exclude\":[]}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.sets.length()").value(5));
+  }
+
+  private static org.springframework.test.web.servlet.request.RequestPostProcessor remote(
+      String ip) {
+    return request -> {
+      request.setRemoteAddr(ip);
+      return request;
+    };
   }
 
   private MockHttpServletRequestBuilder recommendation(

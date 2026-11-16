@@ -181,6 +181,32 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.details.fieldErrors[0].reason").value("DUPLICATE"))
         .andExpect(jsonPath("$.details.fieldErrors[1].path").value("entries[2].clientItemId"))
         .andExpect(jsonPath("$.details.fieldErrors[1].reason").value("REQUIRED"));
+    mvc.perform(
+            post("/api/v1/me/lotto/purchases")
+                .cookie(session)
+                .with(oauth2Login().oauth2User(member))
+                .header("X-CSRF-TOKEN", csrf)
+                .header("X-Command-Token", command)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(
+                    "{\"round\":"
+                        + ROUND
+                        + ",\"entries\":[{\"clientItemId\":\""
+                        + "a".repeat(65)
+                        + "\",\"numbers\":[1,2,3,4,5,6]},{\"clientItemId\":\""
+                        + "b".repeat(64)
+                        + "\",\"numbers\":[1,2,3,4,5,7]},{\"numbers\":null}]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.details.fieldErrors.length()").value(3))
+        .andExpect(jsonPath("$.details.fieldErrors[0].path").value("entries[0].clientItemId"))
+        .andExpect(jsonPath("$.details.fieldErrors[0].reason").value("TOO_LONG"))
+        .andExpect(jsonPath("$.details.fieldErrors[1].path").value("entries[2].clientItemId"))
+        .andExpect(jsonPath("$.details.fieldErrors[1].reason").value("REQUIRED"))
+        .andExpect(jsonPath("$.details.fieldErrors[2].path").value("entries[2].numbers"))
+        .andExpect(jsonPath("$.details.fieldErrors[2].reason").value("REQUIRED"));
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class))
+        .isEqualTo(recordsBefore);
 
     MvcResult found =
         mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(member)))
