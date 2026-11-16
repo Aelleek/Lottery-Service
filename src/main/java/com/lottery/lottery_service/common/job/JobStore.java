@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -105,19 +106,49 @@ public class JobStore {
     return tx.execute(status -> claimInTransaction(types));
   }
 
+  /**
+   * 받을 job을 한 상태씩 고른다. 상태를 하나로 정해야 {@code ix_job_due(state, available_at, id)} 순서로 읽고 첫 행에서 멈춘다. 두
+   * 상태를 한 번에 고르면 실행할 수 있는 job을 모두 읽어 정렬하며 모두 잠근다.
+   */
+  static final String CLAIM_SQL =
+      "SELECT id FROM job FORCE INDEX (ix_job_due) WHERE state = ? AND job_type IN (%s)"
+          + " AND available_at <= ?"
+          + " ORDER BY available_at, id LIMIT 1 FOR UPDATE SKIP LOCKED";
+
+  private LocalDateTime head(String state, String placeholders, List<Object> params) {
+    List<Object> args = new ArrayList<>(params);
+    args.set(0, state);
+    List<LocalDateTime> heads =
+        jdbc.queryForList(
+            "SELECT available_at FROM job FORCE INDEX (ix_job_due) WHERE state = ? AND job_type IN ("
+                + placeholders
+                + ") AND available_at <= ? ORDER BY available_at, id LIMIT 1",
+            LocalDateTime.class,
+            args.toArray());
+    return heads.isEmpty() ? null : heads.get(0);
+  }
+
   private Optional<JobLease> claimInTransaction(List<String> types) {
     Instant now = clock.instant();
     String placeholders = String.join(",", types.stream().map(t -> "?").toList());
-    List<Object> params = new ArrayList<>(types);
+    List<Object> params = new ArrayList<>();
+    params.add(null);
+    params.addAll(types);
     params.add(utc(now));
-    List<Long> ids =
-        jdbc.queryForList(
-            "SELECT id FROM job WHERE state IN ('READY','RETRY_WAIT') AND job_type IN ("
-                + placeholders
-                + ") AND available_at <= ? ORDER BY available_at, id LIMIT 1"
-                + " FOR UPDATE SKIP LOCKED",
-            Long.class,
-            params.toArray());
+    List<String> states = new ArrayList<>(List.of("READY", "RETRY_WAIT"));
+    LocalDateTime ready = head("READY", placeholders, params);
+    LocalDateTime retry = head("RETRY_WAIT", placeholders, params);
+    if (retry != null && (ready == null || retry.isBefore(ready))) {
+      Collections.reverse(states);
+    }
+    List<Long> ids = List.of();
+    for (String state : states) {
+      params.set(0, state);
+      ids = jdbc.queryForList(CLAIM_SQL.formatted(placeholders), Long.class, params.toArray());
+      if (!ids.isEmpty()) {
+        break;
+      }
+    }
     if (ids.isEmpty()) {
       return Optional.empty();
     }

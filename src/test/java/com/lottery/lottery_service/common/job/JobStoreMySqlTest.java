@@ -91,6 +91,41 @@ class JobStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("다시 시도 대기(RETRY_WAIT)와 새 job(READY) 중 먼저 때가 된 것부터 가져간다")
+  void claimOldestAcrossStates() {
+    store.enqueue("EVALUATE", "ready", "{}", T0.plusSeconds(2));
+    store.enqueue("EVALUATE", "retry", "{}", T0.plusSeconds(1));
+    jdbc.update("UPDATE job SET state = 'RETRY_WAIT' WHERE dedupe_key = 'retry'");
+    store.enqueue("EVALUATE", "ready-old", "{}", T0);
+    clock.set(T0.plusSeconds(5));
+
+    List<String> order = new java.util.ArrayList<>();
+    for (int i = 0; i < 3; i++) {
+      long id = store.claim(TYPES).orElseThrow().id();
+      order.add(
+          jdbc.queryForObject(
+              "SELECT CAST(dedupe_key AS CHAR) FROM job WHERE id = ?", String.class, id));
+    }
+    assertThat(order).containsExactly("ready-old", "retry", "ready");
+    assertThat(store.claim(TYPES)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("job 받기 조회는 상태·시각 인덱스 순서로 읽어 정렬하지 않는다(실행할 job을 모두 잠그지 않는다)")
+  void claimUsesDueIndexOrder() {
+    List<Map<String, Object>> plan =
+        jdbc.queryForList(
+            "EXPLAIN "
+                + JobStore.CLAIM_SQL
+                    .formatted("'EVALUATE'")
+                    .replaceFirst("\\?", "'READY'")
+                    .replaceFirst("\\?", "NOW(6)"));
+    assertThat(plan).hasSize(1);
+    assertThat(plan.get(0).get("key")).isEqualTo("ix_job_due");
+    assertThat(String.valueOf(plan.get(0).get("Extra"))).doesNotContain("filesort");
+  }
+
+  @Test
   @DisplayName("다른 트랜잭션이 잠근 job은 건너뛰고 다음 job을 가져간다(SKIP LOCKED)")
   void claimSkipsLockedRows() throws Exception {
     store.enqueue("EVALUATE", "a", "{}", T0);
