@@ -14,8 +14,14 @@ import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.TestSecrets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
@@ -106,6 +112,56 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
     assertThat(verify(member, c, c.code())).isEqualTo(VerificationResult.LOCKED);
     assertThat(jdbc.queryForObject("SELECT attempts FROM verification_challenge", Integer.class))
         .isEqualTo(5);
+  }
+
+  @Test
+  @DisplayName("같은 코드를 동시에 두 번 확인하면 한 번만 인증되고, 동시 오답 8회도 시도 수는 5에서 멈추며 잠긴다(T29)")
+  void concurrentVerificationNeitherReusesCodeNorBypassesLock() throws Exception {
+    IssuedChallenge c = issue(member);
+    List<VerificationResult> twice = parallel(2, () -> verify(member, c, c.code()));
+    assertThat(twice)
+        .containsExactlyInAnyOrder(VerificationResult.VERIFIED, VerificationResult.EXPIRED);
+
+    clock.set(clock.instant().plusSeconds(60));
+    IssuedChallenge next = tx.execute(s -> store.issue(member, "01099998888", 0));
+    String wrong = next.code().equals("000000") ? "111111" : "000000";
+    List<VerificationResult> wrongs =
+        parallel(8, () -> tx.execute(s -> store.verify(member, next.publicId(), wrong, 0)));
+    assertThat(wrongs).filteredOn(r -> r == VerificationResult.WRONG).hasSize(4);
+    assertThat(wrongs).filteredOn(r -> r == VerificationResult.LOCKED).hasSize(4);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT attempts FROM verification_challenge WHERE public_id = UUID_TO_BIN(?)",
+                Integer.class,
+                next.publicId().toString()))
+        .isEqualTo(5);
+    VerificationResult afterLock =
+        tx.execute(s -> store.verify(member, next.publicId(), next.code(), 0));
+    assertThat(afterLock).isEqualTo(VerificationResult.LOCKED);
+  }
+
+  private static <T> List<T> parallel(int n, Supplier<T> call) throws Exception {
+    ExecutorService pool = Executors.newFixedThreadPool(n);
+    CountDownLatch start = new CountDownLatch(1);
+    try {
+      List<Future<T>> futures = new ArrayList<>();
+      for (int i = 0; i < n; i++) {
+        futures.add(
+            pool.submit(
+                () -> {
+                  start.await();
+                  return call.get();
+                }));
+      }
+      start.countDown();
+      List<T> results = new ArrayList<>();
+      for (Future<T> f : futures) {
+        results.add(f.get(30, TimeUnit.SECONDS));
+      }
+      return results;
+    } finally {
+      pool.shutdownNow();
+    }
   }
 
   @Test
