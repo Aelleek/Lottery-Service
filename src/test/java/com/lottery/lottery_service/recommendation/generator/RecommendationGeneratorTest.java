@@ -35,6 +35,26 @@ class RecommendationGeneratorTest {
   }
 
   @Test
+  @DisplayName("같은 seed라 같은 후보가 먼저 나와도 이미 받은 조합은 다시 주지 않는다(표본 추출 경로)")
+  void samplingSkipsSeen() {
+    List<LottoNumbers> first =
+        ((GenerationOutcome.Generated)
+                seeded(7).generate(RecommendationCondition.none(), CandidateFilter.NONE, Set.of()))
+            .sets();
+
+    List<LottoNumbers> again =
+        ((GenerationOutcome.Generated)
+                seeded(7)
+                    .generate(
+                        RecommendationCondition.none(),
+                        CandidateFilter.NONE,
+                        new java.util.HashSet<>(first)))
+            .sets();
+
+    assertThat(again).hasSize(5).doesNotContainAnyElementsOf(first);
+  }
+
+  @Test
   @DisplayName("넣을 번호 5개·뺄 번호 35개면 후보 5개로 성공, 뺄 번호 36개면 후보 4개로 부족(T02)")
   void t02() {
     RecommendationCondition five = RecommendationCondition.of(FIVE, range(6, 40));

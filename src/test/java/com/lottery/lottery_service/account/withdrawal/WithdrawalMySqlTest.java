@@ -89,6 +89,7 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
             "usage_event",
             "message_budget",
             "delivery_message",
+            "verification_challenge",
             "member_contact",
             "consent_event",
             "command_operation",
@@ -177,6 +178,72 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
     message = jdbc.queryForObject("SELECT id FROM delivery_message", Long.class);
     new TransactionTemplate(tm)
         .execute(s -> budget.reserve(message, MessagePurpose.RESULT, 143, clock.instant()));
+  }
+
+  @Test
+  @DisplayName("탈퇴 삭제는 가져오기 항목·인증 요청·인증 메시지까지 지우고, 다른 회원의 기록·연락처·인증 요청은 그대로 둔다")
+  void withdrawalDeletesOnlyThatMembersData() {
+    long claim = jdbc.queryForObject("SELECT id FROM subject_claim", Long.class);
+    long guestRecord =
+        jdbc.queryForObject(
+            "SELECT id FROM lotto_record WHERE owner_subject_id = ?", Long.class, guest);
+    long memberRecord =
+        jdbc.queryForObject(
+            "SELECT id FROM lotto_record WHERE owner_subject_id = ?",
+            Long.class,
+            member.subjectId());
+    jdbc.update(
+        "INSERT INTO history_import_item (claim_id, source_record_id, target_record_id, outcome)"
+            + " VALUES (?, ?, ?, 'MERGED')",
+        claim,
+        guestRecord,
+        memberRecord);
+    MemberLogin other = new AccountStore(jdbc, tm, clock).login(OAuthProvider.KAKAO, "stayer");
+    jdbc.update(
+        "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key, purchased,"
+            + " purchased_at) VALUES (UUID_TO_BIN(UUID()), ?, ?, '01 02 03 04 05 06', TRUE, NOW(6))",
+        other.subjectId(),
+        ROUND);
+    jdbc.update(
+        "INSERT INTO member_contact (member_id, address_ciphertext, key_version, verified_at)"
+            + " VALUES (?, ?, 1, NOW(6))",
+        other.memberId(),
+        new byte[] {4});
+    for (long owner : List.of(member.memberId(), other.memberId())) {
+      jdbc.update(
+          "INSERT INTO verification_challenge (public_id, member_id, target_hmac, key_version,"
+              + " expected_contact_version, state, expires_at)"
+              + " VALUES (UUID_TO_BIN(UUID()), ?, ?, 1, 0, 'CONSUMED', NOW(6))",
+          owner,
+          new byte[32]);
+      long challenge =
+          jdbc.queryForObject("SELECT MAX(id) FROM verification_challenge", Long.class);
+      jdbc.update(
+          "INSERT INTO delivery_message (public_id, purpose, member_id, challenge_id, state,"
+              + " provider_request_key, expires_at) VALUES (UUID_TO_BIN(UUID()), 'VERIFICATION', ?,"
+              + " ?, 'ACCEPTED', UUID_TO_BIN(UUID()), NOW(6))",
+          owner,
+          challenge);
+    }
+
+    new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());
+    assertThat(runner(journal()).runOnce()).contains(JobState.SUCCEEDED);
+
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM history_import_item", Long.class))
+        .isZero();
+    for (String table : List.of("verification_challenge", "member_contact")) {
+      assertThat(jdbc.queryForList("SELECT member_id FROM " + table, Long.class))
+          .as(table)
+          .containsExactly(other.memberId());
+    }
+    assertThat(
+            jdbc.queryForList(
+                "SELECT member_id FROM delivery_message WHERE purpose = 'VERIFICATION'",
+                Long.class))
+        .containsExactly(other.memberId());
+    assertThat(jdbc.queryForList("SELECT owner_subject_id FROM lotto_record", Long.class))
+        .containsExactly(other.subjectId());
+    assertThat(state("member", other.memberId())).isEqualTo("ACTIVE");
   }
 
   @Test

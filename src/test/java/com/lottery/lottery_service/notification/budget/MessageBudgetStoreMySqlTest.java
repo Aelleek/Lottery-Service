@@ -153,6 +153,9 @@ class MessageBudgetStoreMySqlTest extends MySqlContainerSupport {
 
     assertThat(verificationOk).isEqualTo(15);
     assertThat(verificationOk * 2_000 + resultOk * 15_000).isLessThanOrEqualTo(300_000);
+    assertThat(resultOk * 15_000).isLessThanOrEqualTo(270_000);
+    assertThat(budget(NOV_MONTH))
+        .containsEntry("reserved_units", verificationOk * 2_000 + resultOk * 15_000);
     assertThat(
             jdbc.queryForObject(
                 "SELECT SUM(cost_units) FROM delivery_message WHERE purpose = 'VERIFICATION'"
