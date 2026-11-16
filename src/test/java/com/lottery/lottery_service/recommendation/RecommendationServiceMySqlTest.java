@@ -371,6 +371,25 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
     assertThat(keysOf(subject)).containsExactlyElementsOf(guestSets);
   }
 
+  @Test
+  @DisplayName("두 회원이 같은 조합을 추천받아도 둘 다 저장된다. 중복 제외는 주체마다다(T08)")
+  void twoMembersMayReceiveSameSets() {
+    AccountStore accounts = new AccountStore(jdbc, tm, clock);
+    long first = accounts.login(OAuthProvider.KAKAO, "t08-a").subjectId();
+    long second = accounts.login(OAuthProvider.KAKAO, "t08-b").subjectId();
+
+    serviceWithHook(() -> {})
+        .recommend(
+            new RecommendCommand(
+                first, ROUND, 1, RecommendationCondition.none(), digest(1), digest(1)));
+    serviceWithHook(() -> {})
+        .recommend(
+            new RecommendCommand(
+                second, ROUND, 1, RecommendationCondition.none(), digest(2), digest(2)));
+
+    assertThat(keysOf(second)).hasSize(5).containsExactlyInAnyOrderElementsOf(keysOf(first));
+  }
+
   private List<String> keysOf(long subjectId) {
     return jdbc.queryForList(
         "SELECT numbers_key FROM lotto_record WHERE owner_subject_id = ? ORDER BY id",
