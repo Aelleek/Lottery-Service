@@ -157,7 +157,8 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("인증 전에는 동의할 수 없고, 인증 뒤 동의하면 수신이 켜지며, 철회하거나 번호를 다시 인증하면 꺼진다")
+  @DisplayName(
+      "인증 전에는 동의할 수 없고, 인증 뒤 동의하면 수신이 켜지며, 철회하거나 번호를 다시 인증하면 꺼지고 철회 기록이 남는다. 꺼진 뒤 다시 인증하면 철회 기록을 더하지 않는다")
   void consent() {
     ConsentStore consents = new ConsentStore(jdbc, clock);
     assertThatThrownBy(() -> tx.executeWithoutResult(s -> consents.grant(member, "v1", 0)))
@@ -184,6 +185,25 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
     tx.execute(s -> store.verify(member, again.publicId(), again.code(), 3));
     assertThat(jdbc.queryForObject("SELECT notify_enabled FROM member_contact", Boolean.class))
         .isFalse();
+    assertThat(
+            jdbc.queryForList(
+                "SELECT granted FROM consent_event WHERE member_id = ? ORDER BY id",
+                Boolean.class,
+                member))
+        .containsExactly(true, false, true, false);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT policy_version FROM consent_event ORDER BY id DESC LIMIT 1", String.class))
+        .isEqualTo("v1");
+
+    IssuedChallenge third = issueAfterGap("01099998888", 4);
+    tx.execute(s -> store.verify(member, third.publicId(), third.code(), 4));
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consent_event", Long.class)).isEqualTo(4);
+  }
+
+  private IssuedChallenge issueAfterGap(String phone, long contactVersion) {
+    clock.set(clock.instant().plusSeconds(60));
+    return tx.execute(s -> store.issue(member, phone, contactVersion));
   }
 
   @Test

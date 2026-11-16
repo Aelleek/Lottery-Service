@@ -104,8 +104,9 @@ public class VerificationStore {
   }
 
   /**
-   * 코드를 확인한다. 요청 행을 잠근 채 시도 수, 기한, 사용 여부, 연락처 버전을 한 번에 본다. 맞으면 번호를 인증하고 알림 수신은 다시 동의받을 때까지 꺼 둔다.
-   * 실패도 결과로 돌려주므로 호출한 쪽은 트랜잭션을 커밋한 뒤 {@link VerificationResult#errorCode()}로 오류를 답한다.
+   * 코드를 확인한다. 요청 행을 잠근 채 시도 수, 기한, 사용 여부, 연락처 버전을 한 번에 본다. 맞으면 번호를 인증하고 알림 수신은 다시 동의받을 때까지 꺼 둔다. 켜져
+   * 있던 동의는 철회 기록을 남긴다. 실패도 결과로 돌려주므로 호출한 쪽은 트랜잭션을 커밋한 뒤 {@link VerificationResult#errorCode()}로 오류를
+   * 답한다.
    */
   public VerificationResult verify(long memberId, UUID publicId, String code, long contactVersion) {
     List<Map<String, Object>> rows =
@@ -162,6 +163,7 @@ public class VerificationStore {
             + " WHERE id = ?",
         utc(now),
         id);
+    recordConsentOff(memberId, now);
     jdbc.update(
         "INSERT INTO member_contact (member_id, address_ciphertext, key_version, verified_at,"
             + " notify_enabled, consent_event_id) VALUES (?, ?, ?, ?, FALSE, NULL)"
@@ -187,6 +189,23 @@ public class VerificationStore {
             + " WHERE state = 'ACTIVE' AND expires_at <= ? ORDER BY expires_at LIMIT ?",
         utc(clock.instant()),
         limit);
+  }
+
+  private void recordConsentOff(long memberId, Instant now) {
+    List<Long> consents =
+        jdbc.queryForList(
+            "SELECT consent_event_id FROM member_contact WHERE member_id = ?"
+                + " AND consent_event_id IS NOT NULL FOR UPDATE",
+            Long.class,
+            memberId);
+    if (consents.isEmpty()) {
+      return;
+    }
+    jdbc.update(
+        "INSERT INTO consent_event (member_id, granted, policy_version, occurred_at)"
+            + " SELECT member_id, FALSE, policy_version, ? FROM consent_event WHERE id = ?",
+        utc(now),
+        consents.get(0));
   }
 
   private void consume(String scope, byte[] scopeHmac, LocalDate day, Instant now) {
