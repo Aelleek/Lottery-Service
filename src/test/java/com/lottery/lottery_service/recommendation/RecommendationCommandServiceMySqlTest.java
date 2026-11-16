@@ -58,6 +58,8 @@ class RecommendationCommandServiceMySqlTest extends MySqlContainerSupport {
   private final MutableClock clock = new MutableClock(T0);
   private JdbcTemplate jdbc;
   private RoundStore rounds;
+  private GenerationFilterPipeline filters;
+  private DataSourceTransactionManager tm;
   private RecommendationService service;
   private RoundSchedule schedule;
   private long subject;
@@ -88,7 +90,7 @@ class RecommendationCommandServiceMySqlTest extends MySqlContainerSupport {
     jdbc.update("UPDATE lotto_round SET published_result_id = NULL");
     jdbc.update("DELETE FROM draw_result");
     jdbc.update("DELETE FROM lotto_round");
-    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    tm = new DataSourceTransactionManager(dataSource);
     rounds = new RoundStore(jdbc, tm);
     Instant dbNow = rounds.dbNow();
     schedule =
@@ -102,7 +104,7 @@ class RecommendationCommandServiceMySqlTest extends MySqlContainerSupport {
     GuestCredential guest = new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys()).issue();
     subject = guest.subjectId();
     subjectPublicId = guest.subjectPublicId();
-    GenerationFilterPipeline filters =
+    filters =
         new GenerationFilterPipeline(
             List.of(
                 new PastFirstPrizeFilter(),
@@ -208,6 +210,72 @@ class RecommendationCommandServiceMySqlTest extends MySqlContainerSupport {
                 Long.class,
                 subject))
         .isZero();
+  }
+
+  @Test
+  @DisplayName("한 요청이 생성하는 동안 같은 주체의 다른 요청은 생성 권한 기한까지 GENERATION_BUSY이고, 앞 요청은 끝까지 저장한다(T03)")
+  void busyWhileAnotherGenerationRuns() throws Exception {
+    String token = codec.issue(subjectPublicId, "RECOMMEND", ROUND, 1L);
+    CountDownLatch generating = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    java.util.concurrent.atomic.AtomicBoolean first =
+        new java.util.concurrent.atomic.AtomicBoolean(true);
+    RecommendationService held =
+        new RecommendationService(
+            new GenerationLeaseStore(jdbc, tm, clock),
+            new RecommendationStore(jdbc),
+            rounds,
+            new PublishedFirstPrizes(jdbc),
+            filters,
+            new RecommendationGenerator(
+                new SplittableRandom(5),
+                () -> {
+                  if (first.getAndSet(false)) {
+                    generating.countDown();
+                    try {
+                      release.await(10, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                      Thread.currentThread().interrupt();
+                    }
+                  }
+                  return System.nanoTime();
+                }),
+            new UsageEventStore(jdbc),
+            tm);
+    RecommendationCommandService slow =
+        new RecommendationCommandService(
+            codec, new CommandOperationStore(jdbc, tm, clock), held, jdbc, clock);
+    ExecutorService pool = Executors.newSingleThreadExecutor();
+    try {
+      Future<RecommendationView> running =
+          pool.submit(
+              () ->
+                  slow.recommend(
+                      subject,
+                      subjectPublicId,
+                      token,
+                      UUID.randomUUID(),
+                      RecommendationCondition.none(),
+                      ROUND,
+                      1L));
+      assertThat(generating.await(10, TimeUnit.SECONDS)).isTrue();
+
+      assertThatThrownBy(
+              () -> recommend(token, UUID.randomUUID(), RecommendationCondition.none(), 1))
+          .isInstanceOfSatisfying(
+              BusinessException.class,
+              e -> {
+                assertThat(e.getCode()).isEqualTo(ErrorCode.GENERATION_BUSY);
+                assertThat(e.getDetails().retryAt())
+                    .isEqualTo(clock.instant().plus(GenerationLeaseStore.LEASE));
+              });
+      release.countDown();
+      assertThat(running.get(10, TimeUnit.SECONDS).sets()).hasSize(5);
+      assertThat(count("recommendation_request")).isEqualTo(1);
+    } finally {
+      release.countDown();
+      pool.shutdownNow();
+    }
   }
 
   @Test
