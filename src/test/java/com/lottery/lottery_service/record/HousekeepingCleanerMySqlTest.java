@@ -223,7 +223,7 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("회차 추천 이력 정리는 표마다 상한만큼 나눠 지우고, 요청은 이력이 다 지워진 뒤에 지운다")
+  @DisplayName("회차 추천 이력 정리는 표마다 상한만큼 나눠 지우고, 요청은 이력과 항목이 다 지워진 뒤에 지운다")
   void roundHistoryInBatches() {
     long subject =
         new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys()).issue().subjectId();
@@ -248,11 +248,20 @@ class HousekeepingCleanerMySqlTest extends MySqlContainerSupport {
     }
     HousekeepingCleaner cleaner = new HousekeepingCleaner(jdbc, clock);
 
+    for (int ordinal = 1; ordinal <= 3; ordinal++) {
+      jdbc.update(
+          "INSERT INTO recommendation_item (request_id, ordinal, record_id, numbers_key)"
+              + " VALUES (?, ?, NULL, ?)",
+          request,
+          ordinal,
+          "01 02 03 04 05 0" + (5 + ordinal));
+    }
+
     HousekeepingCleaner.OrphanBatch first = cleaner.deleteOrphanRoundHistory(1199, 2);
-    assertThat(first).isEqualTo(new HousekeepingCleaner.OrphanBatch(2, 0, 0));
+    assertThat(first).isEqualTo(new HousekeepingCleaner.OrphanBatch(2, 2, 0));
     assertThat(first.full(2)).isTrue();
     HousekeepingCleaner.OrphanBatch second = cleaner.deleteOrphanRoundHistory(1199, 2);
-    assertThat(second).isEqualTo(new HousekeepingCleaner.OrphanBatch(1, 0, 1));
+    assertThat(second).isEqualTo(new HousekeepingCleaner.OrphanBatch(1, 1, 1));
     assertThat(second.full(2)).isFalse();
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_request", Long.class))
         .isZero();

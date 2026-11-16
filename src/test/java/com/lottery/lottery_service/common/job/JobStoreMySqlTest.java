@@ -111,6 +111,27 @@ class JobStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("가장 이른 job이 다른 worker에 잠겨 있으면 다른 상태의 다음으로 이른 job을 가져간다")
+  void claimEarliestUnlockedAcrossStates() throws Exception {
+    store.enqueue("EVALUATE", "a", "{}", T0);
+    store.enqueue("EVALUATE", "b", "{}", T0.plusSeconds(10));
+    store.enqueue("EVALUATE", "c", "{}", T0.plusSeconds(5));
+    jdbc.update("UPDATE job SET state = 'RETRY_WAIT' WHERE dedupe_key = 'c'");
+    long a = jdbc.queryForObject("SELECT id FROM job WHERE dedupe_key = 'a'", Long.class);
+    long c = jdbc.queryForObject("SELECT id FROM job WHERE dedupe_key = 'c'", Long.class);
+    clock.set(T0.plusSeconds(20));
+
+    try (Connection held = dataSource.getConnection()) {
+      held.setAutoCommit(false);
+      try (Statement st = held.createStatement()) {
+        st.executeQuery("SELECT id FROM job WHERE id = " + a + " FOR UPDATE").close();
+      }
+      assertThat(store.claim(TYPES).orElseThrow().id()).isEqualTo(c);
+      held.rollback();
+    }
+  }
+
+  @Test
   @DisplayName("job 받기 조회는 상태·시각 인덱스 순서로 읽어 정렬하지 않는다(실행할 job을 모두 잠그지 않는다)")
   void claimUsesDueIndexOrder() {
     List<Map<String, Object>> plan =

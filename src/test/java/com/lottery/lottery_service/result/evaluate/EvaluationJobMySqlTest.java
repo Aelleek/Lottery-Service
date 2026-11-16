@@ -198,6 +198,52 @@ class EvaluationJobMySqlTest extends MySqlContainerSupport {
     assertThat(reconciler.enqueueMissing(100)).isEqualTo(records);
   }
 
+  @Test
+  @DisplayName("미평가 대조는 여러 회차에 걸쳐도 한 번에 볼 수 상한을 합쳐 지키고, 상한을 넓히면 나머지만 새로 등록한다")
+  void reconcileLimitAcrossRounds() {
+    Instant now = new RoundStore(jdbc, tm).dbNow();
+    new RoundStore(jdbc, tm)
+        .register(
+            new RoundSchedule(
+                ROUND + 1,
+                now.minus(Duration.ofDays(6)),
+                now.minusSeconds(1800),
+                now.minusSeconds(30),
+                1));
+    for (int i = 0; i < 3; i++) {
+      jdbc.update(
+          "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key)"
+              + " VALUES (UUID_TO_BIN(UUID()), ?, ?, ?)",
+          subject,
+          ROUND + 1,
+          LottoNumbers.of(1, 2, 3, 4, 5, 20 + i).key());
+    }
+    publish();
+    publisher.receive(
+        new OfficialDraw(
+            ROUND + 1,
+            new WinningNumbers(LottoNumbers.of(1, 2, 3, 4, 5, 6), LottoNumber.of(10)),
+            null,
+            null,
+            new byte[32]));
+    jdbc.update("DELETE FROM job");
+    EvaluationReconciler reconciler = new EvaluationReconciler(jdbc, jobs, clock);
+
+    assertThat(reconciler.enqueueMissing(6)).isEqualTo(6);
+    List<Integer> rounds =
+        jdbc.queryForList("SELECT CAST(payload AS CHAR) FROM job", String.class).stream()
+            .map(p -> Long.parseLong(p.replaceAll("\\D", "")))
+            .map(
+                id ->
+                    jdbc.queryForObject(
+                        "SELECT round_no FROM lotto_record WHERE id = ?", Integer.class, id))
+            .distinct()
+            .toList();
+    assertThat(rounds).containsExactlyInAnyOrder(ROUND, ROUND + 1);
+    assertThat(reconciler.enqueueMissing(100)).isEqualTo(2);
+    assertThat(reconciler.enqueueMissing(100)).isZero();
+  }
+
   private void publish() {
     publisher.receive(
         new OfficialDraw(
