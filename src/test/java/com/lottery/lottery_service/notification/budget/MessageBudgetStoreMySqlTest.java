@@ -113,7 +113,7 @@ class MessageBudgetStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("동시에 예약해도 인증 코드 합계는 10%, 기본 알림을 더한 전체 합계는 90%를 넘지 않고 카운터와 메시지 합계가 같다")
+  @DisplayName("동시에 예약해도 인증 코드 합계는 10%, 전체 합계는 월 예산을 넘지 않고 카운터와 메시지 합계가 같다")
   void concurrentReservationsStayUnderCaps() throws Exception {
     List<Long> verificationIds = new ArrayList<>();
     List<Long> resultIds = new ArrayList<>();
@@ -162,6 +162,39 @@ class MessageBudgetStoreMySqlTest extends MySqlContainerSupport {
                     + " AND cost_state = 'RESERVED'",
                 Long.class))
         .isEqualTo(30_000L);
+    assertThat(store.matchesMessages(NOV_MONTH)).isTrue();
+  }
+
+  @Test
+  @DisplayName("인증 코드 15건을 먼저 예약한 뒤 기본 알림 20건을 동시에 예약하면 90% 상한으로 정확히 16건만 된다")
+  void concurrentResultsStopAtNinetyPercent() throws Exception {
+    for (int i = 0; i < 15; i++) {
+      assertThat(reserve(verification(), MessagePurpose.VERIFICATION, 2_000)).isTrue();
+    }
+    List<Long> ids = new ArrayList<>();
+    for (int i = 0; i < 20; i++) {
+      ids.add(message());
+    }
+    ExecutorService pool = Executors.newFixedThreadPool(8);
+    CountDownLatch go = new CountDownLatch(1);
+    List<Future<Boolean>> results = new ArrayList<>();
+    for (long id : ids) {
+      results.add(
+          pool.submit(
+              () -> {
+                go.await();
+                return reserve(id, MessagePurpose.RESULT, 15_000);
+              }));
+    }
+    go.countDown();
+    long ok = 0;
+    for (Future<Boolean> r : results) {
+      ok += r.get() ? 1 : 0;
+    }
+    pool.shutdown();
+
+    assertThat(ok).isEqualTo(16);
+    assertThat(budget(NOV_MONTH)).containsEntry("reserved_units", 30_000L + 16 * 15_000L);
     assertThat(store.matchesMessages(NOV_MONTH)).isTrue();
   }
 

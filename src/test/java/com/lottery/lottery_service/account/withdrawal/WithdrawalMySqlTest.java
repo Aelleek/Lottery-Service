@@ -199,6 +199,25 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
         guestRecord,
         memberRecord);
     MemberLogin other = new AccountStore(jdbc, tm, clock).login(OAuthProvider.KAKAO, "stayer");
+    long otherGuest =
+        new GuestCredentialStore(jdbc, tm, clock, TestSecrets.keys()).issue().subjectId();
+    jdbc.update(
+        "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key, recommended_at)"
+            + " VALUES (UUID_TO_BIN(UUID()), ?, ?, '01 02 03 04 05 09', NOW(6))",
+        otherGuest,
+        ROUND);
+    long otherGuestRecord = jdbc.queryForObject("SELECT MAX(id) FROM lotto_record", Long.class);
+    new SubjectClaimStore(jdbc, tm, clock).claim(otherGuest, other.subjectId());
+    long otherClaim =
+        jdbc.queryForObject(
+            "SELECT id FROM subject_claim WHERE member_subject_id = ?",
+            Long.class,
+            other.subjectId());
+    jdbc.update(
+        "INSERT INTO history_import_item (claim_id, source_record_id, outcome)"
+            + " VALUES (?, ?, 'SKIPPED_SOURCE_EXPIRED')",
+        otherClaim,
+        otherGuestRecord);
     jdbc.update(
         "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key, purchased,"
             + " purchased_at) VALUES (UUID_TO_BIN(UUID()), ?, ?, '01 02 03 04 05 06', TRUE, NOW(6))",
@@ -229,8 +248,8 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
     new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());
     assertThat(runner(journal()).runOnce()).contains(JobState.SUCCEEDED);
 
-    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM history_import_item", Long.class))
-        .isZero();
+    assertThat(jdbc.queryForList("SELECT claim_id FROM history_import_item", Long.class))
+        .containsExactly(otherClaim);
     for (String table : List.of("verification_challenge", "member_contact")) {
       assertThat(jdbc.queryForList("SELECT member_id FROM " + table, Long.class))
           .as(table)
@@ -242,7 +261,7 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
                 Long.class))
         .containsExactly(other.memberId());
     assertThat(jdbc.queryForList("SELECT owner_subject_id FROM lotto_record", Long.class))
-        .containsExactly(other.subjectId());
+        .containsExactlyInAnyOrder(other.subjectId(), otherGuest);
     assertThat(state("member", other.memberId())).isEqualTo("ACTIVE");
   }
 
