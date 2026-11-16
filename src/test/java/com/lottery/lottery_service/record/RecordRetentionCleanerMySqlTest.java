@@ -185,6 +185,63 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
     }
   }
 
+  @Test
+  @DisplayName("정리와 늦은 구매 등록이 겹치면 정리는 기록 잠금을 기다린 뒤 지금 구매 상태를 다시 보고 지우지 않는다(T20)")
+  void purchaseRacingCleanupKeepsRecord() throws Exception {
+    long losing = record(member, LOSING, false);
+    publishAndEvaluate();
+
+    assertThat(
+            cleanupWhileRecordChanges(
+                "UPDATE lotto_record SET purchased = TRUE, purchased_at = NOW(6),"
+                    + " version = version + 1 WHERE id = ?",
+                losing))
+        .isZero();
+    assertThat(exists(losing)).isTrue();
+  }
+
+  @Test
+  @DisplayName("정리와 구매 취소가 겹치면 정리는 기록 잠금을 기다린 뒤 바뀐 버전을 보고, 새 판정 전에는 지우지 않는다(T20)")
+  void cancelRacingCleanupKeepsRecordUntilReevaluated() throws Exception {
+    long bought = record(member, LOSING, true);
+    publishAndEvaluate();
+
+    assertThat(
+            cleanupWhileRecordChanges(
+                "UPDATE lotto_record SET purchased = FALSE, purchased_at = NULL,"
+                    + " version = version + 1 WHERE id = ?",
+                bought))
+        .isZero();
+    assertThat(exists(bought)).isTrue();
+  }
+
+  private int cleanupWhileRecordChanges(String change, long recordId) throws Exception {
+    CountDownLatch held = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    try {
+      Future<?> holder =
+          pool.submit(
+              () ->
+                  tx.executeWithoutResult(
+                      s -> {
+                        jdbc.update(change, recordId);
+                        held.countDown();
+                        await(release);
+                      }));
+      assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
+      Future<Integer> cleanup = pool.submit(() -> cleanup(AFTER_RETENTION));
+      Thread.sleep(300);
+      assertThat(cleanup.isDone()).isFalse();
+      release.countDown();
+      holder.get(5, TimeUnit.SECONDS);
+      return cleanup.get(5, TimeUnit.SECONDS);
+    } finally {
+      release.countDown();
+      pool.shutdownNow();
+    }
+  }
+
   private static void await(CountDownLatch latch) {
     try {
       latch.await(10, TimeUnit.SECONDS);
