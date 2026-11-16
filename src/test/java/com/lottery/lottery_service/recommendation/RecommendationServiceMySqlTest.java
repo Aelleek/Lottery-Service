@@ -8,9 +8,13 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.GuestCredentialStore;
+import com.lottery.lottery_service.auth.OAuthProvider;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.job.JobProperties;
+import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.recommendation.filter.DifferenceKindsFilter;
 import com.lottery.lottery_service.recommendation.filter.EndDigitSumFilter;
@@ -22,6 +26,7 @@ import com.lottery.lottery_service.recommendation.filter.SameEndDigitFilter;
 import com.lottery.lottery_service.recommendation.filter.ThreeZoneFilter;
 import com.lottery.lottery_service.recommendation.generator.RecommendationCondition;
 import com.lottery.lottery_service.recommendation.generator.RecommendationGenerator;
+import com.lottery.lottery_service.record.PurchaseStore;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.stats.UsageEventStore;
@@ -33,7 +38,9 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.SplittableRandom;
+import java.util.UUID;
 import java.util.stream.IntStream;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
@@ -42,6 +49,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** 추천 한 번의 전체 흐름(생성 권한, 생성, 잠금 뒤 저장)을 MySQL에서 확인한다. */
 class RecommendationServiceMySqlTest extends MySqlContainerSupport {
@@ -276,6 +284,76 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
         .isInstanceOfSatisfying(
             BusinessException.class,
             e -> assertThat(e.getCode()).isEqualTo(ErrorCode.GENERATION_TIMEOUT));
+  }
+
+  @Test
+  @DisplayName("조건을 바꾸거나 구매를 등록했다 취소한 뒤 다시 추천해도 같은 회차의 이전 조합은 계속 빠진다(T09)")
+  void earlierSetsStayExcludedAfterConditionChangeAndCancel() {
+    long memberSubject =
+        new AccountStore(jdbc, tm, clock).login(OAuthProvider.KAKAO, "t09").subjectId();
+    PurchaseStore purchases =
+        new PurchaseStore(
+            jdbc,
+            rounds,
+            new UsageEventStore(jdbc),
+            new JobStore(jdbc, tm, clock, new JobProperties(null, null)));
+    TransactionTemplate tx = new TransactionTemplate(tm);
+
+    service.recommend(
+        new RecommendCommand(
+            memberSubject, ROUND, 1, RecommendationCondition.none(), digest(1), digest(1)));
+    List<String> first = keysOf(memberSubject);
+    LottoNumbers bought = LottoNumbers.fromKey(first.get(0));
+    tx.executeWithoutResult(s -> purchases.register(memberSubject, ROUND, List.of(bought)));
+    Map<String, Object> record =
+        jdbc.queryForMap(
+            "SELECT BIN_TO_UUID(public_id) AS id, version FROM lotto_record"
+                + " WHERE owner_subject_id = ? AND numbers_key = ?",
+            memberSubject,
+            bought.key());
+    tx.executeWithoutResult(
+        s ->
+            purchases.cancel(
+                memberSubject,
+                UUID.fromString((String) record.get("id")),
+                ((Number) record.get("version")).longValue()));
+
+    clock.set(T0.plusSeconds(1));
+    service.recommend(
+        new RecommendCommand(
+            memberSubject,
+            ROUND,
+            1,
+            RecommendationCondition.of(List.of(bought.toList().get(0)), List.of()),
+            digest(2),
+            digest(2)));
+    clock.set(T0.plusSeconds(2));
+    service.recommend(
+        new RecommendCommand(
+            memberSubject, ROUND, 1, RecommendationCondition.none(), digest(3), digest(3)));
+
+    List<String> seen =
+        jdbc.queryForList(
+            "SELECT numbers_key FROM recommendation_seen WHERE subject_id = ?",
+            String.class,
+            memberSubject);
+    assertThat(seen).hasSize(15).containsAll(first);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT i.numbers_key FROM recommendation_item i JOIN recommendation_request r"
+                    + " ON r.id = i.request_id WHERE r.subject_id = ?",
+                String.class,
+                memberSubject))
+        .hasSize(15)
+        .doesNotHaveDuplicates()
+        .containsAll(first);
+  }
+
+  private List<String> keysOf(long subjectId) {
+    return jdbc.queryForList(
+        "SELECT numbers_key FROM lotto_record WHERE owner_subject_id = ? ORDER BY id",
+        String.class,
+        subjectId);
   }
 
   private RecommendationService serviceWith(RecommendationStore store) {
