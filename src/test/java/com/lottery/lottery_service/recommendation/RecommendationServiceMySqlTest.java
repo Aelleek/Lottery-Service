@@ -159,7 +159,7 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
             BusinessException.class,
             e -> assertThat(e.getCode()).isEqualTo(ErrorCode.GENERATION_BUSY));
     clock.set(T0.plusSeconds(1));
-    service.recommend(basic(3));
+    serviceWithHook(() -> {}).recommend(basic(3));
 
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_seen", Long.class))
         .isEqualTo(10);
