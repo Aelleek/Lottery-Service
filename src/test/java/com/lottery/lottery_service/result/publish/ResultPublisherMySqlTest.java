@@ -228,6 +228,12 @@ class ResultPublisherMySqlTest extends MySqlContainerSupport {
                 String.class))
         .containsExactly("{\"kind\": \"RESULT_MANUAL_REGISTERED\", \"roundNo\": " + ROUND + "}");
     assertThat(prizes()).startsWith("1:null");
+    assertThat(
+            jdbc.queryForList(
+                "SELECT CAST(dedupe_key AS CHAR) FROM job WHERE job_type = 'EVALUATE_RESULT'"
+                    + " AND state = 'READY'",
+                String.class))
+        .containsExactly("result:" + id);
     assertThat(publisher.receive(draw(WIN, 3_000_000L)))
         .isEqualTo(ReceiveOutcome.SAME_AS_PUBLISHED);
     assertThat(
