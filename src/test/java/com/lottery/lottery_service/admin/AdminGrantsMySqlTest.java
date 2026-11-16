@@ -122,6 +122,14 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
     assertThat(alerts)
         .filteredOn(p -> p.contains("\"ADMIN_GRANT\"") || p.contains("\"ADMIN_REVOKE\""))
         .hasSize(3);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT CONCAT(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.action')), '|',"
+                    + " JSON_UNQUOTE(JSON_EXTRACT(payload, '$.role'))) FROM job"
+                    + " WHERE job_type = 'OPERATOR_ALERT' AND JSON_EXTRACT(payload, '$.action')"
+                    + " IN ('ADMIN_GRANT', 'ADMIN_REVOKE') ORDER BY id",
+                String.class))
+        .containsExactly("ADMIN_GRANT|OPERATOR", "ADMIN_REVOKE|OPERATOR", "ADMIN_GRANT|ADMIN");
     assertThat(alerts)
         .allSatisfy(
             p ->
@@ -282,8 +290,7 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
                     + " AND JSON_EXTRACT(payload, '$.action') IN"
                     + " ('ADMIN_MFA_RESET_BY_COMMAND', 'ADMIN_REVOKE_BY_COMMAND') ORDER BY id",
                 String.class))
-        .hasSize(2)
-        .allSatisfy(r -> assertThat(r).isIn("OPERATOR", "ADMIN"));
+        .containsExactly("ADMIN", "ADMIN");
   }
 
   @Test

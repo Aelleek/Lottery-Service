@@ -96,6 +96,7 @@ class AdminMfaStoreMySqlTest extends MySqlContainerSupport {
   @DisplayName("T63: 5번 틀리면 15분 잠그고 운영자 알림 job을 남긴다. 잠긴 동안은 맞는 코드도 받지 않는다")
   void lockAfterFiveFailures() {
     byte[] secret = enrolled();
+    jdbc.update("UPDATE admin_grant SET role = 'OPERATOR' WHERE member_id = ?", admin);
     clock.set(T0.plusSeconds(120));
     for (int i = 0; i < 4; i++) {
       assertThat(store.verify(admin, "000000".equals(code(secret, 0)) ? "111111" : "000000"))
@@ -114,6 +115,12 @@ class AdminMfaStoreMySqlTest extends MySqlContainerSupport {
                 "SELECT JSON_KEYS(payload) FROM job WHERE job_type = 'OPERATOR_ALERT'",
                 String.class))
         .isEqualTo("[\"kind\", \"role\", \"lockMinutes\"]");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.role')) FROM job"
+                    + " WHERE job_type = 'OPERATOR_ALERT'",
+                String.class))
+        .isEqualTo("OPERATOR");
 
     clock.set(T0.plusSeconds(120).plus(AdminMfaStore.LOCK));
     assertThat(store.verify(admin, code(secret, 0))).isEqualTo(AdminMfaStore.Outcome.OK);

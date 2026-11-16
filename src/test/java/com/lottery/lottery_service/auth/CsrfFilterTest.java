@@ -71,6 +71,21 @@ class CsrfFilterTest {
     assertThat(rejected).containsExactly(ErrorCode.CSRF_REJECTED, ErrorCode.CSRF_REJECTED);
   }
 
+  @Test
+  @DisplayName("퍼센트 인코딩한 경로도 디코딩한 경로로 면제·출처만·토큰 필요를 가린다")
+  void encodedPathsUseDecodedPath() throws Exception {
+    SecurityContextHolder.getContext()
+        .setAuthentication(new PreAuthenticatedAuthenticationToken(guest, null, List.of()));
+
+    assertThat(pass(request("POST", "/api/v1/lotto/%63heck"))).isTrue();
+    assertThat(pass(request("POST", "/api/v1/%67uest-credentials"))).isTrue();
+    MockHttpServletRequest crossSite = request("POST", "/%61pi/v1/guest-credentials");
+    crossSite.addHeader("Sec-Fetch-Site", "cross-site");
+    assertThat(pass(crossSite)).isFalse();
+    assertThat(pass(request("POST", "/%61pi/v1/command-tokens"))).isFalse();
+    assertThat(rejected).containsExactly(ErrorCode.ORIGIN_REJECTED, ErrorCode.CSRF_REJECTED);
+  }
+
   private boolean pass(MockHttpServletRequest request) throws Exception {
     MockFilterChain chain = new MockFilterChain();
     filter.doFilter(request, new MockHttpServletResponse(), chain);
