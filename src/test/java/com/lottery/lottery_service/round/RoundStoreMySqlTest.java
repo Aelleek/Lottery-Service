@@ -104,7 +104,10 @@ class RoundStoreMySqlTest extends MySqlContainerSupport {
       holder.commit();
 
       assertThatThrownBy(() -> waiting.get(10, TimeUnit.SECONDS))
-          .hasCauseInstanceOf(BusinessException.class);
+          .cause()
+          .isInstanceOfSatisfying(
+              BusinessException.class,
+              e -> assertThat(e.getCode()).isEqualTo(ErrorCode.ROUND_CHANGED));
     }
   }
 

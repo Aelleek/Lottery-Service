@@ -71,7 +71,7 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("T58: 회원 A의 세션으로 B의 기록을 취소하면 404이고 B의 기록은 그대로다")
+  @DisplayName("T58: 회원 A의 세션으로 B의 기록을 취소하면 404이고 B의 기록은 그대로이며, A의 기록 조회에도 나오지 않는다")
   void otherMembersRecordIsNotFound() throws Exception {
     registerRound();
     MemberPrincipal a = member("t58-a");
@@ -104,6 +104,24 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
                 Boolean.class,
                 recordOfB))
         .isTrue();
+    String recordOfA = UUID.randomUUID().toString();
+    jdbc.update(
+        "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key, purchased,"
+            + " purchased_at) VALUES (UUID_TO_BIN(?), ?, ?, ?, TRUE, NOW(6))",
+        recordOfA,
+        a.subjectId(),
+        ROUND,
+        LottoNumbers.of(7, 8, 9, 10, 11, 12).key());
+    String listed =
+        mvc.perform(
+                get("/api/v1/me/lotto/records?round=" + ROUND)
+                    .cookie(session.cookie())
+                    .with(oauth2Login().oauth2User(a)))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    assertThat(listed).contains(recordOfA).doesNotContain(recordOfB);
   }
 
   @Test
