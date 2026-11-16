@@ -371,6 +371,38 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName(
+      "탈퇴 때 제공자 메시지 ID가 있는 UNKNOWN은 UNKNOWN으로 남아 ID로 계속 대조되고, 개인 자료는 지워지며 새 메시지는 생기지 않는다(T56)")
+  void unknownWithProviderIdKeepsReconciling() {
+    jdbc.update("UPDATE delivery_message SET provider_message_id = 'M-56' WHERE id = ?", message);
+    new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());
+    assertThat(runner(journal()).runOnce()).contains(JobState.SUCCEEDED);
+
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT state, cost_state, provider_message_id, payload_ciphertext,"
+                    + " recipient_ciphertext FROM delivery_message"))
+        .containsEntry("state", "UNKNOWN")
+        .containsEntry("cost_state", "RESERVED")
+        .containsEntry("provider_message_id", "M-56")
+        .containsEntry("payload_ciphertext", null)
+        .containsEntry("recipient_ciphertext", null);
+
+    UnknownMessageReconciler reconciler = new UnknownMessageReconciler(jdbc, budget, jobs, clock);
+    String after =
+        new TransactionTemplate(tm)
+            .execute(s -> reconciler.apply(message, new ProviderStatus.Accepted("M-56")));
+
+    assertThat(after).isEqualTo("ACCEPTED");
+    assertThat(jdbc.queryForMap("SELECT state, cost_state FROM delivery_message"))
+        .containsEntry("state", "ACCEPTED")
+        .containsEntry("cost_state", "SPENT");
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM delivery_message", Long.class))
+        .isEqualTo(1);
+    assertThat(budget.matchesMessages(LocalDate.parse("2026-11-01"))).isTrue();
+  }
+
+  @Test
   @DisplayName("탈퇴 뒤 늦게 온 제공자 조회 결과는 끝난 메시지를 되돌리지 않고 개인 자료를 되살리지 않는다(T22 일부)")
   void lateProviderResultAfterWithdrawal() {
     new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());
