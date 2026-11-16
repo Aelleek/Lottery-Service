@@ -144,6 +144,18 @@ class DrawResponseParserTest {
     assertThat(a.sourceHash()).isNotEqualTo(b.sourceHash());
   }
 
+  @Test
+  @DisplayName("요청 회차 항목이 둘이면 모순된 응답이라 실패이고, JSON 뒤에 다른 내용이 붙어도 실패다")
+  void duplicateRoundAndTrailingContent() {
+    String other = ITEM_1249.replace("\"tm6WnNo\":35", "\"tm6WnNo\":36");
+    assertThat(
+            DrawResponseParser.parse(
+                1249, "{\"data\":{\"list\":[" + ITEM_1249 + "," + other + "]}}"))
+        .isEqualTo(new ParsedDraw.Invalid("ROUND"));
+    assertThat(DrawResponseParser.parse(1249, wrap(ITEM_1249) + "<html>login</html>"))
+        .isEqualTo(new ParsedDraw.Invalid("NOT_JSON"));
+  }
+
   private static ParsedDraw parse(String item) {
     return DrawResponseParser.parse(1249, wrap(item));
   }

@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.notification.solapi;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -45,7 +46,8 @@ public class SolapiClient {
   private final SolapiProperties properties;
   private final Clock clock;
   private final HttpClient http;
-  private final ObjectMapper json = new ObjectMapper();
+  private final ObjectMapper json =
+      new ObjectMapper().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
   /** 설정과 시계로 만든다. */
   public SolapiClient(SolapiProperties properties, Clock clock) {
@@ -119,9 +121,9 @@ public class SolapiClient {
     return new SendOutcome.Unknown();
   }
 
-  /** 제공자 메시지 ID로 상태를 조회한다({@code GET /messages/v4/list?messageId=}). */
+  /** 제공자 메시지 ID로 상태를 조회한다({@code GET /messages/v4/list?messageId=}). 응답에서 그 ID인 메시지만 본다. */
   public ProviderStatus findByMessageId(String messageId) throws IOException {
-    return firstMatch(query("messageId=" + encode(messageId)).path("messageList"), null);
+    return firstMatch(query("messageId=" + encode(messageId)).path("messageList"), null, messageId);
   }
 
   /**
@@ -140,7 +142,7 @@ public class SolapiClient {
     String startKey = null;
     for (int page = 0; page < MAX_LOOKUP_PAGES; page++) {
       JsonNode body = query(startKey == null ? range : range + "&startKey=" + encode(startKey));
-      ProviderStatus found = firstMatch(body.path("messageList"), requestKey);
+      ProviderStatus found = firstMatch(body.path("messageList"), requestKey, null);
       if (!(found instanceof ProviderStatus.NotFound)) {
         return found;
       }
@@ -162,12 +164,15 @@ public class SolapiClient {
     return response.body();
   }
 
-  private static ProviderStatus firstMatch(JsonNode list, String requestKey) {
+  private static ProviderStatus firstMatch(JsonNode list, String requestKey, String messageId) {
     Iterator<JsonNode> messages = list.elements();
     while (messages.hasNext()) {
       JsonNode message = messages.next();
       if (requestKey != null
           && !requestKey.equals(message.path("customFields").path(REQUEST_KEY_FIELD).asText())) {
+        continue;
+      }
+      if (messageId != null && !messageId.equals(message.path("messageId").asText())) {
         continue;
       }
       String id = message.path("messageId").asText();

@@ -144,6 +144,11 @@ class SolapiClientTest {
     assertThat(paths.get(paths.size() - 1)).isEqualTo("/messages/v4/list?messageId=M4V1");
 
     responseBody.set(
+        "{\"messageList\":{\"M4V7\":{\"messageId\":\"M4V7\",\"statusCode\":\"4000\"}}}");
+    assertThat(lookup.lookup(new MessageLookup.UnknownMessage(1, key, "M4V1", at)))
+        .isEqualTo(new ProviderStatus.NotFound());
+
+    responseBody.set(
         "{\"messageList\":{"
             + "\"M4V8\":{\"messageId\":\"M4V8\",\"statusCode\":\"4000\",\"customFields\":{\"requestKey\":\"ffff\"}},"
             + "\"M4V9\":{\"messageId\":\"M4V9\",\"statusCode\":\"3000\",\"customFields\":{\"requestKey\":\"ab12\"}}}}");

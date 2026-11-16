@@ -1,5 +1,6 @@
 package com.lottery.lottery_service.result.source;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.number.LottoNumber;
@@ -19,7 +20,8 @@ public final class DrawResponseParser {
   /** 받아들이는 응답 크기 상한. 정상 응답(10회차)은 6~7KB다. */
   public static final int MAX_BYTES = 32 * 1024;
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final ObjectMapper MAPPER =
+      new ObjectMapper().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
   private DrawResponseParser() {}
 
@@ -49,6 +51,9 @@ public final class DrawResponseParser {
       if (!round.isInt()) {
         malformed = true;
       } else if (round.asInt() == requestedRound) {
+        if (item != null) {
+          return new ParsedDraw.Invalid("ROUND");
+        }
         item = candidate;
       } else if (round.asInt() > requestedRound) {
         newerSeen = true;
