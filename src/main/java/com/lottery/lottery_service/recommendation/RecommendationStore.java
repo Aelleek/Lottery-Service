@@ -26,6 +26,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class RecommendationStore {
 
+  static final String SEEN_SQL =
+      "SELECT numbers_key FROM recommendation_seen WHERE subject_id = ? AND round_no = ?"
+          + " UNION ALL SELECT s.numbers_key FROM subject_claim c"
+          + " JOIN recommendation_seen s ON s.subject_id = c.guest_subject_id"
+          + " AND s.round_no = ? WHERE c.member_subject_id = ?";
+
   private final JdbcTemplate jdbc;
 
   /** 저장소를 만든다. */
@@ -33,17 +39,10 @@ public class RecommendationStore {
     this.jdbc = jdbc;
   }
 
-  /** 주체가 이 회차에 이미 받은 조합. 귀속한 비회원 주체의 이력도 합친다. */
+  /** 주체가 이 회차에 이미 받은 조합. 귀속한 비회원 주체의 이력도 합친다. 주체마다 (주체, 회차) 기본 키 앞부분으로 읽는다. */
   public Set<LottoNumbers> seen(long subjectId, int roundNo) {
     List<String> keys =
-        jdbc.queryForList(
-            "SELECT numbers_key FROM recommendation_seen WHERE round_no = ? AND (subject_id = ?"
-                + " OR subject_id IN (SELECT guest_subject_id FROM subject_claim"
-                + " WHERE member_subject_id = ?))",
-            String.class,
-            roundNo,
-            subjectId,
-            subjectId);
+        jdbc.queryForList(SEEN_SQL, String.class, subjectId, roundNo, roundNo, subjectId);
     Set<LottoNumbers> seen = new HashSet<>();
     keys.forEach(k -> seen.add(LottoNumbers.fromKey(k)));
     return seen;

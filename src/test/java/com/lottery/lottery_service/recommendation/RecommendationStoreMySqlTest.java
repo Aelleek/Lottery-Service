@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -229,5 +230,16 @@ class RecommendationStoreMySqlTest extends MySqlContainerSupport {
 
   private long count(String from) {
     return jdbc.queryForObject("SELECT COUNT(*) FROM " + from, Long.class);
+  }
+
+  @Test
+  @DisplayName("받은 조합 조회는 귀속한 비회원 이력까지 (주체, 회차) 기본 키로 읽고 회차 전체를 훑지 않는다")
+  void seenUsesPrimaryKey() {
+    List<Map<String, Object>> plan =
+        jdbc.queryForList("EXPLAIN " + RecommendationStore.SEEN_SQL.replace("?", "1"));
+    assertThat(plan)
+        .filteredOn(r -> "recommendation_seen".equals(r.get("table")) || "s".equals(r.get("table")))
+        .hasSize(2)
+        .allSatisfy(r -> assertThat(r.get("key")).isEqualTo("PRIMARY"));
   }
 }
