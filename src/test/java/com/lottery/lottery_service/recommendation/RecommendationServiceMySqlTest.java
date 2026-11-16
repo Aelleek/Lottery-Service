@@ -458,6 +458,34 @@ class RecommendationServiceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("마감 전에 계산을 시작했어도 저장할 때 마감이 지났으면 ROUND_CHANGED이고 추천·기록은 저장하지 않는다(T06)")
+  void closeDuringGenerationSavesNothing() {
+    java.util.concurrent.atomic.AtomicBoolean closed =
+        new java.util.concurrent.atomic.AtomicBoolean();
+    RecommendationService racing =
+        serviceWithHook(
+            () -> {
+              if (closed.compareAndSet(false, true)) {
+                jdbc.update(
+                    "UPDATE lotto_round SET sales_close_at = ? WHERE round_no = ?",
+                    LocalDateTime.ofInstant(rounds.dbNow().minusMillis(1), ZoneOffset.UTC),
+                    ROUND);
+              }
+            });
+
+    assertThatThrownBy(() -> racing.recommend(basic(8)))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.getCode()).isEqualTo(ErrorCode.ROUND_CHANGED));
+    assertThat(closed).isTrue();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_request", Long.class))
+        .isZero();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isZero();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recommendation_seen", Long.class))
+        .isZero();
+  }
+
+  @Test
   @DisplayName("생성하는 동안 그 회원이 탈퇴를 접수하면 저장하지 않는다(05 11절 3번)")
   void withdrawalDuringGenerationSupersedes() {
     com.lottery.lottery_service.account.MemberLogin login =
