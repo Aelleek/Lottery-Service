@@ -16,6 +16,7 @@ import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
+import com.lottery.lottery_service.stats.UsageEventStore;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.TestSecrets;
 import java.time.Clock;
@@ -154,6 +155,52 @@ class HistoryImportStoreMySqlTest extends MySqlContainerSupport {
                 Boolean.class,
                 claim))
         .isTrue();
+  }
+
+  @Test
+  @DisplayName(
+      "마감 전에 합친 직접 등록은 추천 표시가 붙어 마감 뒤 구매 취소에도 추천 기록으로 남고, 마감 뒤에 합친 것은 표시가 없어 취소하면 기록이 숨겨진다(T53)")
+  void cancelAfterMergeKeepsOnlyRecommendedRecords() {
+    tx.execute(s -> store.importBatch(member, claim, 0, 100));
+    DataSourceTransactionManager tm = new DataSourceTransactionManager(dataSource);
+    Clock clock = Clock.fixed(Instant.parse("2026-11-08T01:00:00Z"), ZoneOffset.UTC);
+    PurchaseStore purchases =
+        new PurchaseStore(
+            jdbc,
+            new RoundStore(jdbc, tm),
+            new UsageEventStore(jdbc),
+            new JobStore(jdbc, tm, clock, new JobProperties(null, null)));
+    jdbc.update(
+        "UPDATE lotto_round SET sales_close_at = NOW(6) - INTERVAL 1 SECOND WHERE round_no = ?",
+        OPEN);
+
+    PurchaseStore.CancelOutcome mergedBeforeClose = tx.execute(s -> cancel(purchases, OPEN, B));
+    PurchaseStore.CancelOutcome mergedAfterClose = tx.execute(s -> cancel(purchases, CLOSED, C));
+
+    assertThat(mergedBeforeClose.recordDeleted()).isFalse();
+    Map<String, Object> kept = memberRow(OPEN, B);
+    assertThat(kept.get("recommended_at")).isEqualTo(RECOMMENDED);
+    assertThat(kept.get("purchased")).isEqualTo(false);
+    assertThat(kept.get("deleted_at")).isNull();
+    assertThat(mergedAfterClose.recordDeleted()).isTrue();
+    Map<String, Object> hidden = memberRow(CLOSED, C);
+    assertThat(hidden.get("recommended_at")).isNull();
+    assertThat(hidden.get("purchased")).isEqualTo(false);
+    assertThat(hidden.get("deleted_at")).isNotNull();
+  }
+
+  private PurchaseStore.CancelOutcome cancel(PurchaseStore purchases, int round, String key) {
+    Map<String, Object> row =
+        jdbc.queryForMap(
+            "SELECT BIN_TO_UUID(public_id) AS id, version FROM lotto_record"
+                + " WHERE owner_subject_id = ? AND round_no = ? AND numbers_key = ?",
+            member,
+            round,
+            key);
+    return purchases.cancelPurchase(
+        member,
+        java.util.UUID.fromString((String) row.get("id")),
+        ((Number) row.get("version")).longValue());
   }
 
   @Test
