@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.stats;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.GuestCredentialStore;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** 사용량 집계의 재계산과 확정을 MySQL에서 확인한다. */
 class UsageAggregatorMySqlTest extends MySqlContainerSupport {
@@ -125,6 +127,32 @@ class UsageAggregatorMySqlTest extends MySqlContainerSupport {
                 "SELECT COUNT(*) FROM usage_aggregate WHERE period_key = '2026-11-08' AND state = 'VERIFIED'",
                 Long.class))
         .isEqualTo(4);
+  }
+
+  @Test
+  @DisplayName(
+      "계산 도중 프로세스가 끝나 rollback되면 남는 집계가 없고, 다시 돌리면 한 번 돌린 값과 같다. 확정 뒤 원천을 정리해 다시 계산해도 확정 값은 그대로다(T21)")
+  void rollbackThenRerunAndCleanupAfterVerified() {
+    TransactionTemplate tx = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+    assertThatThrownBy(
+            () ->
+                tx.executeWithoutResult(
+                    s -> {
+                      aggregator.recomputeDay(LocalDate.parse("2026-11-08"));
+                      throw new IllegalStateException("crash");
+                    }))
+        .isInstanceOf(IllegalStateException.class);
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM usage_aggregate", Long.class)).isZero();
+
+    tx.executeWithoutResult(s -> aggregator.recomputeDay(LocalDate.parse("2026-11-08")));
+    assertThat(value("DAY", "2026-11-08", UsageEventStore.RECOMMENDATION_SETS)).isEqualTo(10);
+    assertThat(value("DAY", "2026-11-08", UsageAggregator.ACTIVE_SUBJECTS)).isEqualTo(2);
+
+    assertThat(aggregator.verify("DAY", "2026-11-08")).isTrue();
+    jdbc.update("DELETE FROM usage_event");
+    aggregator.recomputeDay(LocalDate.parse("2026-11-08"));
+    assertThat(value("DAY", "2026-11-08", UsageEventStore.RECOMMENDATION_SETS)).isEqualTo(10);
+    assertThat(value("DAY", "2026-11-08", UsageAggregator.ACTIVE_SUBJECTS)).isEqualTo(2);
   }
 
   @Test
