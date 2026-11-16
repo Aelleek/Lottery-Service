@@ -157,7 +157,7 @@ class EvaluationJobMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("미평가 대조는 판정이 빠진 기록마다 판정 job을 한 번만 등록하고, 판정된 기록과 지운 기록은 건너뛴다")
+  @DisplayName("미평가 대조는 판정이 빠진 기록마다 판정 job을 한 번만 등록하고(한 번에 볼 수 상한을 지킴), 판정된 기록과 지운 기록은 건너뛴다")
   void reconcileMissingEvaluations() {
     publish();
     jdbc.update("DELETE FROM job");
@@ -166,7 +166,8 @@ class EvaluationJobMySqlTest extends MySqlContainerSupport {
     jdbc.update("UPDATE lotto_record SET deleted_at = NOW(6) WHERE id = ?", first + 1);
     EvaluationReconciler reconciler = new EvaluationReconciler(jdbc, jobs, clock);
 
-    assertThat(reconciler.enqueueMissing(100)).isEqualTo(3);
+    assertThat(reconciler.enqueueMissing(2)).isEqualTo(2);
+    assertThat(reconciler.enqueueMissing(100)).isEqualTo(1);
     assertThat(reconciler.enqueueMissing(100)).isZero();
     jdbc.update("UPDATE lotto_record SET version = version + 1 WHERE id = ?", first);
     assertThat(reconciler.enqueueMissing(100)).isEqualTo(1);

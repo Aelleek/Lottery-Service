@@ -7,6 +7,7 @@ import com.lottery.lottery_service.record.PurchaseStore;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,22 +35,39 @@ public class EvaluationReconciler {
   }
 
   /**
-   * 빠진 판정을 찾아 job으로 등록한다. 호출한 쪽 트랜잭션이 있으면 거기에 참여한다.
+   * 빠진 판정을 찾아 job으로 등록한다. 호출한 쪽 트랜잭션이 있으면 거기에 참여한다. 최근 게시 회차마다 {@code ix_record_round(round_no,
+   * id)}로 그 회차 기록만 읽는다.
    *
    * @param limit 한 번에 볼 기록 수
    * @return 새로 등록한 job 수
    */
   public int enqueueMissing(int limit) {
     Instant now = clock.instant();
-    List<Map<String, Object>> missing =
+    List<Map<String, Object>> rounds =
         jdbc.queryForList(
-            "SELECT l.id, l.version, r.published_result_id FROM lotto_record l JOIN lotto_round r ON r.round_no = l.round_no"
-                + " WHERE r.published_result_id IS NOT NULL AND r.draw_at >= ? AND l.deleted_at IS NULL"
-                + " AND NOT EXISTS (SELECT 1 FROM winning_evaluation e WHERE e.record_id = l.id"
-                + " AND e.result_id = r.published_result_id AND e.record_version = l.version)"
-                + " ORDER BY l.id LIMIT ?",
-            utc(now.minus(WINDOW)),
-            limit);
+            "SELECT round_no, published_result_id FROM lotto_round"
+                + " WHERE published_result_id IS NOT NULL AND draw_at >= ? ORDER BY round_no",
+            utc(now.minus(WINDOW)));
+    List<Map<String, Object>> missing = new ArrayList<>();
+    for (Map<String, Object> round : rounds) {
+      if (missing.size() >= limit) {
+        break;
+      }
+      long resultId = ((Number) round.get("published_result_id")).longValue();
+      for (Map<String, Object> row :
+          jdbc.queryForList(
+              "SELECT l.id, l.version FROM lotto_record l WHERE l.round_no = ?"
+                  + " AND l.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM winning_evaluation e"
+                  + " WHERE e.record_id = l.id AND e.result_id = ? AND e.record_version = l.version)"
+                  + " ORDER BY l.id LIMIT ?",
+              ((Number) round.get("round_no")).intValue(),
+              resultId,
+              limit - missing.size())) {
+        Map<String, Object> withResult = new java.util.HashMap<>(row);
+        withResult.put("published_result_id", resultId);
+        missing.add(withResult);
+      }
+    }
     int created = 0;
     for (Map<String, Object> row : missing) {
       long id = ((Number) row.get("id")).longValue();
