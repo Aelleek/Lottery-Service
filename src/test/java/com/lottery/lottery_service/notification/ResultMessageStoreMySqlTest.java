@@ -221,8 +221,30 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
 
     assertThat(apply(reconciler, a, new ProviderStatus.NotFound())).isEqualTo("UNKNOWN");
     assertThat(apply(reconciler, a, new ProviderStatus.Accepted("M-9"))).isEqualTo("ACCEPTED");
+    assertThat(state(fourthMember)).isEqualTo("ACCEPTED");
     assertThat(apply(reconciler, a, new ProviderStatus.Failed("LATE"))).isEqualTo("ACCEPTED");
+    assertThat(state(fourthMember)).isEqualTo("ACCEPTED");
     assertThat(apply(reconciler, a, new ProviderStatus.Delivered("M-9"))).isEqualTo("DELIVERED");
+    assertThat(state(fourthMember)).isEqualTo("DELIVERED");
+    assertThat(apply(reconciler, a, new ProviderStatus.Accepted("M-9"))).isEqualTo("DELIVERED");
+    assertThat(state(fourthMember)).isEqualTo("DELIVERED");
+    assertThat(budgetRow()).containsEntry("reserved_units", 0L).containsEntry("spent_units", 143L);
+  }
+
+  @Test
+  @DisplayName("UNKNOWN에서 바로 전달 확인이면 DELIVERED로 비용 확정, 실패 확인이면 FAILED로 예약을 푼다(05 8.3절)")
+  void reconcileUnknownToDeliveredOrFailed() {
+    UnknownMessageReconciler reconciler = reconciler();
+    long delivered = unknownMessage(fourthMember);
+    long failed = unknownMessage(thirdMember);
+
+    assertThat(apply(reconciler, delivered, new ProviderStatus.Delivered("M-3")))
+        .isEqualTo("DELIVERED");
+    assertThat(apply(reconciler, failed, new ProviderStatus.Failed("REJECTED")))
+        .isEqualTo("FAILED");
+
+    assertThat(state(fourthMember)).isEqualTo("DELIVERED");
+    assertThat(state(thirdMember)).isEqualTo("FAILED");
     assertThat(budgetRow()).containsEntry("reserved_units", 0L).containsEntry("spent_units", 143L);
   }
 
