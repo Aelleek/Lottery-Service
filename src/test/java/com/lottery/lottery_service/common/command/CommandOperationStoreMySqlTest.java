@@ -10,6 +10,7 @@ import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.TestSecrets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -141,6 +142,31 @@ class CommandOperationStoreMySqlTest extends MySqlContainerSupport {
     assertCode(
         () -> store.begin(guest.subjectId(), token, UUID.randomUUID(), hash),
         ErrorCode.COMMAND_EXPIRED);
+  }
+
+  @Test
+  @DisplayName("요청마다 새로 만드는 토큰(관리자 명령)이라도 다시 시도할 실패의 재전송은 처음 저장한 기한까지만 받는다")
+  void retryDeadlineUsesStoredExpiry() {
+    UUID tokenId = UUID.randomUUID();
+    CommandStart.Started first =
+        started(store.begin(guest.subjectId(), freshToken(tokenId), key, hash));
+    store.markRetryable(first, "TEMPORARILY_UNAVAILABLE");
+
+    clock.set(T0.plus(Duration.ofDays(1)).minusSeconds(1));
+    CommandStart.Started again =
+        started(store.begin(guest.subjectId(), freshToken(tokenId), key, hash));
+    store.markRetryable(again, "TEMPORARILY_UNAVAILABLE");
+
+    clock.set(T0.plus(Duration.ofDays(1)));
+    assertCode(
+        () -> store.begin(guest.subjectId(), freshToken(tokenId), key, hash),
+        ErrorCode.COMMAND_EXPIRED);
+  }
+
+  private CommandToken freshToken(UUID tokenId) {
+    Instant now = clock.instant();
+    return new CommandToken(
+        tokenId, null, "ADMIN_TEST", now, now.plus(Duration.ofDays(1)), null, null);
   }
 
   @Test
