@@ -82,6 +82,23 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("관리 명령의 부여도 사유는 1~500자만 받고, 거부하면 권한도 감사도 남기지 않는다")
+  void grantByCommandRequiresReason() {
+    UUID first = UUID.randomUUID();
+    long id = member(first);
+
+    for (String reason : java.util.Arrays.asList(null, " ", "x".repeat(501))) {
+      assertCode(
+          () -> grants.grantByCommand(first, AdminRole.ADMIN, reason), ErrorCode.VALIDATION_FAILED);
+    }
+    assertThat(access.roleOf(id)).isEmpty();
+    assertThat(audits("ADMIN_GRANT_BY_COMMAND", "SUCCEEDED")).isZero();
+
+    grants.grantByCommand(first, AdminRole.ADMIN, "x".repeat(500));
+    assertThat(access.roleOf(id)).contains(AdminRole.ADMIN);
+  }
+
+  @Test
   @DisplayName("ADMIN은 다른 회원에게 권한을 주고 회수하며, 회수 뒤 다시 주면 되살아난다")
   void grantAndRevoke() {
     long admin = admin();
