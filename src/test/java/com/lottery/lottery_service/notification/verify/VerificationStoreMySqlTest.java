@@ -201,6 +201,27 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("계정 한도: 같은 회원이 번호를 바꿔도 60초 간격과 하루 5회에 걸린다(02 6.4절 계정별 하루 5회)")
+  void memberLimitAcrossPhones() {
+    tx.execute(s -> store.issue(member, "01000000001", 0));
+    assertLimited(
+        () -> tx.execute(s -> store.issue(member, "01000000002", 0)),
+        clock.instant().plusSeconds(60));
+    for (int i = 2; i <= 5; i++) {
+      clock.set(clock.instant().plusSeconds(60));
+      String phone = "0100000000" + i;
+      tx.execute(s -> store.issue(member, phone, 0));
+    }
+    clock.set(clock.instant().plusSeconds(60));
+
+    assertLimited(
+        () -> tx.execute(s -> store.issue(member, "01000000006", 0)),
+        Instant.parse("2026-11-08T15:00:00Z"));
+    IssuedChallenge otherMember = tx.execute(s -> store.issue(other, "01000000006", 0));
+    assertThat(otherMember).isNotNull();
+  }
+
+  @Test
   @DisplayName("재발급 60초 간격은 서울 자정을 넘어도 이어진다")
   void resendGapCrossesMidnight() {
     clock.set(Instant.parse("2026-11-08T14:59:30Z"));
