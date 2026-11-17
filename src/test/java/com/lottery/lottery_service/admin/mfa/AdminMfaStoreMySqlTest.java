@@ -145,6 +145,53 @@ class AdminMfaStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("등록마다 비밀값과 복구 코드를 새로 뽑는다(관리자끼리 겹치지 않고 0으로 채운 값이 아니다)")
+  void enrollmentsAreRandom() {
+    long other = member();
+    jdbc.update(
+        "INSERT INTO admin_grant (member_id, role, granted_at) VALUES (?, 'OPERATOR', NOW(6))",
+        other);
+
+    AdminMfaStore.Enrollment first = store.enroll(admin);
+    AdminMfaStore.Enrollment second = store.enroll(other);
+
+    assertThat(first.secret()).isNotEqualTo(second.secret());
+    assertThat(decode(first.secret())).isNotEqualTo(new byte[decode(first.secret()).length]);
+    assertThat(first.recoveryCodes()).doesNotContainAnyElementsOf(second.recoveryCodes());
+  }
+
+  @Test
+  @DisplayName("복구 코드도 등록을 마치기 전에는 NOT_ENROLLED이고, 잠긴 동안은 맞는 코드도 쓰지 않는다")
+  void recoveryBeforeConfirmAndWhileLocked() {
+    AdminMfaStore.Enrollment enrollment = store.enroll(admin);
+    String recovery = enrollment.recoveryCodes().get(0);
+    assertThat(store.verifyRecovery(admin, recovery)).isEqualTo(AdminMfaStore.Outcome.NOT_ENROLLED);
+
+    byte[] secret = decode(enrollment.secret());
+    assertThat(store.confirm(admin, code(secret, 0))).isEqualTo(AdminMfaStore.Outcome.OK);
+    clock.set(T0.plusSeconds(120));
+    assertThat(store.lockedUntil(admin)).isEmpty();
+    for (int i = 0; i < 5; i++) {
+      store.verifyRecovery(admin, "AAAAAAAAAAAAAAAA");
+    }
+
+    assertThat(store.lockedUntil(admin)).contains(T0.plusSeconds(120).plus(AdminMfaStore.LOCK));
+    assertThat(store.verifyRecovery(admin, recovery)).isEqualTo(AdminMfaStore.Outcome.LOCKED);
+    clock.set(T0.plusSeconds(120).plus(AdminMfaStore.LOCK));
+    assertThat(store.lockedUntil(admin)).isEmpty();
+    assertThat(store.verifyRecovery(admin, recovery)).isEqualTo(AdminMfaStore.Outcome.OK);
+  }
+
+  @Test
+  @DisplayName("초기화는 관리자 권한 행이 있으면 1, 없으면 0을 돌려준다")
+  void resetCount() {
+    store.enroll(admin);
+
+    assertThat(store.reset(admin)).isEqualTo(1);
+    assertThat(store.reset(member())).isZero();
+  }
+
+  @Test
   @DisplayName("권한이 회수됐거나 회원이 ACTIVE가 아니면 등록·확인할 수 없다")
   void revokedOrInactive() {
     byte[] secret = enrolled();
