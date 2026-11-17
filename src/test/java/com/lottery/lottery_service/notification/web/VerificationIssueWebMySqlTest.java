@@ -322,6 +322,30 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("재인증이 없어 거부된 요청은 재인증 뒤 같은 키로 다시 보내면 처리하고, 연락처 버전 충돌은 같은 키로 다시 보내도 같은 409다")
+  void reauthRejectionIsRetryableAndConflictIsFinal() throws Exception {
+    Client mine = client("issue-retry", null);
+    UUID key = UUID.randomUUID();
+    String token = mine.token("REQUEST_VERIFICATION");
+
+    mine.request("+821077770001", "0", key, token)
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("REAUTH_REQUIRED"));
+    setReauthenticatedAt(mine, Instant.now());
+    mine.request("+821077770001", "0", key, token).andExpect(status().isOk());
+    assertThat(sender.codes).hasSize(1);
+
+    UUID conflictKey = UUID.randomUUID();
+    String other = mine.token("REQUEST_VERIFICATION");
+    for (int i = 0; i < 2; i++) {
+      mine.request("+821077770002", "7", conflictKey, other)
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("CONTACT_CHANGED"));
+    }
+    assertThat(sender.codes).hasSize(1);
+  }
+
+  @Test
   @DisplayName("로그인하지 않으면 401")
   void requiresMember() throws Exception {
     mvc.perform(
