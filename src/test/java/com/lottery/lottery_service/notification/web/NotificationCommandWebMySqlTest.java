@@ -64,7 +64,8 @@ class NotificationCommandWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("코드를 확인하면 연락처 버전을 주고, 그 버전으로 동의·철회한다. 다시 보내면 같은 명령, 옛 버전은 409, 다른 회원의 요청 ID는 404")
+  @DisplayName(
+      "코드를 확인하면 연락처 버전을 주고, 그 버전으로 동의·철회한다. 다시 보내면 같은 명령, 옛 버전은 409(같은 키로 다시 보내도 409), 다른 회원의 요청 ID는 404")
   void verifyThenConsent() throws Exception {
     MemberPrincipal member =
         MemberPrincipal.of(accounts.login(OAuthProvider.KAKAO, "notify"), OAuthProvider.KAKAO);
@@ -112,9 +113,13 @@ class NotificationCommandWebMySqlTest extends MySqlContainerSupport {
                 member.memberId()))
         .isEqualTo(1);
 
-    mine.change(false, version, UUID.randomUUID())
-        .andExpect(status().isConflict())
-        .andExpect(jsonPath("$.code").value("CONTACT_CHANGED"));
+    UUID staleKey = UUID.randomUUID();
+    String staleToken = mine.token("CHANGE_PREFERENCE");
+    for (int i = 0; i < 2; i++) {
+      mine.change(false, version, staleKey, staleToken)
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("CONTACT_CHANGED"));
+    }
     String current = granted.path("data").path("version").asText();
     JsonNode withdrawn =
         body(mine.change(false, current, UUID.randomUUID()).andExpect(status().isOk()).andReturn());
