@@ -251,6 +251,12 @@ class OperatorAlertJobMySqlTest extends MySqlContainerSupport {
                         + "\"expiresOn\":\"2026-11-01\",\"daysLeft\":-3}")))
         .isEqualTo("[인증서·연동 만료] tls 만료일 2026-11-01(이미 만료됨).");
     assertThat(
+            handler.format(
+                mapper.readTree(
+                    "{\"kind\":\"EXPIRY\",\"name\":\"tls\","
+                        + "\"expiresOn\":\"2026-11-01\",\"daysLeft\":0}")))
+        .isEqualTo("[인증서·연동 만료] tls 만료일 2026-11-01(남은 0일).");
+    assertThat(
             handler.format(mapper.readTree("{\"kind\":\"RESULT_QUARANTINED\",\"roundNo\":1200}")))
         .isEqualTo("[결과 격리] 1200회 결과가 게시본과 달라 격리했습니다. 승인이 필요합니다.");
     assertThat(

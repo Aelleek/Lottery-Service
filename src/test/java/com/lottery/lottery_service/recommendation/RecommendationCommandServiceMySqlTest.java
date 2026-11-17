@@ -210,6 +210,10 @@ class RecommendationCommandServiceMySqlTest extends MySqlContainerSupport {
                 Long.class,
                 subject))
         .isZero();
+    assertThat(
+            jdbc.queryForList(
+                "SELECT CONCAT(state, ':', completion_code) FROM command_operation", String.class))
+        .containsExactlyInAnyOrder("SUCCEEDED:CREATED", "RETRYABLE:GENERATION_BUSY");
   }
 
   @Test

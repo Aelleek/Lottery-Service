@@ -121,7 +121,13 @@ class SolapiClientTest {
     status.set(401);
     responseBody.set("{\"errorCode\":\"InvalidApiKey\"}");
     assertThat(send()).isEqualTo(new SendOutcome.NotAccepted("HTTP_401"));
+    status.set(400);
+    assertThat(send()).isEqualTo(new SendOutcome.NotAccepted("HTTP_400"));
+    status.set(499);
+    assertThat(send()).isEqualTo(new SendOutcome.NotAccepted("HTTP_499"));
     status.set(503);
+    assertThat(send()).isInstanceOf(SendOutcome.Unknown.class);
+    status.set(500);
     assertThat(send()).isInstanceOf(SendOutcome.Unknown.class);
     status.set(200);
     responseBody.set("<html>login</html>");

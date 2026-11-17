@@ -137,6 +137,13 @@ class AdminOperationsMySqlTest extends MySqlContainerSupport {
         .containsEntry("action", "RESULT_PUBLISH")
         .containsEntry("target_key", Long.toString(quarantined))
         .containsEntry("reason", "동행복권 공지 확인");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT CONCAT(JSON_EXTRACT(before_json, '$.publicationVersion'), '>',"
+                    + " JSON_EXTRACT(after_json, '$.publicationVersion')) FROM admin_audit_event"
+                    + " WHERE outcome = 'SUCCEEDED'",
+                String.class))
+        .isEqualTo("1>2");
   }
 
   @Test
@@ -180,6 +187,24 @@ class AdminOperationsMySqlTest extends MySqlContainerSupport {
         .extracting(r -> r.get("actor_member_id") + ":" + r.get("action") + ":" + r.get("outcome"))
         .containsExactly(
             operator + ":NOTIFICATION_RESEND:SUCCEEDED", plain + ":NOTIFICATION_RESEND:REJECTED");
+  }
+
+  @Test
+  @DisplayName("수동 다시 보내기가 업무 오류로 거부되면 REJECTED, 예상하지 못한 오류면 FAILED 감사를 남기고 오류를 그대로 던진다")
+  void resendFailuresAreAudited() {
+    when(resend.resend(eq(ROUND), eq(AdminRole.OPERATOR), any()))
+        .thenThrow(new BusinessException(ErrorCode.DISPATCH_WINDOW_CLOSED, "기한 지남"))
+        .thenThrow(new IllegalStateException("provider down"));
+
+    assertCode(
+        () -> operations.resendNotifications(operator, ROUND, "다시 보내기"),
+        ErrorCode.DISPATCH_WINDOW_CLOSED);
+    assertThatThrownBy(() -> operations.resendNotifications(operator, ROUND, "다시 보내기"))
+        .isInstanceOf(IllegalStateException.class);
+
+    assertThat(audits())
+        .extracting(r -> r.get("action") + ":" + r.get("outcome"))
+        .containsExactly("NOTIFICATION_RESEND:REJECTED", "NOTIFICATION_RESEND:FAILED");
   }
 
   private List<Map<String, Object>> audits() {
