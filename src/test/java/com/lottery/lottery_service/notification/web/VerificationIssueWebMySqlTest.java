@@ -343,6 +343,13 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
           .andExpect(jsonPath("$.code").value("CONTACT_CHANGED"));
     }
     assertThat(sender.codes).hasSize(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT CONCAT(state, ':', completion_code) FROM command_operation"
+                    + " WHERE client_key = UUID_TO_BIN(?)",
+                String.class,
+                conflictKey.toString()))
+        .isEqualTo("FAILED:CONTACT_CHANGED");
   }
 
   @Test

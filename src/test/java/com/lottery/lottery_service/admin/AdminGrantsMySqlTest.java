@@ -92,7 +92,7 @@ class AdminGrantsMySqlTest extends MySqlContainerSupport {
           () -> grants.grantByCommand(first, AdminRole.ADMIN, reason), ErrorCode.VALIDATION_FAILED);
     }
     assertThat(access.roleOf(id)).isEmpty();
-    assertThat(audits("ADMIN_GRANT_BY_COMMAND", "SUCCEEDED")).isZero();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM admin_audit_event", Long.class)).isZero();
 
     grants.grantByCommand(first, AdminRole.ADMIN, "x".repeat(500));
     assertThat(access.roleOf(id)).contains(AdminRole.ADMIN);

@@ -226,9 +226,11 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
 
     assertThat(maintenance.alertDelayedCleanup()).isEqualTo(1);
     assertThat(lastAlertReason()).isEqualTo("RESULT_NOT_PUBLISHED");
+    assertThat(maintenance.alertDelayedCleanup()).isZero();
     jdbc.update("UPDATE lotto_round SET cleanup_held = TRUE");
     assertThat(maintenance.alertDelayedCleanup()).isEqualTo(1);
     assertThat(lastAlertReason()).isEqualTo("CLEANUP_HELD");
+    assertThat(maintenance.alertDelayedCleanup()).isZero();
     jdbc.update(
         "UPDATE lotto_round SET cleanup_held = FALSE,"
             + " notification_plan_closed_at = '2026-11-22 00:00:00'");
@@ -236,6 +238,7 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
     jdbc.update("UPDATE usage_aggregate SET state = 'BUILDING'");
     assertThat(maintenance.alertDelayedCleanup()).isEqualTo(1);
     assertThat(lastAlertReason()).isEqualTo("AGGREGATE_NOT_VERIFIED");
+    assertThat(maintenance.alertDelayedCleanup()).isZero();
   }
 
   private String lastAlertReason() {

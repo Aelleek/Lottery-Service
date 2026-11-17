@@ -120,6 +120,13 @@ class NotificationCommandWebMySqlTest extends MySqlContainerSupport {
           .andExpect(status().isConflict())
           .andExpect(jsonPath("$.code").value("CONTACT_CHANGED"));
     }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT CONCAT(state, ':', completion_code) FROM command_operation"
+                    + " WHERE client_key = UUID_TO_BIN(?)",
+                String.class,
+                staleKey.toString()))
+        .isEqualTo("FAILED:CONTACT_CHANGED");
     String current = granted.path("data").path("version").asText();
     JsonNode withdrawn =
         body(mine.change(false, current, UUID.randomUUID()).andExpect(status().isOk()).andReturn());

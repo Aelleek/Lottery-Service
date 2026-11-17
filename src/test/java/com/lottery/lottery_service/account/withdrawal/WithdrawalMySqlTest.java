@@ -406,13 +406,17 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
   @DisplayName("기록이 한 번에 지우는 수(500)보다 많아도 탈퇴 삭제가 회원과 귀속한 비회원의 기록을 모두 지운다")
   void withdrawalDeletesRecordsBeyondOneBatch() {
     List<Object[]> rows = new ArrayList<>();
-    for (int i = 0; rows.size() < WithdrawalJobHandler.RECORD_BATCH + 10; i++) {
-      rows.add(
-          new Object[] {
-            member.subjectId(),
-            ROUND,
-            String.format("01 02 03 04 %02d %02d", 5 + i / 40, 20 + i % 40)
-          });
+    for (int a = 10; a <= 43; a++) {
+      for (int b = a + 1; b <= 44; b++) {
+        for (int c = b + 1; c <= 45; c++) {
+          if (rows.size() < WithdrawalJobHandler.RECORD_BATCH + 10) {
+            rows.add(
+                new Object[] {
+                  member.subjectId(), ROUND, String.format("01 02 03 %02d %02d %02d", a, b, c)
+                });
+          }
+        }
+      }
     }
     jdbc.batchUpdate(
         "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key,"
