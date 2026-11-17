@@ -84,6 +84,12 @@ class BudgetReconcilerMySqlTest extends MySqlContainerSupport {
     assertThat(reconciler.alertUsage()).isTrue();
     assertThat(reconciler.alertUsage()).isFalse();
     assertThat(alerts()).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT CONCAT(JSON_EXTRACT(payload, '$.used'), '/',"
+                    + " JSON_EXTRACT(payload, '$.limit')) FROM job",
+                String.class))
+        .isEqualTo("800/1000");
   }
 
   @Test

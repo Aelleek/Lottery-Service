@@ -164,6 +164,41 @@ class CancelCommandServiceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("취소 중 예상하지 못한 오류면 명령을 다시 시도할 실패(RETRYABLE)로 남기고, 같은 키로 다시 보내면 처리한다")
+  void unexpectedFailureIsRetryable() {
+    UUID record = register();
+    String token =
+        codec.issue(member.subjectPublicId(), CancelCommandService.OPERATION, null, null);
+    UUID key = UUID.randomUUID();
+    PurchaseStore failing = org.mockito.Mockito.spy(purchases);
+    org.mockito.Mockito.doThrow(new IllegalStateException("db down"))
+        .when(failing)
+        .cancelPurchase(member.subjectId(), record, 0);
+    CancelCommandService broken =
+        new CancelCommandService(
+            codec,
+            new CommandOperationStore(jdbc, new DataSourceTransactionManager(dataSource), clock),
+            failing,
+            jdbc,
+            new DataSourceTransactionManager(dataSource));
+
+    assertThatThrownBy(
+            () ->
+                broken.cancel(member.subjectId(), member.subjectPublicId(), token, key, record, 0))
+        .isInstanceOf(IllegalStateException.class);
+    assertThat(jdbc.queryForMap("SELECT state, completion_code FROM command_operation"))
+        .containsEntry("state", "RETRYABLE")
+        .containsEntry("completion_code", "TEMPORARILY_UNAVAILABLE");
+    assertThat(row(record)).containsEntry("purchased", true);
+
+    CancelCommandService.CancelProof proof = cancel(token, key, record, 0);
+    assertThat(proof).isNotNull();
+    assertThat(row(record)).containsEntry("purchased", false);
+    assertThat(jdbc.queryForObject("SELECT state FROM command_operation", String.class))
+        .isEqualTo("SUCCEEDED");
+  }
+
+  @Test
   @DisplayName("명령 조회는 끝난 취소에 같은 완료 증명, 다른 주체는 NOT_FOUND, 확정 실패(지운 기록 다시 취소)는 그 오류, 처리 중은 진행 상태")
   void operationLookup() {
     UUID record = register();
