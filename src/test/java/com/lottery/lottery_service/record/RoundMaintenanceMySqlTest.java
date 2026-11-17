@@ -143,6 +143,24 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("정리는 사용자가 지워 숨긴 당첨 기록도 묶음을 이어 가며 모두 실제로 지우고, 숨기지 않은 당첨 기록은 남긴다(04 5절)")
+  void cleanupDeletesHiddenRecordsInBatches() {
+    long kept = record(member, LottoNumbers.of(1, 2, 3, 4, 20, 30), false);
+    record(member, LottoNumbers.of(1, 2, 3, 4, 21, 31), false);
+    record(member, LottoNumbers.of(1, 2, 3, 4, 22, 32), false);
+    record(member, LottoNumbers.of(1, 2, 3, 4, 23, 33), false);
+    publishAndEvaluate();
+    jdbc.update(
+        "UPDATE lotto_record SET deleted_at = NOW(6), version = version + 1 WHERE id <> ?", kept);
+
+    assertThat(maintenance.cleanupRecords(1)).isZero();
+    assertThat(maintenance.closeNotificationPlans()).isEqualTo(1);
+    assertThat(maintenance.cleanupRecords(1)).isEqualTo(3);
+
+    assertThat(jdbc.queryForList("SELECT id FROM lotto_record", Long.class)).containsExactly(kept);
+  }
+
+  @Test
   @DisplayName("5세트 중 1세트가 4등이면 그 기록만 남고 나머지 4개 기록과 요청·항목·이력은 모두 지워진다(04 5절 예)")
   void fiveSetExample() {
     List<LottoNumbers> sets =
@@ -198,6 +216,33 @@ class RoundMaintenanceMySqlTest extends MySqlContainerSupport {
         .containsExactly(
             "{\"kind\": \"CLEANUP_DELAYED\", \"count\": 2, \"reason\": \"NOTIFICATION_PLAN_OPEN\","
                 + " \"roundNo\": 1200}");
+  }
+
+  @Test
+  @DisplayName("회차 때문에 못 지운 기록은 결과 미게시, 정리 보류(우선), 집계 미확정 이유로 각각 한 번 알린다")
+  void alertsRoundLevelReasons() {
+    record(member, LottoNumbers.of(1, 2, 10, 20, 30, 40), false);
+    clock.set(AFTER_DELAY);
+
+    assertThat(maintenance.alertDelayedCleanup()).isEqualTo(1);
+    assertThat(lastAlertReason()).isEqualTo("RESULT_NOT_PUBLISHED");
+    jdbc.update("UPDATE lotto_round SET cleanup_held = TRUE");
+    assertThat(maintenance.alertDelayedCleanup()).isEqualTo(1);
+    assertThat(lastAlertReason()).isEqualTo("CLEANUP_HELD");
+    jdbc.update(
+        "UPDATE lotto_round SET cleanup_held = FALSE,"
+            + " notification_plan_closed_at = '2026-11-22 00:00:00'");
+    publishAndEvaluate();
+    jdbc.update("UPDATE usage_aggregate SET state = 'BUILDING'");
+    assertThat(maintenance.alertDelayedCleanup()).isEqualTo(1);
+    assertThat(lastAlertReason()).isEqualTo("AGGREGATE_NOT_VERIFIED");
+  }
+
+  private String lastAlertReason() {
+    return jdbc.queryForObject(
+        "SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.reason')) FROM job"
+            + " WHERE job_type = 'OPERATOR_ALERT' ORDER BY id DESC LIMIT 1",
+        String.class);
   }
 
   @Test
