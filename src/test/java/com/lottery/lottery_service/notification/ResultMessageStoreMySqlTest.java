@@ -249,6 +249,27 @@ class ResultMessageStoreMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("대조 순회는 지난번 다음 메시지부터 이어 보고, 끝에 닿으면 처음으로 돌아가 남은 자리를 채운다")
+  void sweepContinuesAndWrapsAround() {
+    long a = unknownMessage(fourthMember);
+    long b = unknownMessage(thirdMember);
+    List<Long> seen = new ArrayList<>();
+    UnknownMessageSweep sweep =
+        sweep(
+            m -> {
+              seen.add(m.id());
+              return new ProviderStatus.NotFound();
+            });
+
+    for (int i = 0; i < 3; i++) {
+      assertThat(sweep.run(1)).isZero();
+    }
+    assertThat(sweep.run(2)).isZero();
+
+    assertThat(seen).containsExactly(a, b, a, b, a);
+  }
+
+  @Test
   @DisplayName("대조 순회는 UNKNOWN을 조회해 반영하고, 조회가 예외로 끝난 메시지는 UNKNOWN으로 남기며 다른 메시지를 막지 않는다")
   void sweepUnknown() {
     long a = unknownMessage(fourthMember);
