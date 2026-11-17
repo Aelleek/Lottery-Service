@@ -139,6 +139,7 @@ class WorkerSchedulerTest {
     verify(housekeeping).deleteExpiredGuestCredentials();
     verify(housekeeping).deleteExpiredCommandOperations(10_000);
     verify(housekeeping).deleteExpiredAuditEvents(10_000);
+    verify(housekeeping).deleteExpiredRateBuckets(10_000);
     verify(housekeeping).deleteEmptyGuestSubjects(0L, 1_000);
     verify(housekeeping).clearMessageCopies(10_000);
     verify(housekeeping).clearChallengeTargets(10_000);
@@ -162,7 +163,7 @@ class WorkerSchedulerTest {
     when(housekeeping.deleteEmptyGuestSubjects(0L, 1_000))
         .thenReturn(new HousekeepingCleaner.GuestBatch(1_000, 77));
     when(housekeeping.deleteEmptyGuestSubjects(77L, 1_000))
-        .thenReturn(new HousekeepingCleaner.GuestBatch(0, 77));
+        .thenReturn(new HousekeepingCleaner.GuestBatch(999, 90));
     when(housekeeping.clearMessageCopies(10_000)).thenReturn(10_000);
 
     scheduler().dailyHousekeeping();
@@ -171,6 +172,7 @@ class WorkerSchedulerTest {
     verify(housekeeping, times(1)).deleteExpiredAuditEvents(10_000);
     verify(housekeeping).deleteEmptyGuestSubjects(0L, 1_000);
     verify(housekeeping).deleteEmptyGuestSubjects(77L, 1_000);
+    verify(housekeeping, org.mockito.Mockito.never()).deleteEmptyGuestSubjects(90L, 1_000);
     verify(housekeeping, times(WorkerScheduler.MAX_HOUSEKEEPING_BATCHES))
         .clearMessageCopies(10_000);
   }
