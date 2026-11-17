@@ -403,6 +403,32 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("기록이 한 번에 지우는 수(500)보다 많아도 탈퇴 삭제가 회원과 귀속한 비회원의 기록을 모두 지운다")
+  void withdrawalDeletesRecordsBeyondOneBatch() {
+    List<Object[]> rows = new ArrayList<>();
+    for (int i = 0; rows.size() < WithdrawalJobHandler.RECORD_BATCH + 10; i++) {
+      rows.add(
+          new Object[] {
+            member.subjectId(),
+            ROUND,
+            String.format("01 02 03 04 %02d %02d", 5 + i / 40, 20 + i % 40)
+          });
+    }
+    jdbc.batchUpdate(
+        "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key,"
+            + " recommended_at) VALUES (UUID_TO_BIN(UUID()), ?, ?, ?, NOW(6))",
+        rows);
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class))
+        .isGreaterThan(WithdrawalJobHandler.RECORD_BATCH);
+    new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());
+
+    assertThat(runner(journal()).runOnce()).contains(JobState.SUCCEEDED);
+
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isZero();
+    assertThat(state("member", member.memberId())).isEqualTo("WITHDRAWN");
+  }
+
+  @Test
   @DisplayName("삭제 기록을 남기지 못하면 차단은 유지하고 아무것도 지우지 않은 채 다시 시도하며, 시도 상한에 닿으면 DEAD와 운영자 알림(T30 일부)")
   void journalFailureKeepsBlock() {
     new WithdrawalService(jdbc, tm, jobs, clock).block(member.memberId());

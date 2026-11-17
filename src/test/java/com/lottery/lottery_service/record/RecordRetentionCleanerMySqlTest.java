@@ -313,6 +313,33 @@ class RecordRetentionCleanerMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("숨긴 기록 정리는 회차를 넘겨도 한 번에 묶음 상한만큼만 지운다")
+  void hiddenCleanupHonorsLimitAcrossRounds() {
+    jdbc.update(
+        "INSERT INTO lotto_round (round_no, sales_open_at, sales_close_at, draw_at, schedule_version,"
+            + " notification_plan_closed_at) VALUES (?, '2026-11-14 21:00:00', '2026-11-21 11:00:00',"
+            + " '2026-11-21 11:35:00', 1, '2026-11-23 00:00:00')",
+        ROUND + 1);
+    record(member, LOSING, false);
+    jdbc.update(
+        "INSERT INTO lotto_record (public_id, owner_subject_id, round_no, numbers_key, recommended_at)"
+            + " VALUES (UUID_TO_BIN(UUID()), ?, ?, ?, NOW(6)), (UUID_TO_BIN(UUID()), ?, ?, ?, NOW(6))",
+        member,
+        ROUND + 1,
+        LOSING,
+        member,
+        ROUND + 1,
+        FOURTH);
+    jdbc.update("UPDATE lotto_record SET deleted_at = NOW(6), version = version + 1");
+    RecordRetentionCleaner cleaner = cleaner(Instant.parse("2026-11-24T00:00:00Z"));
+
+    assertThat(tx.<Integer>execute(s -> cleaner.deleteHiddenRecords(2))).isEqualTo(2);
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isEqualTo(1);
+    assertThat(tx.<Integer>execute(s -> cleaner.deleteHiddenRecords(2))).isEqualTo(1);
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM lotto_record", Long.class)).isZero();
+  }
+
+  @Test
   @DisplayName("남은 비회원 원본에서 가져온 숨긴 기록은 원본이 보관 정리로 지워진 뒤에 지운다(04 5절 가져오기 기록 만료)")
   void hiddenImportTargetWaitsForSource() {
     long source = record(guest, LOSING, false);
