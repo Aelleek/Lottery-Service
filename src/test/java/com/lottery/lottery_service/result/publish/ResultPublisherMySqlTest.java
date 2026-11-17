@@ -166,11 +166,13 @@ class ResultPublisherMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("격리된 결과와 같은 내용이 계속 와도 격리 행 1개, 운영자 알림 1건(T49)")
+  @DisplayName("격리된 결과와 같은 내용이 계속 와도 ALREADY_QUARANTINED이고 격리 행 1개, 운영자 알림 1건(T49)")
   void repeatedQuarantine() {
     publisher.receive(draw(WIN, null));
-    for (int i = 0; i < 5; i++) {
-      publisher.receive(draw(OTHER, null));
+    assertThat(publisher.receive(draw(OTHER, null))).isEqualTo(ReceiveOutcome.QUARANTINED);
+    for (int i = 0; i < 4; i++) {
+      assertThat(publisher.receive(draw(OTHER, null)))
+          .isEqualTo(ReceiveOutcome.ALREADY_QUARANTINED);
     }
 
     assertThat(count("draw_result WHERE state = 'QUARANTINED'")).isEqualTo(1);
@@ -178,10 +180,10 @@ class ResultPublisherMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("승인하면 격리 결과가 새 게시본이 되고, 이전 게시본은 SUPERSEDED, 이전 판정 job은 취소 요청, 새 판정 job 등록")
+  @DisplayName("승인하면 격리 결과가 받은 금액과 함께 새 게시본이 되고, 이전 게시본은 SUPERSEDED, 이전 판정 job은 취소 요청, 새 판정 job 등록")
   void approve() {
     publisher.receive(draw(WIN, null));
-    publisher.receive(draw(OTHER, null));
+    publisher.receive(draw(OTHER, 3_000_000L));
     long quarantined =
         jdbc.queryForObject("SELECT id FROM draw_result WHERE state = 'QUARANTINED'", Long.class);
 
@@ -190,6 +192,7 @@ class ResultPublisherMySqlTest extends MySqlContainerSupport {
 
     assertThat(round().get("published_result_id")).isEqualTo(quarantined);
     assertThat(round().get("publication_version")).isEqualTo(2L);
+    assertThat(prizes()).startsWith("1:3000000");
     assertThat(count("draw_result WHERE state = 'SUPERSEDED'")).isEqualTo(1);
     assertThat(count("job WHERE job_type = 'EVALUATE_RESULT' AND cancel_requested = TRUE"))
         .isEqualTo(1);
