@@ -134,6 +134,20 @@ class DrawResponseParserTest {
   }
 
   @Test
+  @DisplayName("정확히 상한 크기의 응답은 읽는다")
+  void bodyAtSizeLimitIsRead() {
+    String body = wrap(ITEM_1249);
+    String padded =
+        body
+            + " "
+                .repeat(
+                    DrawResponseParser.MAX_BYTES
+                        - body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+
+    assertThat(DrawResponseParser.parse(1249, padded)).isInstanceOf(ParsedDraw.Valid.class);
+  }
+
+  @Test
   @DisplayName("금액만 다른 응답은 의미 요약이 같고, 번호가 다르면 다르다")
   void semanticHash() {
     OfficialDraw a = valid(1249, wrap(ITEM_1249));

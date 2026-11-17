@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -117,6 +118,52 @@ class RecommendationGeneratorTest {
   }
 
   @Test
+  @DisplayName("전체 나열 경로에서도 250ms를 넘기면 계산 지연이고, 정확히 250ms는 아직 아니다")
+  void enumerationTimeLimit() {
+    RecommendationCondition twenty = RecommendationCondition.of(List.of(), range(21, 45));
+    long limit = RecommendationGenerator.TIME_LIMIT.toNanos();
+
+    assertThat(twenty.candidateCount())
+        .isBetween(1_025L, RecommendationGenerator.ENUMERATION_LIMIT);
+    assertThat(
+            new RecommendationGenerator(new SplittableRandom(1), sequence(0, limit))
+                .generate(twenty, CandidateFilter.NONE, Set.of()))
+        .isInstanceOf(GenerationOutcome.Generated.class);
+    assertThat(
+            new RecommendationGenerator(new SplittableRandom(1), sequence(0, limit + 1))
+                .generate(twenty, CandidateFilter.NONE, Set.of()))
+        .isInstanceOf(GenerationOutcome.TimedOut.class);
+  }
+
+  @Test
+  @DisplayName("전체 나열은 3개를 고르는 경우에도 이력에 없는 조합을 빠짐없이 찾는다")
+  void enumerationVisitsEveryCombination() {
+    RecommendationCondition twenty = RecommendationCondition.of(List.of(1, 2, 3), range(10, 45));
+    Set<LottoNumbers> remaining =
+        Set.of(
+            LottoNumbers.of(1, 2, 3, 4, 5, 6),
+            LottoNumbers.of(1, 2, 3, 4, 8, 9),
+            LottoNumbers.of(1, 2, 3, 5, 6, 7),
+            LottoNumbers.of(1, 2, 3, 6, 8, 9),
+            LottoNumbers.of(1, 2, 3, 7, 8, 9));
+    Set<LottoNumbers> seen = new HashSet<>();
+    for (int a = 4; a <= 9; a++) {
+      for (int b = a + 1; b <= 9; b++) {
+        for (int c = b + 1; c <= 9; c++) {
+          seen.add(LottoNumbers.of(1, 2, 3, a, b, c));
+        }
+      }
+    }
+    assertThat(seen).hasSize(20);
+    seen.removeAll(remaining);
+
+    GenerationOutcome outcome = generator.generate(twenty, CandidateFilter.NONE, seen);
+
+    assertThat(((GenerationOutcome.Generated) outcome).sets())
+        .containsExactlyInAnyOrderElementsOf(remaining);
+  }
+
+  @Test
   @DisplayName("같은 seed면 같은 결과다(회귀 확인용)")
   void sameSeedSameResult() {
     RecommendationCondition condition = RecommendationCondition.of(List.of(7), List.of(8, 9));
@@ -198,6 +245,11 @@ class RecommendationGeneratorTest {
 
   private static RecommendationGenerator seeded(long seed) {
     return new RecommendationGenerator(new SplittableRandom(seed), System::nanoTime);
+  }
+
+  private static java.util.function.LongSupplier sequence(long first, long rest) {
+    AtomicLong calls = new AtomicLong();
+    return () -> calls.getAndIncrement() == 0 ? first : rest;
   }
 
   private static List<Integer> range(int from, int toInclusive) {

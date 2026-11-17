@@ -3,7 +3,9 @@ package com.lottery.lottery_service.result.evaluate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
@@ -11,6 +13,7 @@ import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.result.query.RoundResultQuery;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -30,5 +33,17 @@ class InstantCheckTest {
               e -> assertThat(e.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
     }
     verifyNoInteractions(results);
+  }
+
+  @Test
+  @DisplayName("5세트는 받아들이고 결과를 읽는다")
+  void fiveSetsAreAccepted() {
+    RoundResultQuery results = mock(RoundResultQuery.class);
+    when(results.find(1200)).thenReturn(Optional.empty());
+    InstantCheck check = new InstantCheck(results);
+
+    assertThat(check.check(1200, Collections.nCopies(5, LottoNumbers.of(1, 2, 3, 4, 5, 6))))
+        .isEmpty();
+    verify(results).find(1200);
   }
 }

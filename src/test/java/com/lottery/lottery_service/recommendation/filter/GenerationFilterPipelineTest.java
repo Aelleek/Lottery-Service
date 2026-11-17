@@ -63,10 +63,43 @@ class GenerationFilterPipelineTest {
   @Test
   @DisplayName("경계값: 끝수 합 14와 42, 같은 끝수 3개, 22와 23은 통과한다")
   void boundaries() {
-    assertThat(pipeline.firstFailure(LottoNumbers.of(1, 2, 3, 4, 14, 29), context)).isEmpty();
+    assertThat(pipeline.firstFailure(LottoNumbers.of(4, 11, 20, 30, 33, 36), context)).isEmpty();
     assertThat(pipeline.firstFailure(LottoNumbers.of(9, 8, 7, 6, 5, 27), context)).isEmpty();
     assertThat(pipeline.firstFailure(LottoNumbers.of(1, 11, 21, 4, 25, 38), context)).isEmpty();
     assertThat(pipeline.firstFailure(LottoNumbers.of(2, 7, 13, 22, 23, 38), context)).isEmpty();
+  }
+
+  @ParameterizedTest(name = "{0}: {1} -> {2}")
+  @CsvSource({
+    "END_DIGIT_SUM, '1 23 35 40 41 43', false",
+    "END_DIGIT_SUM, '4 11 20 30 33 36', true",
+    "END_DIGIT_SUM, '9 8 7 6 5 27', true",
+    "END_DIGIT_SUM, '5 16 17 19 37 39', false",
+    "LOW_HIGH, '22 23 30 35 40 44', true",
+    "LOW_HIGH, '1 2 3 4 5 23', true",
+    "LOW_HIGH, '23 24 30 35 40 44', false",
+    "LOW_HIGH, '1 2 3 4 5 22', false",
+    "DIFFERENCE_KINDS, '4 5 6 7 9 10', false",
+    "DIFFERENCE_KINDS, '21 27 29 33 35 41', true",
+    "THREE_ZONE, '1 2 3 4 5 15', false",
+    "THREE_ZONE, '1 2 3 4 5 16', true",
+    "THREE_ZONE, '16 17 18 19 20 30', false",
+    "THREE_ZONE, '16 17 18 19 20 31', true"
+  })
+  @DisplayName("각 필터는 정책 문서의 경계 바로 안쪽은 통과시키고 바로 바깥은 거른다(02 2.2)")
+  void eachFilterBoundary(String ruleId, String numbers, boolean accepted) {
+    GenerationRule rule =
+        List.of(
+                new EndDigitSumFilter(),
+                new LowHighFilter(),
+                new DifferenceKindsFilter(),
+                new ThreeZoneFilter())
+            .stream()
+            .filter(r -> r.id().equals(ruleId))
+            .findFirst()
+            .orElseThrow();
+
+    assertThat(rule.accepts(parse(numbers), context)).isEqualTo(accepted);
   }
 
   @Test
