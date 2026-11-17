@@ -87,23 +87,46 @@ class AggregationPlannerMySqlTest extends MySqlContainerSupport {
     assertThat(state("DAY", "2026-11-10")).isEqualTo("BUILDING");
 
     clock.set(Instant.parse("2026-11-17T15:00:00Z"));
-    planner.run();
+    assertThat(planner.run()).isEqualTo(1);
     assertThat(state("DAY", "2026-11-10")).isEqualTo("VERIFIED");
     assertThat(value("DAY", "2026-11-10")).isEqualTo(10);
     assertThat(state("ROUND", "1200")).isEqualTo("BUILDING");
 
+    events.record(
+        subject,
+        ROUND,
+        UsageEventStore.RECOMMENDATION_SETS,
+        5,
+        Instant.parse("2026-11-14T01:00:00Z"));
     clock.set(Instant.parse("2026-11-21T11:35:00Z"));
-    planner.run();
+    assertThat(planner.run()).isEqualTo(1);
     assertThat(state("ROUND", "1200")).isEqualTo("VERIFIED");
-    assertThat(value("ROUND", "1200")).isEqualTo(10);
+    assertThat(value("ROUND", "1200")).isEqualTo(15);
     assertThat(state("MONTH", "2026-11")).isEqualTo("BUILDING");
 
     events.record(subject, ROUND, UsageEventStore.RECOMMENDATION_SETS, 5, TUESDAY);
     clock.set(Instant.parse("2026-12-07T15:00:00Z"));
     planner.run();
     assertThat(state("MONTH", "2026-11")).isEqualTo("VERIFIED");
-    assertThat(value("MONTH", "2026-11")).isEqualTo(15);
-    assertThat(value("ROUND", "1200")).isEqualTo(10);
+    assertThat(value("MONTH", "2026-11")).isEqualTo(20);
+    assertThat(value("ROUND", "1200")).isEqualTo(15);
+  }
+
+  @Test
+  @DisplayName("다음 달 첫 7일 동안은 지난달도 매번 다시 계산해 늦은 자료를 반영하고, 그동안은 확정하지 않는다")
+  void recomputesPreviousMonthDuringCorrection() {
+    Instant lastDayOfOctober = Instant.parse("2026-10-31T01:00:00Z");
+    events.record(subject, ROUND, UsageEventStore.RECOMMENDATION_SETS, 5, lastDayOfOctober);
+    clock.set(Instant.parse("2026-11-01T01:00:00Z"));
+    planner.run();
+    assertThat(value("MONTH", "2026-10")).isEqualTo(5);
+
+    events.record(subject, ROUND, UsageEventStore.RECOMMENDATION_SETS, 5, lastDayOfOctober);
+    clock.set(Instant.parse("2026-11-05T01:00:00Z"));
+    planner.run();
+
+    assertThat(value("MONTH", "2026-10")).isEqualTo(10);
+    assertThat(state("MONTH", "2026-10")).isEqualTo("BUILDING");
   }
 
   @Test

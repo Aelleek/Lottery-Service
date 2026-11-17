@@ -231,7 +231,7 @@ class ImportCommandServiceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("다른 회원의 귀속이나 없는 귀속은 NOT_FOUND이고 job을 만들지 않는다")
+  @DisplayName("다른 회원의 귀속이나 없는 귀속은 NOT_FOUND이고 job을 만들지 않으며, 명령은 확정 실패로 남는다")
   void otherClaimNotFound() {
     MemberLogin other = new AccountStore(jdbc, tm, clock).login(OAuthProvider.KAKAO, "other");
     String token = codec.issue(other.subjectPublicId(), ImportCommandService.OPERATION, null, null);
@@ -245,6 +245,12 @@ class ImportCommandServiceMySqlTest extends MySqlContainerSupport {
               BusinessException.class, e -> assertThat(e.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
     }
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM job", Long.class)).isZero();
+    assertThat(
+            jdbc.queryForList(
+                "SELECT CONCAT(state, ':', completion_code) FROM command_operation WHERE subject_id = ?",
+                String.class,
+                other.subjectId()))
+        .containsExactly("FAILED:NOT_FOUND", "FAILED:NOT_FOUND");
   }
 
   private void guestRecord(String key) {
