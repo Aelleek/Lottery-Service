@@ -25,6 +25,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.web.PathPatternRequestMatcherBuilderFactoryBean;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.logout.LogoutFilter;
@@ -164,6 +165,12 @@ public class SecurityConfig {
                     .invalidateHttpSession(true)
                     .deleteCookies("__Host-lottery_session", "lottery_session"));
     return http.build();
+  }
+
+  /** {@code requestMatchers(String...)}가 MVC 매처 대신 경로 패턴 매처를 쓰게 한다. */
+  @Bean
+  public static PathPatternRequestMatcherBuilderFactoryBean pathPatternRequestMatcherBuilder() {
+    return new PathPatternRequestMatcherBuilderFactoryBean();
   }
 
   /**
