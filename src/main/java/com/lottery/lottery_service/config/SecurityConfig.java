@@ -22,6 +22,7 @@ import java.time.Clock;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
@@ -31,7 +32,7 @@ import org.springframework.security.web.firewall.RequestRejectedHandler;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.security.web.header.writers.StaticHeadersWriter;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
@@ -123,7 +124,7 @@ public class SecurityConfig {
                                 response,
                                 null,
                                 new BusinessException(ErrorCode.UNAUTHENTICATED, "로그인이 필요합니다.")),
-                        new AntPathRequestMatcher("/api/**"))
+                        PathPatternRequestMatcher.withDefaults().matcher("/api/**"))
                     .defaultAccessDeniedHandlerFor(
                         (request, response, ex) ->
                             errors.resolveException(
@@ -131,7 +132,7 @@ public class SecurityConfig {
                                 response,
                                 null,
                                 new BusinessException(ErrorCode.FORBIDDEN, "권한이 없습니다.")),
-                        new AntPathRequestMatcher("/api/**")))
+                        PathPatternRequestMatcher.withDefaults().matcher("/api/**")))
         .addFilterBefore(new SessionRevocationFilter(accounts, clock), LogoutFilter.class)
         .addFilterBefore(
             new GuestAuthenticationFilter(guestCredentials, guestIssuer), LogoutFilter.class)
@@ -156,7 +157,9 @@ public class SecurityConfig {
         .logout(
             logout ->
                 logout
-                    .logoutRequestMatcher(new AntPathRequestMatcher("/logout", "POST"))
+                    .logoutRequestMatcher(
+                        PathPatternRequestMatcher.withDefaults()
+                            .matcher(HttpMethod.POST, "/logout"))
                     .logoutSuccessUrl("/")
                     .invalidateHttpSession(true)
                     .deleteCookies("__Host-lottery_session", "lottery_session"));
@@ -181,7 +184,8 @@ public class SecurityConfig {
 
   private static HttpSessionRequestCache pageRequestCache() {
     HttpSessionRequestCache cache = new HttpSessionRequestCache();
-    cache.setRequestMatcher(new NegatedRequestMatcher(new AntPathRequestMatcher("/api/**")));
+    cache.setRequestMatcher(
+        new NegatedRequestMatcher(PathPatternRequestMatcher.withDefaults().matcher("/api/**")));
     cache.setCreateSessionAllowed(false);
     return cache;
   }
