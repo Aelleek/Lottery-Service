@@ -22,6 +22,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # diff 계산 위해 전체 히스토리
+          # 토큰을 .git/config에 남기지 않는다. 뒤 단계는 PR 코드(빌드 스크립트, 테스트)를 실행한다
+          persist-credentials: false
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
