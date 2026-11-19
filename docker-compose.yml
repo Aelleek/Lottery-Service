@@ -9,8 +9,9 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       TZ: Asia/Seoul
+    # 이 PC에서만 연결한다. 주소 없이 열면 같은 망의 다른 기기도 기본 계정으로 붙을 수 있다
     ports:
-      - "${MYSQL_HOST_PORT}:3306"
+      - "127.0.0.1:${MYSQL_HOST_PORT}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     command:
