@@ -37,12 +37,18 @@ jobs:
       - name: Compute changed Java files
         id: diff
         shell: bash
+        # 이벤트 값은 env로 넘긴다. 스크립트에 직접 넣으면 값이 셸 코드로 해석될 수 있다
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
-            range="origin/${{ github.base_ref }}...HEAD"
-          elif [ -n "${{ github.event.before }}" ] && ! echo "${{ github.event.before }}" | grep -qE '^0+$'; then
-            range="${{ github.event.before }}...${{ github.sha }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git fetch origin "refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+            range="origin/$BASE_REF...HEAD"
+          elif [ -n "$BEFORE_SHA" ] && ! echo "$BEFORE_SHA" | grep -qE '^0+$'; then
+            range="$BEFORE_SHA...$HEAD_SHA"
           else
             range="HEAD~1...HEAD"
           fi
@@ -59,7 +65,10 @@ jobs:
       # 변경된 파일만 검사하고, 위반이 있으면 CI 실패
       - name: Static analysis (changed-files gate)
         if: ${{ steps.diff.outputs.changed != '' }}
-        run: ./gradlew --no-daemon checkstyleMain checkstyleTest pmdMain pmdTest "-DchangedFiles=${{ steps.diff.outputs.changed }}"
+        # 파일 이름은 PR 작성자가 정한다(예: 'a$(id).java'). 스크립트에 직접 넣지 않고 env로 넘긴다
+        env:
+          CHANGED_FILES: ${{ steps.diff.outputs.changed }}
+        run: ./gradlew --no-daemon checkstyleMain checkstyleTest pmdMain pmdTest "-DchangedFiles=$CHANGED_FILES"
 
       # 테스트를 포함한 전체 빌드
       - name: Build and test
