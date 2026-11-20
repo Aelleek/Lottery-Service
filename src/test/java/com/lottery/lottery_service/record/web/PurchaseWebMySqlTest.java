@@ -62,7 +62,7 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
 
   @Test
   @DisplayName(
-      "회원이 구매 등록하면 항목별 결과를 주고, 명령 조회도 같은 결과다. 다른 회원은 404, 비회원은 401, 낡은 버전 취소는 409 VERSION_CONFLICT, 같은 키에 다른 본문은 409")
+      "회원이 구매 등록하면 항목별 결과를 주고, 명령 조회도 같은 결과다. 다른 회원은 404, 비회원은 401, 낡은 버전 취소는 409 VERSION_CONFLICT, 같은 키에 다른 본문은 409, 확정 실패한 명령 조회는 그 오류, 만료된 명령 조회는 410")
   void memberPurchaseAndOperation() throws Exception {
     Instant now = rounds.dbNow();
     rounds.register(
@@ -363,6 +363,22 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
                 .content(extra.replace("25]", "26]")))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("IDEMPOTENCY_CONFLICT"));
+
+    String failedCancel =
+        jdbc.queryForObject(
+            "SELECT BIN_TO_UUID(public_id) FROM command_operation"
+                + " WHERE operation = 'CANCEL_PURCHASE' AND state = 'FAILED'"
+                + " AND completion_code = 'VERSION_CONFLICT'",
+            String.class);
+    mvc.perform(get("/api/v1/operations/" + failedCancel).with(oauth2Login().oauth2User(member)))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("VERSION_CONFLICT"));
+    jdbc.update(
+        "UPDATE command_operation SET state = 'EXPIRED' WHERE public_id = UUID_TO_BIN(?)",
+        operationId);
+    mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(member)))
+        .andExpect(status().isGone())
+        .andExpect(jsonPath("$.code").value("COMMAND_EXPIRED"));
   }
 
   private JsonNode body(MvcResult result) throws Exception {
