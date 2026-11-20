@@ -327,6 +327,97 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.data.sets.length()").value(5));
   }
 
+  @Test
+  @DisplayName(
+      "같은 키 재전송은 같은 5세트, 같은 키에 다른 본문은 409 IDEMPOTENCY_CONFLICT, 토큰 뒤 일정이 바뀌면 409 ROUND_CHANGED이고 응답은 모두 계약 형식이다")
+  void memberRetryConflictAndScheduleChange() throws Exception {
+    Instant now = rounds.dbNow();
+    int round = ROUND + 3;
+    rounds.register(
+        new RoundSchedule(
+            round, now.minus(Duration.ofDays(1)), now.plusSeconds(3600), now.plusSeconds(7200), 1));
+    MemberPrincipal member =
+        MemberPrincipal.of(
+            accounts.login(OAuthProvider.GOOGLE, "rec-member-conflict"), OAuthProvider.GOOGLE);
+    MvcResult state =
+        mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
+    String csrf = body(state).get("csrfToken").asText();
+    String setCookie = state.getResponse().getHeader("Set-Cookie");
+    Cookie session =
+        new Cookie(
+            "__Host-lottery_session",
+            setCookie.substring(setCookie.indexOf('=') + 1, setCookie.indexOf(';')));
+    String command = recommendToken(session, member, csrf, round);
+    String key = UUID.randomUUID().toString();
+    String basic =
+        "{\"round\":" + round + ",\"scheduleVersion\":\"1\",\"include\":[],\"exclude\":[]}";
+
+    JsonNode first =
+        body(
+            mvc.perform(recommendation(session, member, csrf, command, key).content(basic))
+                .andExpect(status().isOk())
+                .andReturn());
+    JsonNode again =
+        body(
+            mvc.perform(recommendation(session, member, csrf, command, key).content(basic))
+                .andExpect(status().isOk())
+                .andReturn());
+    assertThat(again.get("operationId")).isEqualTo(first.get("operationId"));
+    assertThat(again.get("data").get("sets")).isEqualTo(first.get("data").get("sets"));
+    mvc.perform(
+            recommendation(session, member, csrf, command, key)
+                .content(
+                    "{\"round\":"
+                        + round
+                        + ",\"scheduleVersion\":\"1\",\"include\":[7],\"exclude\":[]}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("IDEMPOTENCY_CONFLICT"));
+
+    MemberPrincipal other =
+        MemberPrincipal.of(
+            accounts.login(OAuthProvider.GOOGLE, "rec-member-schedule"), OAuthProvider.GOOGLE);
+    MvcResult otherState =
+        mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(other))).andReturn();
+    String otherCsrf = body(otherState).get("csrfToken").asText();
+    String otherCookie = otherState.getResponse().getHeader("Set-Cookie");
+    Cookie otherSession =
+        new Cookie(
+            "__Host-lottery_session",
+            otherCookie.substring(otherCookie.indexOf('=') + 1, otherCookie.indexOf(';')));
+    String next = recommendToken(otherSession, other, otherCsrf, round);
+    jdbc.update("UPDATE lotto_round SET schedule_version = 2 WHERE round_no = ?", round);
+    mvc.perform(
+            recommendation(otherSession, other, otherCsrf, next, UUID.randomUUID().toString())
+                .content(basic))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("ROUND_CHANGED"))
+        .andExpect(jsonPath("$.retryable").value(false));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM recommendation_request WHERE round_no = ?",
+                Long.class,
+                round))
+        .isEqualTo(1);
+  }
+
+  private String recommendToken(Cookie session, MemberPrincipal member, String csrf, int round)
+      throws Exception {
+    return body(mvc.perform(
+                post("/api/v1/command-tokens")
+                    .cookie(session)
+                    .with(oauth2Login().oauth2User(member))
+                    .header("X-CSRF-TOKEN", csrf)
+                    .contentType("application/json")
+                    .content(
+                        "{\"operation\":\"RECOMMEND\",\"round\":"
+                            + round
+                            + ",\"scheduleVersion\":\"1\"}"))
+            .andExpect(status().isOk())
+            .andReturn())
+        .get("token")
+        .asText();
+  }
+
   private static org.springframework.test.web.servlet.request.RequestPostProcessor remote(
       String ip) {
     return request -> {
@@ -337,12 +428,17 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
 
   private MockHttpServletRequestBuilder recommendation(
       Cookie session, MemberPrincipal member, String csrf, String command) {
+    return recommendation(session, member, csrf, command, UUID.randomUUID().toString());
+  }
+
+  private MockHttpServletRequestBuilder recommendation(
+      Cookie session, MemberPrincipal member, String csrf, String command, String key) {
     return post("/api/v1/lotto/recommendations")
         .cookie(session)
         .with(oauth2Login().oauth2User(member))
         .header("X-CSRF-TOKEN", csrf)
         .header("X-Command-Token", command)
-        .header("Idempotency-Key", UUID.randomUUID().toString())
+        .header("Idempotency-Key", key)
         .contentType("application/json");
   }
 
