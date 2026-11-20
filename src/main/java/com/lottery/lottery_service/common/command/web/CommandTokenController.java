@@ -5,6 +5,7 @@ import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.common.command.CommandTokenService;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.number.DecimalVersion;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
@@ -50,7 +51,7 @@ public class CommandTokenController {
     Long version = null;
     if (request.scheduleVersion() != null) {
       try {
-        version = Long.parseLong(request.scheduleVersion());
+        version = DecimalVersion.parse(request.scheduleVersion());
       } catch (NumberFormatException e) {
         throw new BusinessException(ErrorCode.VALIDATION_FAILED, "일정 버전 형식이 틀렸습니다.");
       }

@@ -4,6 +4,7 @@ import com.lottery.lottery_service.auth.GuestPrincipal;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.number.DecimalVersion;
 import com.lottery.lottery_service.common.web.CanonicalUuid;
 import com.lottery.lottery_service.recommendation.RecommendationCommandService;
 import com.lottery.lottery_service.recommendation.RecommendationView;
@@ -75,7 +76,7 @@ public class RecommendationController {
     long version;
     try {
       key = CanonicalUuid.parse(idempotencyKey);
-      version = Long.parseLong(input.scheduleVersion());
+      version = DecimalVersion.parse(input.scheduleVersion());
     } catch (IllegalArgumentException e) {
       throw new BusinessException(ErrorCode.VALIDATION_FAILED, "입력 형식을 확인해 주세요.");
     }

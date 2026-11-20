@@ -3,6 +3,7 @@ package com.lottery.lottery_service.notification.web;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.number.DecimalVersion;
 import com.lottery.lottery_service.common.web.CanonicalUuid;
 import com.lottery.lottery_service.common.web.RequestSubject;
 import com.lottery.lottery_service.notification.verify.ContactCipher;
@@ -72,8 +73,8 @@ public class PreferenceController {
     long verified;
     try {
       key = CanonicalUuid.parse(idempotencyKey);
-      expected = Long.parseLong(input.expectedVersion());
-      verified = Long.parseLong(input.verifiedContactVersion());
+      expected = DecimalVersion.parse(input.expectedVersion());
+      verified = DecimalVersion.parse(input.verifiedContactVersion());
     } catch (IllegalArgumentException | NullPointerException e) {
       throw new BusinessException(ErrorCode.VALIDATION_FAILED, "입력 형식을 확인해 주세요.");
     }

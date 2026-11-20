@@ -2,6 +2,7 @@ package com.lottery.lottery_service.record.web;
 
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.number.DecimalVersion;
 import com.lottery.lottery_service.common.web.CanonicalUuid;
 import com.lottery.lottery_service.common.web.RequestSubject;
 import com.lottery.lottery_service.record.CancelCommandService;
@@ -56,7 +57,7 @@ public class CancelPurchaseController {
     long version;
     try {
       key = CanonicalUuid.parse(idempotencyKey);
-      version = Long.parseLong(input.expectedVersion());
+      version = DecimalVersion.parse(input.expectedVersion());
     } catch (IllegalArgumentException | NullPointerException e) {
       throw new BusinessException(ErrorCode.VALIDATION_FAILED, "입력 형식을 확인해 주세요.");
     }

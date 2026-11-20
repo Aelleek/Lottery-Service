@@ -4,6 +4,7 @@ import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.Reauthentication;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.number.DecimalVersion;
 import com.lottery.lottery_service.common.web.CanonicalUuid;
 import com.lottery.lottery_service.common.web.RequestSubject;
 import com.lottery.lottery_service.notification.verify.PhoneMask;
@@ -72,7 +73,7 @@ public class VerificationController {
       expectedVersion =
           input.expectedContactVersion() == null
               ? -1
-              : Long.parseLong(input.expectedContactVersion());
+              : DecimalVersion.parse(input.expectedContactVersion());
     } catch (NumberFormatException e) {
       expectedVersion = -1;
     }
