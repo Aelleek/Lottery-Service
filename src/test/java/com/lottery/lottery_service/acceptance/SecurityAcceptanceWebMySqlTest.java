@@ -71,7 +71,8 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("T58: 회원 A의 세션으로 B의 기록을 취소하면 404이고 B의 기록은 그대로이며, A의 기록 조회에도 나오지 않는다")
+  @DisplayName(
+      "T58: 회원 A의 세션으로 B의 기록을 취소하면 404이고 B의 기록은 그대로이며, A의 기록 조회에도 나오지 않는다. 본문에 회원 ID를 넣으면 계약 밖 필드라 400")
   void otherMembersRecordIsNotFound() throws Exception {
     registerRound();
     MemberPrincipal a = member("t58-a");
@@ -96,6 +97,17 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
                 .header("Idempotency-Key", UUID.randomUUID().toString())
                 .contentType("application/json")
                 .content("{\"expectedVersion\":\"0\",\"memberId\":" + b.memberId() + "}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    mvc.perform(
+            post("/api/v1/me/lotto/records/" + recordOfB + "/cancel-purchase")
+                .cookie(session.cookie())
+                .with(oauth2Login().oauth2User(a))
+                .header("X-CSRF-TOKEN", session.csrf())
+                .header("X-Command-Token", token)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content("{\"expectedVersion\":\"0\"}"))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     assertThat(
