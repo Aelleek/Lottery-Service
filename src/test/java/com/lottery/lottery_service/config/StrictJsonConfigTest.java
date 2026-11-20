@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lottery.lottery_service.admin.web.AdminChangeController;
 import com.lottery.lottery_service.notification.web.PreferenceController;
 import com.lottery.lottery_service.recommendation.web.RecommendationController;
 import com.lottery.lottery_service.record.web.PurchaseController;
@@ -44,7 +45,8 @@ class StrictJsonConfigTest {
         "{\"round\":\"1250\",\"entries\":[]}",
         "{\"round\":1250,\"entries\":[{\"clientItemId\":\"a\",\"numbers\":[\"1\",2,3,4,5,6]}]}",
         "{\"round\":1250,\"round\":1251,\"entries\":[]}",
-        "{\"round\":1250,\"entries\":[]} {\"round\":1251}"
+        "{\"round\":1250,\"entries\":[]} {\"round\":1251}",
+        "{\"round\":1250,\"entries\":[{\"clientItemId\":\"a\",\"numbers\":[1,2,3,4,5,6],\"x\":1}]}"
       })
   @DisplayName("모르는 필드, 정수 자리의 소수·문자열, 같은 키 반복, 뒤에 남은 값은 읽지 않는다")
   void rejectsOffContractPurchaseBody(String body) {
@@ -65,6 +67,20 @@ class StrictJsonConfigTest {
                 mapper.readValue(
                     "{\"enabled\":\"false\",\"expectedVersion\":\"0\"}",
                     PreferenceController.Input.class))
+        .isInstanceOf(com.fasterxml.jackson.core.JacksonException.class);
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "{\"numbers\":[1,2,3,4,5,6.5],\"bonus\":7,\"expectedPublicationVersion\":\"0\",\"reason\":\"r\"}",
+        "{\"numbers\":[1,2,3,4,5,6],\"bonus\":\"7\",\"expectedPublicationVersion\":\"0\",\"reason\":\"r\"}",
+        "{\"numbers\":[1,2,3,4,5,6],\"bonus\":7,\"expectedPublicationVersion\":0,\"reason\":\"r\"}",
+        "{\"numbers\":[1,2,3,4,5,6],\"bonus\":7,\"expectedPublicationVersion\":\"0\",\"reason\":\"r\",\"adminId\":1}"
+      })
+  @DisplayName("관리자 결과 직접 등록도 계약 밖 본문은 읽지 않는다")
+  void rejectsOffContractManualResult(String body) {
+    assertThatThrownBy(() -> mapper.readValue(body, AdminChangeController.ManualResultInput.class))
         .isInstanceOf(com.fasterxml.jackson.core.JacksonException.class);
   }
 
