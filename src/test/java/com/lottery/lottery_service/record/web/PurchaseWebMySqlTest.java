@@ -61,7 +61,8 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("회원이 구매 등록하면 항목별 결과를 주고, 명령 조회도 같은 결과다. 다른 회원은 404, 비회원은 401")
+  @DisplayName(
+      "회원이 구매 등록하면 항목별 결과를 주고, 명령 조회도 같은 결과다. 다른 회원은 404, 비회원은 401, 낡은 버전 취소는 409 VERSION_CONFLICT, 같은 키에 다른 본문은 409")
   void memberPurchaseAndOperation() throws Exception {
     Instant now = rounds.dbNow();
     rounds.register(
@@ -324,6 +325,44 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
                 .contentType("application/json")
                 .content("{\"round\":" + ROUND + ",\"entries\":[]}"))
         .andExpect(status().isUnauthorized());
+    mvc.perform(
+            post("/api/v1/me/lotto/records/" + secondRecord + "/cancel-purchase")
+                .cookie(session)
+                .with(oauth2Login().oauth2User(member))
+                .header("X-CSRF-TOKEN", csrf)
+                .header("X-Command-Token", cancelToken)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content("{\"expectedVersion\":\"3\"}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("VERSION_CONFLICT"))
+        .andExpect(jsonPath("$.details.currentVersion").value("0"));
+    String purchaseKey = UUID.randomUUID().toString();
+    String extra =
+        "{\"round\":"
+            + ROUND
+            + ",\"entries\":[{\"clientItemId\":\"x\",\"numbers\":[20,21,22,23,24,25]}]}";
+    mvc.perform(
+            post("/api/v1/me/lotto/purchases")
+                .cookie(session)
+                .with(oauth2Login().oauth2User(member))
+                .header("X-CSRF-TOKEN", csrf)
+                .header("X-Command-Token", command)
+                .header("Idempotency-Key", purchaseKey)
+                .contentType("application/json")
+                .content(extra))
+        .andExpect(status().isOk());
+    mvc.perform(
+            post("/api/v1/me/lotto/purchases")
+                .cookie(session)
+                .with(oauth2Login().oauth2User(member))
+                .header("X-CSRF-TOKEN", csrf)
+                .header("X-Command-Token", command)
+                .header("Idempotency-Key", purchaseKey)
+                .contentType("application/json")
+                .content(extra.replace("25]", "26]")))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("IDEMPOTENCY_CONFLICT"));
   }
 
   private JsonNode body(MvcResult result) throws Exception {
