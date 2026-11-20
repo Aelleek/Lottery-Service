@@ -164,7 +164,9 @@ public class ApiExceptionHandler {
     HttpStatusCode declared = declaredStatus(e);
     if (declared != null && declared.is4xxClientError()) {
       ErrorCode code = clientErrorCode(declared);
-      return respond(code, declared, clientMessage(code), false, ErrorDetails.empty(), request);
+      ResponseEntity<ErrorResponse> response =
+          respond(code, declared, clientMessage(code), false, ErrorDetails.empty(), request);
+      return withProtocolHeaders(response, e);
     }
     logUnexpected(e, request);
     return respond(
@@ -240,6 +242,23 @@ public class ApiExceptionHandler {
       builder.header(HttpHeaders.RETRY_AFTER, Long.toString(secondsUntil(details.retryAt())));
     }
     return builder.body(body);
+  }
+
+  /** 405의 Allow, 415의 Accept처럼 Spring이 그 4xx에 붙인 프로토콜 헤더만 옮긴다. */
+  private static ResponseEntity<ErrorResponse> withProtocolHeaders(
+      ResponseEntity<ErrorResponse> response, Exception e) {
+    if (!(e instanceof org.springframework.web.ErrorResponse standard)) {
+      return response;
+    }
+    HttpHeaders headers = new HttpHeaders();
+    headers.putAll(response.getHeaders());
+    for (String name : new String[] {HttpHeaders.ALLOW, HttpHeaders.ACCEPT}) {
+      List<String> values = standard.getHeaders().get(name);
+      if (values != null && !values.isEmpty()) {
+        headers.put(name, values);
+      }
+    }
+    return new ResponseEntity<>(response.getBody(), headers, response.getStatusCode());
   }
 
   private long secondsUntil(Instant retryAt) {

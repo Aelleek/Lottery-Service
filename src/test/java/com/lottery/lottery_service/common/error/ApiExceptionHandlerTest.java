@@ -296,8 +296,20 @@ class ApiExceptionHandlerTest {
     mockMvc
         .perform(post("/probe/boom"))
         .andExpect(status().isMethodNotAllowed())
+        .andExpect(header().string("Allow", org.hamcrest.Matchers.containsString("GET")))
         .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
         .andExpect(jsonPath("$.retryable").value(false));
+  }
+
+  @Test
+  @DisplayName("지원하지 않는 본문 형식은 415와 받는 형식(Accept)으로 답한다")
+  void unsupportedMediaTypeNamesAccepted() throws Exception {
+    mockMvc
+        .perform(post("/probe/body").contentType(MediaType.TEXT_PLAIN).content("name=a"))
+        .andExpect(status().isUnsupportedMediaType())
+        .andExpect(header().string("Accept", org.hamcrest.Matchers.containsString("json")))
+        .andExpect(header().string("Content-Type", startsWith("application/json")))
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
   }
 
   @Test
