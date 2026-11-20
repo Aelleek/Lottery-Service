@@ -5,6 +5,7 @@ import static com.lottery.lottery_service.common.db.DbValues.uuid;
 
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.recommendation.CommandInProgressException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -61,13 +62,18 @@ public class OperationQuery {
         if (loader == null) {
           throw new BusinessException(ErrorCode.NOT_FOUND, "요청한 내용을 찾을 수 없습니다.");
         }
-        yield new Outcome.Done(
-            operationPublicId,
-            loader.load(
-                subjectId,
-                operationPublicId,
-                uuid((byte[]) row.get("resource_public_id")),
-                (String) row.get("completion_code")));
+        Object data;
+        try {
+          data =
+              loader.load(
+                  subjectId,
+                  operationPublicId,
+                  uuid((byte[]) row.get("resource_public_id")),
+                  (String) row.get("completion_code"));
+        } catch (CommandInProgressException e) {
+          yield new Outcome.Processing(operationPublicId);
+        }
+        yield new Outcome.Done(operationPublicId, data);
       }
     };
   }
@@ -76,7 +82,7 @@ public class OperationQuery {
   public sealed interface Outcome {
 
     /**
-     * 아직 처리 중이다(202 {@code PROCESSING}).
+     * 아직 처리 중이다(200 {@code PROCESSING}). 명령은 끝났지만 뒤따르는 job(가져오기)이 남은 경우도 같다.
      *
      * @param operationId 명령 외부 ID
      */

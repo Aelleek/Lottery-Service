@@ -17,7 +17,6 @@ import com.lottery.lottery_service.common.job.JobProperties;
 import com.lottery.lottery_service.common.job.JobRunner;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.number.LottoNumbers;
-import com.lottery.lottery_service.recommendation.CommandInProgressException;
 import com.lottery.lottery_service.round.RoundStore;
 import com.lottery.lottery_service.round.domain.RoundSchedule;
 import com.lottery.lottery_service.support.MutableClock;
@@ -110,7 +109,8 @@ class ImportCommandServiceMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("시작하면 명령은 끝나고 job이 돌기 전 조회는 처리 중, 돈 뒤에는 만든 수·합친 수를 준다. 다시 시작해도 job은 하나다")
+  @DisplayName(
+      "시작하면 명령은 끝나고 job이 돌기 전 조회는 처리 중(200 PROCESSING), 돈 뒤에는 만든 수·합친 수를 준다. 다시 시작해도 job은 하나다")
   void startAndPoll() {
     String token =
         codec.issue(member.subjectPublicId(), ImportCommandService.OPERATION, null, null);
@@ -119,8 +119,8 @@ class ImportCommandServiceMySqlTest extends MySqlContainerSupport {
             member.subjectId(), member.subjectPublicId(), token, UUID.randomUUID(), claimPublicId);
     OperationQuery query = new OperationQuery(jdbc, List.of(imports));
 
-    assertThatThrownBy(() -> query.find(member.subjectId(), operation))
-        .isInstanceOf(CommandInProgressException.class);
+    assertThat(query.find(member.subjectId(), operation))
+        .isEqualTo(new OperationQuery.Outcome.Processing(operation));
 
     new JobRunner(jobs, List.of(handler), tm, clock).runOnce();
     OperationQuery.Outcome done = query.find(member.subjectId(), operation);
@@ -219,8 +219,8 @@ class ImportCommandServiceMySqlTest extends MySqlContainerSupport {
         .containsEntry("finished_at", null);
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM job", Long.class)).isEqualTo(1);
     OperationQuery query = new OperationQuery(jdbc, List.of(imports));
-    assertThatThrownBy(() -> query.find(member.subjectId(), retry))
-        .isInstanceOf(CommandInProgressException.class);
+    assertThat(query.find(member.subjectId(), retry))
+        .isEqualTo(new OperationQuery.Outcome.Processing(retry));
 
     new JobRunner(jobs, List.of(handler), tm, clock).runOnce();
     OperationQuery.Outcome done = query.find(member.subjectId(), retry);

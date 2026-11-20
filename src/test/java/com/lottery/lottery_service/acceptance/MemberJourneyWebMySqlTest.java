@@ -304,6 +304,11 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
                 .andReturn())
             .get("operationId")
             .asText();
+    mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(member)))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"))
+        .andExpect(jsonPath("$.status").value("PROCESSING"))
+        .andExpect(jsonPath("$.data.pollUrl").value("/api/v1/operations/" + operationId));
     drainJobs();
     mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(member)))
         .andExpect(status().isOk())
