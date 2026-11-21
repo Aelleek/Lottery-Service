@@ -353,6 +353,27 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("같은 키에 다른 번호는 409 IDEMPOTENCY_CONFLICT이고 새 코드를 보내지 않는다")
+  void rejectsReusedKeyWithAnotherPhone() throws Exception {
+    Client mine = client("issue-key");
+    UUID key = UUID.randomUUID();
+    String token = mine.token("REQUEST_VERIFICATION");
+
+    mine.request("+821077770011", "0", key, token).andExpect(status().isOk());
+    mine.request("+821077770012", "0", key, token)
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("IDEMPOTENCY_CONFLICT"))
+        .andExpect(jsonPath("$.retryable").value(false));
+    assertThat(sender.codes).hasSize(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM verification_challenge WHERE member_id = ?",
+                Long.class,
+                mine.member.memberId()))
+        .isEqualTo(1);
+  }
+
+  @Test
   @DisplayName("로그인하지 않으면 401")
   void requiresMember() throws Exception {
     mvc.perform(
