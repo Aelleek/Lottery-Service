@@ -11,17 +11,19 @@ import org.junit.jupiter.params.provider.ValueSource;
 class DecimalVersionTest {
 
   @Test
-  @DisplayName("ASCII 숫자 1~18자리는 그 값으로 읽는다")
+  @DisplayName("ASCII 숫자는 long 범위까지 그 값으로 읽는다")
   void readsDigits() {
     assertThat(DecimalVersion.parse("0")).isZero();
     assertThat(DecimalVersion.parse("007")).isEqualTo(7);
     assertThat(DecimalVersion.parse("999999999999999999")).isEqualTo(999_999_999_999_999_999L);
+    assertThat(DecimalVersion.parse("1000000000000000000")).isEqualTo(1_000_000_000_000_000_000L);
+    assertThat(DecimalVersion.parse("9223372036854775807")).isEqualTo(Long.MAX_VALUE);
   }
 
   @ParameterizedTest
   @ValueSource(
-      strings = {"", "+5", "-1", " 5", "5 ", "1e3", "0x10", "٥", "５", "1234567890123456789"})
-  @DisplayName("부호, 공백, 지수, ASCII가 아닌 숫자, 19자리 이상은 NumberFormatException")
+      strings = {"", "+5", "-1", " 5", "5 ", "1e3", "0x10", "٥", "５", "9223372036854775808"})
+  @DisplayName("부호, 공백, 지수, ASCII가 아닌 숫자, long 범위를 넘는 값은 NumberFormatException")
   void rejectsOffContract(String value) {
     assertThatThrownBy(() -> DecimalVersion.parse(value)).isInstanceOf(NumberFormatException.class);
   }

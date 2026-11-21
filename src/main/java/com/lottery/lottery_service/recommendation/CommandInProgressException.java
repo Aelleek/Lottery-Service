@@ -2,7 +2,9 @@ package com.lottery.lottery_service.recommendation;
 
 import java.util.UUID;
 
-/** 같은 요청이 아직 처리 중이다. 화면에는 202와 조회 경로를 준다. */
+/**
+ * 같은 요청이 아직 처리 중이다. 명령 요청에는 202와 조회 경로를, 명령 조회({@code GET /operations/{id}})에서는 200 PROCESSING을 준다.
+ */
 public class CommandInProgressException extends RuntimeException {
 
   private final UUID operationPublicId;

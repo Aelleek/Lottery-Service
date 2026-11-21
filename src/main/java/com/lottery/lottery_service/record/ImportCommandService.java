@@ -23,8 +23,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 비회원 기록 가져오기 명령(05 4절 4번, D-058). 귀속 전체를 가져오는 job을 등록하고 명령은 바로 끝낸다. 결과는 명령 조회로 보고, job이 끝나기 전에는 처리
- * 중(202)으로 답한다. 같은 귀속은 job이 한 번만 등록된다.
+ * 비회원 기록 가져오기 명령(05 4절 4번, D-058). 귀속 전체를 가져오는 job을 등록하고 명령은 바로 끝낸다. 결과는 명령 조회로 보고, job이 끝나기 전 조회는
+ * 200 PROCESSING이다. 같은 귀속은 job이 한 번만 등록된다.
  */
 @Component
 public class ImportCommandService implements CommandResultLoader {

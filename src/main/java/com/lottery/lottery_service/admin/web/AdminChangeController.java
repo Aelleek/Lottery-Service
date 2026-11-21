@@ -9,6 +9,7 @@ import com.lottery.lottery_service.auth.Reauthentication;
 import com.lottery.lottery_service.common.db.DbValues;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
+import com.lottery.lottery_service.common.number.DecimalVersion;
 import com.lottery.lottery_service.common.number.LottoNumber;
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.common.web.CanonicalUuid;
@@ -216,10 +217,11 @@ public class AdminChangeController {
   }
 
   private static long version(String value) {
-    if (value == null || !value.matches("[0-9]{1,18}")) {
+    try {
+      return DecimalVersion.parse(value);
+    } catch (NumberFormatException e) {
       throw invalid();
     }
-    return Long.parseLong(value);
   }
 
   private static UUID key(String value) {
