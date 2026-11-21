@@ -138,6 +138,127 @@ class NotificationCommandWebMySqlTest extends MySqlContainerSupport {
         .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
   }
 
+  @Test
+  @DisplayName(
+      "틀린 코드는 400이고 같은 키로 다시 보내도 같은 400, 같은 키에 다른 요청 ID는 409, 5번 틀리면 429 ATTEMPTS_EXCEEDED이고 맞는 코드도 받지 않는다")
+  void verifyRejectsWrongCodeAndLocks() throws Exception {
+    MemberPrincipal member =
+        MemberPrincipal.of(
+            accounts.login(OAuthProvider.KAKAO, "notify-wrong"), OAuthProvider.KAKAO);
+    IssuedChallenge challenge =
+        new TransactionTemplate(tm)
+            .execute(s -> verifications.issue(member.memberId(), "+821011110001", 0));
+    String wrong = challenge.code().equals("000000") ? "111111" : "000000";
+    Client mine = client(member);
+
+    UUID key = UUID.randomUUID();
+    String token = mine.token("VERIFY_CONTACT");
+    for (int i = 0; i < 2; i++) {
+      mine.verify(challenge.publicId(), wrong, key, token)
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+    assertThat(attempts(challenge.publicId())).isEqualTo(1);
+    mine.verify(UUID.randomUUID(), wrong, key, token)
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("IDEMPOTENCY_CONFLICT"));
+
+    for (int i = 0; i < VerificationStore.MAX_ATTEMPTS - 2; i++) {
+      mine.verify(challenge.publicId(), wrong, UUID.randomUUID())
+          .andExpect(status().isBadRequest());
+    }
+    mine.verify(challenge.publicId(), wrong, UUID.randomUUID())
+        .andExpect(status().isTooManyRequests())
+        .andExpect(jsonPath("$.code").value("ATTEMPTS_EXCEEDED"))
+        .andExpect(jsonPath("$.retryable").value(false));
+    mine.verify(challenge.publicId(), challenge.code(), UUID.randomUUID())
+        .andExpect(status().isTooManyRequests())
+        .andExpect(jsonPath("$.code").value("ATTEMPTS_EXCEEDED"));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM member_contact WHERE member_id = ?",
+                Long.class,
+                member.memberId()))
+        .isZero();
+  }
+
+  @Test
+  @DisplayName("기한이 지난 요청의 코드는 맞아도 410 CHALLENGE_EXPIRED이고 번호를 인증하지 않는다")
+  void verifyRejectsExpiredChallenge() throws Exception {
+    MemberPrincipal member =
+        MemberPrincipal.of(
+            accounts.login(OAuthProvider.KAKAO, "notify-expired"), OAuthProvider.KAKAO);
+    IssuedChallenge challenge =
+        new TransactionTemplate(tm)
+            .execute(s -> verifications.issue(member.memberId(), "+821011110002", 0));
+    jdbc.update(
+        "UPDATE verification_challenge SET expires_at = UTC_TIMESTAMP(6) - INTERVAL 1 SECOND"
+            + " WHERE id = ?",
+        challenge.challengeId());
+
+    client(member)
+        .verify(challenge.publicId(), challenge.code(), UUID.randomUUID())
+        .andExpect(status().isGone())
+        .andExpect(jsonPath("$.code").value("CHALLENGE_EXPIRED"));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM verification_challenge WHERE id = ?",
+                String.class,
+                challenge.challengeId()))
+        .isEqualTo("EXPIRED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM member_contact WHERE member_id = ?",
+                Long.class,
+                member.memberId()))
+        .isZero();
+  }
+
+  @Test
+  @DisplayName("동의 변경의 같은 키에 다른 본문은 409 IDEMPOTENCY_CONFLICT이고 처음 결과는 그대로다")
+  void changeRejectsReusedKeyWithAnotherBody() throws Exception {
+    MemberPrincipal member =
+        MemberPrincipal.of(accounts.login(OAuthProvider.KAKAO, "notify-key"), OAuthProvider.KAKAO);
+    IssuedChallenge challenge =
+        new TransactionTemplate(tm)
+            .execute(s -> verifications.issue(member.memberId(), "+821011110003", 0));
+    Client mine = client(member);
+    String version =
+        body(mine.verify(challenge.publicId(), challenge.code(), UUID.randomUUID())
+                .andExpect(status().isOk())
+                .andReturn())
+            .path("data")
+            .path("verifiedContactVersion")
+            .asText();
+
+    UUID key = UUID.randomUUID();
+    String token = mine.token("CHANGE_PREFERENCE");
+    mine.change(true, version, key, token).andExpect(status().isOk());
+    mine.change(false, version, key, token)
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("IDEMPOTENCY_CONFLICT"))
+        .andExpect(jsonPath("$.retryable").value(false));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT notify_enabled FROM member_contact WHERE member_id = ?",
+                Boolean.class,
+                member.memberId()))
+        .isTrue();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM consent_event WHERE member_id = ? AND granted = FALSE",
+                Long.class,
+                member.memberId()))
+        .isZero();
+  }
+
+  private int attempts(UUID challenge) {
+    return jdbc.queryForObject(
+        "SELECT attempts FROM verification_challenge WHERE public_id = UUID_TO_BIN(?)",
+        Integer.class,
+        challenge.toString());
+  }
+
   private Client client(MemberPrincipal member) throws Exception {
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
@@ -181,12 +302,17 @@ class NotificationCommandWebMySqlTest extends MySqlContainerSupport {
 
     org.springframework.test.web.servlet.ResultActions verify(UUID challenge, String code, UUID key)
         throws Exception {
+      return verify(challenge, code, key, token("VERIFY_CONTACT"));
+    }
+
+    org.springframework.test.web.servlet.ResultActions verify(
+        UUID challenge, String code, UUID key, String token) throws Exception {
       return mvc.perform(
           post("/api/v1/me/notification-verifications/" + challenge + "/verify")
               .cookie(session)
               .with(oauth2Login().oauth2User(member))
               .header("X-CSRF-TOKEN", csrf)
-              .header("X-Command-Token", token("VERIFY_CONTACT"))
+              .header("X-Command-Token", token)
               .header("Idempotency-Key", key.toString())
               .contentType("application/json")
               .content("{\"code\":\"" + code + "\"}"));
