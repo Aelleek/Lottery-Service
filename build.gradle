@@ -31,6 +31,7 @@ repositories {
 ext['tomcat.version'] = '10.1.62'
 ext['jackson-bom.version'] = '2.21.8'
 ext['logback.version'] = '1.5.38'
+ext['hibernate-validator.version'] = '8.0.6.Final'
 
 /* -------- Spotless (format owner) -------- */
 spotless {
