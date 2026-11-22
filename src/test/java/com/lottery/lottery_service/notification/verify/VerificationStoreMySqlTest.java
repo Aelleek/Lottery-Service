@@ -16,6 +16,7 @@ import com.lottery.lottery_service.support.TestSecrets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -97,6 +98,22 @@ class VerificationStoreMySqlTest extends MySqlContainerSupport {
             jdbc.queryForObject(
                 "SELECT code_hmac IS NULL FROM verification_challenge", Boolean.class))
         .isTrue();
+  }
+
+  @Test
+  @DisplayName("서버 기본 로캘이 아라비아 숫자를 쓰지 않는 곳이어도 코드는 ASCII 숫자 여섯 자리이고 그 코드로 인증된다")
+  void codeUsesAsciiDigitsWhateverTheDefaultLocale() {
+    Locale original = Locale.getDefault();
+    IssuedChallenge c;
+    try {
+      Locale.setDefault(Locale.forLanguageTag("ar-SA"));
+      c = issue(member);
+    } finally {
+      Locale.setDefault(original);
+    }
+
+    assertThat(c.code()).matches("[0-9]{6}");
+    assertThat(verify(member, c, c.code())).isEqualTo(VerificationResult.VERIFIED);
   }
 
   @Test

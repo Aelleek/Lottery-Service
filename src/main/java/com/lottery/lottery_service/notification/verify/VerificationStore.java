@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -81,7 +82,7 @@ public class VerificationStore {
             + " WHERE member_id = ? AND state = 'ACTIVE'",
         memberId);
     UUID publicId = UUID.randomUUID();
-    String code = String.format("%06d", random.nextInt(1_000_000));
+    String code = String.format(Locale.ROOT, "%06d", random.nextInt(1_000_000));
     Instant expiresAt = now.plus(VALIDITY);
     jdbc.update(
         "INSERT INTO verification_challenge (public_id, member_id, target_hmac, target_ciphertext,"
