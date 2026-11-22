@@ -18,11 +18,14 @@ public enum OAuthProvider {
 
   /** e.g., "kakao" → KAKAO (대/소문자 무시) */
   public static Optional<OAuthProvider> fromRegistrationId(String id) {
-    if (id == null) return Optional.empty();
+    if (id == null) {
+      return Optional.empty();
+    }
     String norm = id.toLowerCase(Locale.ROOT);
     return Arrays.stream(values()).filter(p -> p.registrationId.equals(norm)).findFirst();
   }
 
+  /** application.yml의 등록 키를 돌려준다. */
   public String registrationId() {
     return registrationId;
   }
