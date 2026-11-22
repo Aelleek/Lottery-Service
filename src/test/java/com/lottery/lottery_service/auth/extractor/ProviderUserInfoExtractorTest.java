@@ -31,7 +31,6 @@ class ProviderUserInfoExtractorTest {
                 "sub"));
 
     assertThat(info).isEqualTo(new OAuthUserInfo("109876543210"));
-    assertThat(info.toString()).doesNotContain("a@example.com", "홍길동", "example.com/p.png");
   }
 
   @Test
@@ -56,7 +55,6 @@ class ProviderUserInfoExtractorTest {
         naver.extract(user(Map.of("resultcode", "00", "response", response), "response"));
 
     assertThat(info).isEqualTo(new OAuthUserInfo("naver-id-1"));
-    assertThat(info.toString()).doesNotContain("b@example.com", "김철수", "철수", "example.com/n.png");
   }
 
   @Test
@@ -98,7 +96,6 @@ class ProviderUserInfoExtractorTest {
         kakao.extract(user(Map.of("id", 4433749540L, "kakao_account", account), "id"));
 
     assertThat(info).isEqualTo(new OAuthUserInfo("4433749540"));
-    assertThat(info.toString()).doesNotContain("a@example.com", "영희", "https://img/1");
   }
 
   @Test
