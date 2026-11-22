@@ -51,5 +51,15 @@ public record SecretProperties(
       keys.forEach((v, k) -> decoded.put(v, Base64.getDecoder().decode(k)));
       return new KeyRing(current, decoded);
     }
+
+    /** 키 값은 빼고 버전만 보인다. */
+    @Override
+    public String toString() {
+      return "Ring[current="
+          + current
+          + ", versions="
+          + (keys == null ? null : keys.keySet())
+          + "]";
+    }
   }
 }
