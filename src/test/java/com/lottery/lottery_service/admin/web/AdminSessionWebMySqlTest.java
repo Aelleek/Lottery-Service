@@ -23,6 +23,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Locale;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -272,7 +273,7 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
     while (wrong.equals(Totp.code(secret, step))
         || wrong.equals(Totp.code(secret, step + 1))
         || wrong.equals(Totp.code(secret, step - 1))) {
-      wrong = String.format("%06d", Integer.parseInt(wrong) + 1);
+      wrong = String.format(Locale.ROOT, "%06d", Integer.parseInt(wrong) + 1);
     }
     for (int i = 0; i < 4; i++) {
       mvc.perform(

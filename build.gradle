@@ -135,10 +135,12 @@ dependencies {
 }
 
 /* -------- Tests -------- */
-/* 테스트 JVM의 기본 시간대를 UTC도 서울도 아닌 곳(UTC+14)으로 둔다.
-   코드가 시간대를 빠뜨리고 서버 기본값에 기대면 CI(UTC)와 로컬(서울) 어디서든 테스트가 깨지게 한다. */
+/* 테스트 JVM의 기본 시간대를 UTC도 서울도 아닌 곳(UTC+14)으로, 기본 로캘을 0~9가 아닌 숫자를 쓰는 곳(ar-SA)으로 둔다.
+   코드가 시간대나 로캘을 빠뜨리고 서버 기본값에 기대면 CI(UTC)와 로컬(서울) 어디서든 테스트가 깨지게 한다. */
 tasks.withType(Test).configureEach {
   systemProperty 'user.timezone', 'Pacific/Kiritimati'
+  systemProperty 'user.language', 'ar'
+  systemProperty 'user.country', 'SA'
 }
 
 tasks.named('test') {

@@ -33,6 +33,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
@@ -412,7 +413,9 @@ class WithdrawalMySqlTest extends MySqlContainerSupport {
           if (rows.size() < WithdrawalJobHandler.RECORD_BATCH + 10) {
             rows.add(
                 new Object[] {
-                  member.subjectId(), ROUND, String.format("01 02 03 %02d %02d %02d", a, b, c)
+                  member.subjectId(),
+                  ROUND,
+                  String.format(Locale.ROOT, "01 02 03 %02d %02d %02d", a, b, c)
                 });
           }
         }
