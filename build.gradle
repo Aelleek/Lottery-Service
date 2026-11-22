@@ -26,6 +26,10 @@ repositories {
   mavenCentral()
 }
 
+/* Boot 3.5.16 BOM의 내장 Tomcat(10.1.55)보다 새 보안 패치가 나와 같은 10.1 줄의 최신으로 올린다(2026-11-22).
+   Boot를 올려 BOM이 이보다 새 Tomcat을 주면 이 줄을 지운다. */
+ext['tomcat.version'] = '10.1.62'
+
 /* -------- Spotless (format owner) -------- */
 spotless {
   java {
