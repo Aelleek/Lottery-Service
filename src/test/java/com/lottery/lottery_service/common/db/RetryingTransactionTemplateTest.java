@@ -10,7 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -32,7 +32,7 @@ class RetryingTransactionTemplateTest {
         tx.execute(
             s -> {
               if (calls.incrementAndGet() == 1) {
-                throw new DeadlockLoserDataAccessException("deadlock", null);
+                throw new PessimisticLockingFailureException("deadlock");
               }
               if (calls.get() == 2) {
                 throw new CannotAcquireLockException("timeout");
@@ -48,9 +48,9 @@ class RetryingTransactionTemplateTest {
                 tx.execute(
                     s -> {
                       calls.incrementAndGet();
-                      throw new DeadlockLoserDataAccessException("deadlock", null);
+                      throw new PessimisticLockingFailureException("deadlock");
                     }))
-        .isInstanceOf(DeadlockLoserDataAccessException.class);
+        .isInstanceOf(PessimisticLockingFailureException.class);
     assertThat(calls.get()).isEqualTo(1 + RetryingTransactionTemplate.MAX_RETRIES);
   }
 
@@ -75,9 +75,9 @@ class RetryingTransactionTemplateTest {
                 tx.execute(
                     s -> {
                       calls.incrementAndGet();
-                      throw new DeadlockLoserDataAccessException("deadlock", null);
+                      throw new PessimisticLockingFailureException("deadlock");
                     }))
-        .isInstanceOf(DeadlockLoserDataAccessException.class);
+        .isInstanceOf(PessimisticLockingFailureException.class);
     assertThat(calls.get()).isEqualTo(1);
   }
 }

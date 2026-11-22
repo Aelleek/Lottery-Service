@@ -111,8 +111,9 @@ class WorkerSchedulerTest {
   @DisplayName("job 실행은 처리할 job이 없을 때까지 이어서 처리한다")
   void runsUntilEmpty() {
     when(runner.runOnce())
-        .thenReturn(
-            Optional.of(JobState.SUCCEEDED), Optional.of(JobState.SUCCEEDED), Optional.empty());
+        .thenReturn(Optional.of(JobState.SUCCEEDED))
+        .thenReturn(Optional.of(JobState.SUCCEEDED))
+        .thenReturn(Optional.empty());
 
     scheduler().runJobs();
 

@@ -14,7 +14,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -82,9 +81,7 @@ public final class OpenApiContract implements ResultHandler {
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
-    Iterator<Map.Entry<String, JsonNode>> paths = spec.path("paths").fields();
-    while (paths.hasNext()) {
-      Map.Entry<String, JsonNode> path = paths.next();
+    for (Map.Entry<String, JsonNode> path : spec.path("paths").properties()) {
       Pattern pattern = Pattern.compile(path.getKey().replaceAll("\\{[^/]+}", "[^/]+"));
       routes.add(new Route(path.getKey(), pattern, path.getValue()));
     }

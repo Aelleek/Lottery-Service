@@ -30,7 +30,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -636,9 +635,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
         ((ObjectNode) parent).remove(required.asText());
         out.add(new Mutation("required", pointer + "/" + required.asText(), copy));
       }
-      Iterator<Map.Entry<String, JsonNode>> properties = schema.path("properties").fields();
-      while (properties.hasNext()) {
-        Map.Entry<String, JsonNode> property = properties.next();
+      for (Map.Entry<String, JsonNode> property : schema.path("properties").properties()) {
         mutate(spec, property.getValue(), root, pointer + "/" + property.getKey(), out);
       }
     }
