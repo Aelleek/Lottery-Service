@@ -1,10 +1,9 @@
 package com.lottery.lottery_service.auth;
 
-/** 제공자 무관 공통 사용자 정보 뷰. null 허용 필드는 제공자 동의/정책에 따라 비어 있을 수 있다. */
-public record OAuthUserInfo(
-    String providerUserId, // Kakao:id / Google:sub / Naver:response.id
-    String email, // null 가능
-    String name, // 풀네임(있으면)
-    String nickname, // 표시명(있으면)
-    String profileImageUrl // 프로필 이미지 URL(있으면)
-    ) {}
+/**
+ * 제공자 사용자 정보에서 로그인에 쓰는 값. 계정은 (제공자, 제공자 사용자 ID)로만 잇고(D-007) 이메일·이름·사진은 읽지 않는다.
+ *
+ * @param providerUserId Kakao {@code id}, Google {@code sub}, Naver {@code response.id}. 없으면 {@code
+ *     null}
+ */
+public record OAuthUserInfo(String providerUserId) {}

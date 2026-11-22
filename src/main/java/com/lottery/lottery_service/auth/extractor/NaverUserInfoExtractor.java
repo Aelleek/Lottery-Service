@@ -7,8 +7,8 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Component;
 
 /**
- * Naver 사용자 정보를 {@link OAuthUserInfo}로 바꾼다. Naver는 값을 {@code response} 아래에 담는다. 예: {@code
- * {"resultcode": "00", "response": {"id": "...", "email": "...", "nickname": "..."}}}
+ * Naver 사용자 정보에서 {@code response.id}를 {@link OAuthUserInfo}로 꺼낸다. 예: {@code {"resultcode": "00",
+ * "response": {"id": "..."}}}
  */
 @Component
 public class NaverUserInfoExtractor implements OAuth2UserInfoExtractor {
@@ -23,11 +23,6 @@ public class NaverUserInfoExtractor implements OAuth2UserInfoExtractor {
   public OAuthUserInfo extract(OAuth2User user) {
     Map<?, ?> response =
         user.getAttributes().get("response") instanceof Map<?, ?> map ? map : Map.of();
-    return new OAuthUserInfo(
-        Attributes.string(response, "id"),
-        Attributes.string(response, "email"),
-        Attributes.string(response, "name"),
-        Attributes.string(response, "nickname"),
-        Attributes.string(response, "profile_image"));
+    return new OAuthUserInfo(Attributes.string(response, "id"));
   }
 }

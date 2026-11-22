@@ -18,7 +18,7 @@ class ProviderUserInfoExtractorTest {
   private final KakaoUserInfoExtractor kakao = new KakaoUserInfoExtractor();
 
   @Test
-  @DisplayName("Google은 sub를 식별자로 쓰고 이름·이메일·사진을 읽는다")
+  @DisplayName("Google은 sub만 식별자로 꺼내고 이메일·이름·사진은 담지 않는다")
   void google() {
     OAuthUserInfo info =
         google.extract(
@@ -30,22 +30,20 @@ class ProviderUserInfoExtractorTest {
                     "picture", "https://example.com/p.png"),
                 "sub"));
 
-    assertThat(info)
-        .isEqualTo(
-            new OAuthUserInfo(
-                "109876543210", "a@example.com", "홍길동", "홍길동", "https://example.com/p.png"));
+    assertThat(info).isEqualTo(new OAuthUserInfo("109876543210"));
+    assertThat(info.toString()).doesNotContain("a@example.com", "홍길동", "example.com/p.png");
   }
 
   @Test
-  @DisplayName("Google에서 동의하지 않은 값은 null이다")
-  void googleMissingOptionalValues() {
-    OAuthUserInfo info = google.extract(user(Map.of("sub", "1", "email", ""), "sub"));
+  @DisplayName("Google 응답에 sub가 비어 있으면 식별자는 null이다")
+  void googleBlankSubGivesNullId() {
+    OAuthUserInfo info = google.extract(user(Map.of("sub", "", "email", "a@example.com"), "email"));
 
-    assertThat(info).isEqualTo(new OAuthUserInfo("1", null, null, null, null));
+    assertThat(info.providerUserId()).isNull();
   }
 
   @Test
-  @DisplayName("Naver는 response 아래 id를 식별자로 쓴다")
+  @DisplayName("Naver는 response 아래 id만 식별자로 꺼내고 이메일·이름·사진은 담지 않는다")
   void naver() {
     Map<String, Object> response =
         Map.of(
@@ -57,10 +55,8 @@ class ProviderUserInfoExtractorTest {
     OAuthUserInfo info =
         naver.extract(user(Map.of("resultcode", "00", "response", response), "response"));
 
-    assertThat(info)
-        .isEqualTo(
-            new OAuthUserInfo(
-                "naver-id-1", "b@example.com", "김철수", "철수", "https://example.com/n.png"));
+    assertThat(info).isEqualTo(new OAuthUserInfo("naver-id-1"));
+    assertThat(info.toString()).doesNotContain("b@example.com", "김철수", "철수", "example.com/n.png");
   }
 
   @Test
@@ -70,7 +66,6 @@ class ProviderUserInfoExtractorTest {
         naver.extract(user(Map.of("response", Map.of("nickname", "철수")), "response"));
 
     assertThat(info.providerUserId()).isNull();
-    assertThat(info.nickname()).isEqualTo("철수");
   }
 
   @Test
@@ -91,7 +86,7 @@ class ProviderUserInfoExtractorTest {
   }
 
   @Test
-  @DisplayName("Kakao는 숫자 id를 식별자로 읽고 중첩된 프로필 값을 꺼낸다")
+  @DisplayName("Kakao는 숫자 id를 식별자로 읽고 계정·프로필 값은 담지 않는다")
   void kakao() {
     Map<String, Object> account =
         Map.of(
@@ -102,11 +97,8 @@ class ProviderUserInfoExtractorTest {
     OAuthUserInfo info =
         kakao.extract(user(Map.of("id", 4433749540L, "kakao_account", account), "id"));
 
-    assertThat(info.providerUserId()).isEqualTo("4433749540");
-    assertThat(info.email()).isEqualTo("a@example.com");
-    assertThat(info.nickname()).isEqualTo("영희");
-    assertThat(info.name()).isNull();
-    assertThat(info.profileImageUrl()).isEqualTo("https://img/1");
+    assertThat(info).isEqualTo(new OAuthUserInfo("4433749540"));
+    assertThat(info.toString()).doesNotContain("a@example.com", "영희", "https://img/1");
   }
 
   @Test
@@ -116,7 +108,6 @@ class ProviderUserInfoExtractorTest {
         kakao.extract(user(Map.of("kakao_account", Map.of("email", "")), "kakao_account"));
 
     assertThat(info.providerUserId()).isNull();
-    assertThat(info.email()).isNull();
   }
 
   private static OAuth2User user(Map<String, Object> attrs, String nameKey) {
