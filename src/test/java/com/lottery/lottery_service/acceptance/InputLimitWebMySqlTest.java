@@ -73,6 +73,16 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
   private static final Set<String> REJECTED = Set.of("VALIDATION_FAILED", "CONDITION_INVALID");
   private static final List<String> NEAR_DIGITS =
       List.of("+1", "-1", " 1", "1 ", "\u0661", "\uff11", "9223372036854775808");
+  private static final List<String> NEAR_SIX_DIGITS =
+      List.of(
+          "+12345",
+          "-12345",
+          " 12345",
+          "12345 ",
+          "12345",
+          "1234567",
+          "\u0661\u0662\u0663\u0664\u0665\u0666",
+          "\uff11\uff12\uff13\uff14\uff15\uff16");
 
   /**
    * 입력 검사보다 앞선 규칙으로 403 {@code FORBIDDEN}이 맞는 필드. 명령 종류가 없거나 모르는 값이면 "허용되지 않은 명령"(06 2절)이고, 추천 회차는
@@ -579,11 +589,15 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
     }
     if (schema.has("pattern")) {
       out.add(replace(root, pointer, json.getNodeFactory().textNode("x-1"), "pattern"));
-      if ("^[0-9]+$".equals(schema.get("pattern").asText())) {
-        for (String digits : NEAR_DIGITS) {
-          out.add(
-              replace(root, pointer, json.getNodeFactory().textNode(digits), "pattern " + digits));
-        }
+      List<String> near =
+          switch (schema.get("pattern").asText()) {
+            case "^[0-9]+$" -> NEAR_DIGITS;
+            case "^[0-9]{6}$" -> NEAR_SIX_DIGITS;
+            default -> List.of();
+          };
+      for (String digits : near) {
+        out.add(
+            replace(root, pointer, json.getNodeFactory().textNode(digits), "pattern " + digits));
       }
     }
     if (schema.has("enum") && value.isTextual()) {
