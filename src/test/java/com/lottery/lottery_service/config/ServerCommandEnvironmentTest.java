@@ -5,9 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.EnvironmentPostProcessor;
 import org.springframework.boot.SpringApplication;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.io.support.SpringFactoriesLoader;
 
 class ServerCommandEnvironmentTest {
 
@@ -42,5 +44,17 @@ class ServerCommandEnvironmentTest {
     return Map.of(
         "web", env.getProperty("spring.main.web-application-type", ""),
         "worker", env.getProperty("lottery.worker.enabled", ""));
+  }
+
+  @Test
+  @DisplayName("Boot가 읽는 등록 파일(spring.factories)에서 이 후처리기를 찾는다. 키가 틀리면 명령 실행 때 웹 서버가 뜬다")
+  void registeredForBoot() {
+    assertThat(
+            SpringFactoriesLoader.forDefaultResourceLocation(getClass().getClassLoader())
+                .load(
+                    EnvironmentPostProcessor.class,
+                    null,
+                    SpringFactoriesLoader.FailureHandler.handleMessage((message, error) -> {})))
+        .anyMatch(ServerCommandEnvironment.class::isInstance);
   }
 }
