@@ -1,7 +1,5 @@
 package com.lottery.lottery_service.notification;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.db.DbValues;
 import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
@@ -16,6 +14,8 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 발송 슬롯 job(05 8.2절). 중복 키는 (회차, 슬롯 시각)이다. 결과가 아직 없으면 수집을 한 번 시도한 뒤 슬롯을 실행한다. 외부 호출이 있어 실행기의 트랜잭션
@@ -76,7 +76,7 @@ public class ResultSlotJobHandler implements JobHandler {
     int roundNo = payload.path("roundNo").asInt();
     ResultSlot slot =
         new ResultSlot(
-            Instant.parse(payload.path("at").asText()),
+            Instant.parse(payload.path("at").asString()),
             payload.path("alert").asBoolean(),
             payload.path("last").asBoolean());
     Instant drawAt =

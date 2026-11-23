@@ -6,8 +6,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
@@ -30,10 +28,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -44,6 +42,8 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * openapi의 operation별 {@code security}대로 주체 경계가 지켜지는지 모든 operation에 대해 확인한다(03 6절 주체와 권한). 주체 없음,
@@ -105,7 +105,7 @@ class SubjectBoundaryWebMySqlTest extends MySqlContainerSupport {
   void guestRejectedFromMemberOperations(CapturedOutput output) throws Exception {
     MvcResult issued = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
     Cookie guest = issued.getResponse().getCookie("__Host-lottery_guest");
-    String csrf = body(issued).get("csrfToken").asText();
+    String csrf = body(issued).get("csrfToken").asString();
     List<Operation> memberOnly =
         operations().stream()
             .filter(o -> !o.schemes().isEmpty() && !o.schemes().contains("GuestCredential"))
@@ -174,7 +174,7 @@ class SubjectBoundaryWebMySqlTest extends MySqlContainerSupport {
 
   private void expect(MvcResult result, Operation op, int status) throws Exception {
     assertThat(result.getResponse().getStatus()).as(op.toString()).isEqualTo(status);
-    assertThat(body(result).path("code").asText())
+    assertThat(body(result).path("code").asString())
         .as(op.toString())
         .isEqualTo(status == 401 ? "UNAUTHENTICATED" : "FORBIDDEN");
   }
@@ -242,7 +242,7 @@ class SubjectBoundaryWebMySqlTest extends MySqlContainerSupport {
         new Cookie(
             "__Host-lottery_session",
             setCookie.substring(setCookie.indexOf('=') + 1, setCookie.indexOf(';'))),
-        body(state).get("csrfToken").asText());
+        body(state).get("csrfToken").asString());
   }
 
   private JsonNode body(MvcResult result) throws Exception {

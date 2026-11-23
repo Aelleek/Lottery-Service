@@ -46,7 +46,7 @@ public enum ErrorCode {
   /** 410. 인증 코드가 만료됨. */
   CHALLENGE_EXPIRED(HttpStatus.GONE, false),
   /** 422. 넣을 번호·뺄 번호 조건이 범위를 벗어남. */
-  CONDITION_INVALID(HttpStatus.UNPROCESSABLE_ENTITY, false),
+  CONDITION_INVALID(HttpStatus.UNPROCESSABLE_CONTENT, false),
   /** 429. 같은 주체의 추천이 생성 중이거나 최소 간격 전. */
   GENERATION_BUSY(HttpStatus.TOO_MANY_REQUESTS, true),
   /** 429. 자격 발급이나 인증 발송 한도 초과. */

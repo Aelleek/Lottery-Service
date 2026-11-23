@@ -1,7 +1,5 @@
 package com.lottery.lottery_service.record;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.command.CommandOperationStore;
 import com.lottery.lottery_service.common.command.CommandResultLoader;
 import com.lottery.lottery_service.common.command.CommandStart;
@@ -28,6 +26,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 구매 등록 명령을 멱등하게 처리한다(06 1.1절, D-057). 처음 처리할 때 항목별 결과를 번호 없는 요약으로 멱등 기록에 남기고, 같은 토큰·키·본문이 다시 오면
@@ -167,7 +167,7 @@ public class PurchaseCommandService implements CommandResultLoader {
                 () -> new BusinessException(ErrorCode.RESPONSE_EXPIRED, "처음 결과를 찾을 수 없습니다."));
     try {
       return json.readValue(summary, PurchaseData.class);
-    } catch (JsonProcessingException e) {
+    } catch (JacksonException e) {
       throw new IllegalStateException("purchase summary is invalid", e);
     }
   }
@@ -182,7 +182,7 @@ public class PurchaseCommandService implements CommandResultLoader {
   private String write(PurchaseData data) {
     try {
       return json.writeValueAsString(data);
-    } catch (JsonProcessingException e) {
+    } catch (JacksonException e) {
       throw new IllegalStateException(e);
     }
   }

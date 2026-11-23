@@ -2,7 +2,7 @@
 [![License](https://img.shields.io/github/license/Aelleek/Lottery-Service)](LICENSE)
 [![Last Commit](https://img.shields.io/github/last-commit/Aelleek/Lottery-Service)](https://github.com/Aelleek/Lottery-Service/commits/main)
 ![Java](https://img.shields.io/badge/Java-17-red)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-brightgreen)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.x-brightgreen)
 ![Gradle](https://img.shields.io/badge/Gradle-8.x-02303A)
 ![DB](https://img.shields.io/badge/DB-MySQL%208.4-informational)
 ![Auth](https://img.shields.io/badge/Auth-OAuth2%20(Google%2FKakao%2FNaver)-yellow)
@@ -24,7 +24,7 @@
 
 ## 기술 스택
 
-- Java 17, Spring Boot 3, Gradle Wrapper
+- Java 17, Spring Boot 4, Gradle Wrapper
 - MySQL 8.4, Flyway(스키마), Spring Session JDBC(회원 세션), `JdbcTemplate`
 - Spring Security OAuth2 Client
 - 테스트: JUnit 5, H2(단위), Testcontainers MySQL(저장소·웹 통합)

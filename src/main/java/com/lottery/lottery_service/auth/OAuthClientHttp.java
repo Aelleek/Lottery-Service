@@ -2,6 +2,7 @@ package com.lottery.lottery_service.auth;
 
 import com.lottery.lottery_service.common.http.BoundedClientHttpRequestFactory;
 import java.time.Duration;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.converter.FormHttpMessageConverter;
 import org.springframework.security.oauth2.client.endpoint.OAuth2AccessTokenResponseClient;
@@ -32,21 +33,30 @@ public final class OAuthClientHttp {
       Duration timeout) {
     RestClientAuthorizationCodeTokenResponseClient client =
         new RestClientAuthorizationCodeTokenResponseClient();
+    OAuth2ErrorResponseErrorHandler errors = new OAuth2ErrorResponseErrorHandler();
     client.setRestClient(
         RestClient.builder()
             .requestFactory(requestFactory(timeout))
-            .messageConverters(
-                converters -> {
-                  converters.clear();
-                  converters.add(new FormHttpMessageConverter());
-                  converters.add(new OAuth2AccessTokenResponseHttpMessageConverter());
-                })
-            .defaultStatusHandler(new OAuth2ErrorResponseErrorHandler())
+            .configureMessageConverters(
+                converters ->
+                    converters
+                        .disableDefaults()
+                        .addCustomConverter(new FormHttpMessageConverter())
+                        .addCustomConverter(new OAuth2AccessTokenResponseHttpMessageConverter()))
+            .defaultStatusHandler(
+                HttpStatusCode::isError,
+                (request, response) ->
+                    errors.handleError(request.getURI(), request.getMethod(), response))
             .build());
     return client;
   }
 
-  /** 사용자 정보 조회기. 오류 처리는 Spring Security 기본값과 같다. */
+  /**
+   * 사용자 정보 조회기. 오류 처리는 Spring Security 기본값과 같다. Spring Security 7.2의 {@link
+   * DefaultOAuth2UserService}는 아직 {@code RestOperations}만 받아, Framework 7.1에서 제거 예정으로 표시된 {@link
+   * RestTemplate}을 여기서만 쓴다.
+   */
+  @SuppressWarnings("removal")
   public static DefaultOAuth2UserService userService(Duration timeout) {
     RestTemplate template = new RestTemplate(requestFactory(timeout));
     template.setErrorHandler(new OAuth2ErrorResponseErrorHandler());

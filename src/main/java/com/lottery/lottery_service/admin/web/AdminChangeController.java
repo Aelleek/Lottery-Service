@@ -1,7 +1,5 @@
 package com.lottery.lottery_service.admin.web;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.admin.AdminCommandRunner;
 import com.lottery.lottery_service.admin.AdminOperations;
 import com.lottery.lottery_service.auth.MemberPrincipal;
@@ -34,6 +32,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 관리자 변경 API(06 4절): 수동 다시 보내기, 격리 결과 승인, 결과 직접 등록. 권한·사유·감사는 {@link AdminOperations}가, 같은 요청 키의
@@ -99,9 +99,9 @@ public class AdminChangeController {
         .cacheControl(CacheControl.noStore())
         .body(
             Map.of(
-                "dispatchId", stored.path("dispatchId").asText(),
+                "dispatchId", stored.path("dispatchId").asString(),
                 "round", stored.path("round").asInt(),
-                "acceptedAt", stored.path("acceptedAt").asText()));
+                "acceptedAt", stored.path("acceptedAt").asString()));
   }
 
   /** 격리된 결과를 새 게시본으로 승인한다(ADMIN). 응답은 그 회차의 지금 결과다. */

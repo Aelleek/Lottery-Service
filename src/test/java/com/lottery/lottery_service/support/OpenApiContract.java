@@ -1,7 +1,6 @@
 package com.lottery.lottery_service.support;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.networknt.schema.InputFormat;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SchemaLocation;
@@ -22,8 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import org.springframework.boot.test.autoconfigure.web.servlet.MockMvcBuilderCustomizer;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.MockMvcBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -31,6 +30,8 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultHandler;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * MockMvc 응답이 openapi 계약({@code docs/contracts/openapi.yaml})과 맞는지 확인한다. {@code /api/v1} 응답마다 그
@@ -86,14 +87,14 @@ public final class OpenApiContract implements ResultHandler {
       routes.add(new Route(path.getKey(), pattern, path.getValue()));
     }
     for (JsonNode code : spec.at("/components/schemas/Error/properties/code/oneOf")) {
-      Matcher m = LEADING_STATUSES.matcher(code.path("description").asText());
+      Matcher m = LEADING_STATUSES.matcher(code.path("description").asString());
       Set<Integer> statuses = new HashSet<>();
       if (m.find()) {
         for (String value : m.group(1).split("·")) {
           statuses.add(Integer.parseInt(value));
         }
       }
-      codeStatuses.put(code.path("const").asText(), statuses);
+      codeStatuses.put(code.path("const").asString(), statuses);
     }
   }
 
@@ -135,7 +136,7 @@ public final class OpenApiContract implements ResultHandler {
     }
     JsonNode declared = spec.at(pointer);
     if (declared.has("$ref")) {
-      pointer = declared.get("$ref").asText().substring(1);
+      pointer = declared.get("$ref").asString().substring(1);
       declared = spec.at(pointer);
     }
     JsonNode content = declared.path("content").path("application/json");
@@ -169,10 +170,10 @@ public final class OpenApiContract implements ResultHandler {
   }
 
   private void checkErrorCode(JsonNode body, int status, String operation) {
-    if (status < 400 || !body.path("code").isTextual()) {
+    if (status < 400 || !body.path("code").isString()) {
       return;
     }
-    String code = body.path("code").asText();
+    String code = body.path("code").asString();
     Set<Integer> allowed = codeStatuses.getOrDefault(code, Set.of());
     boolean otherFormat = OTHER_FORMAT_ERRORS.equals(code) && status < 500;
     if (!allowed.contains(status) && !otherFormat) {
@@ -186,7 +187,7 @@ public final class OpenApiContract implements ResultHandler {
     JsonSchema schema =
         schemas.computeIfAbsent(
             schemaPointer, p -> factory.getSchema(SchemaLocation.of(BASE + "#" + p)));
-    Set<ValidationMessage> errors = schema.validate(json.readTree(body));
+    Set<ValidationMessage> errors = schema.validate(body, InputFormat.JSON);
     if (!errors.isEmpty()) {
       throw new AssertionError(
           label

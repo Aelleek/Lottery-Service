@@ -8,7 +8,7 @@ import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Tag;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -29,8 +29,8 @@ public abstract class MySqlContainerSupport {
       "connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
           + "&sessionVariables=transaction_isolation='READ-COMMITTED'";
 
-  protected static final MySQLContainer<?> MYSQL =
-      new MySQLContainer<>(IMAGE).withUsername("root").withPassword("test");
+  protected static final MySQLContainer MYSQL =
+      new MySQLContainer(IMAGE).withUsername("root").withPassword("test");
 
   static {
     MYSQL.start();

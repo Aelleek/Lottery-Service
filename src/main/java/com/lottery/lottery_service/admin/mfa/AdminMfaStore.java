@@ -3,9 +3,6 @@ package com.lottery.lottery_service.admin.mfa;
 import static com.lottery.lottery_service.common.db.DbValues.instant;
 import static com.lottery.lottery_service.common.db.DbValues.utc;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import com.lottery.lottery_service.common.job.JobStore;
@@ -29,6 +26,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 관리자 다중 요소 인증(D-047, 03 6.3). 인증 앱 비밀값은 {@code admin-mfa} 키로 암호화해 {@code admin_grant}에 둔다.
@@ -298,7 +298,7 @@ public class AdminMfaStore {
   private String write(List<String> hashes) {
     try {
       return json.writeValueAsString(hashes);
-    } catch (JsonProcessingException e) {
+    } catch (JacksonException e) {
       throw new IllegalStateException(e);
     }
   }
@@ -309,7 +309,7 @@ public class AdminMfaStore {
     }
     try {
       return json.readValue(value, STRINGS);
-    } catch (JsonProcessingException e) {
+    } catch (JacksonException e) {
       throw new IllegalStateException(e);
     }
   }

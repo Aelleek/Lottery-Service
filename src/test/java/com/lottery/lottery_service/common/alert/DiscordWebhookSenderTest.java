@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.support.SlowBodyServer;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -17,6 +16,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 
 /** Discord 웹훅 전송의 성공·실패 분기를 로컬 HTTP 서버로 확인한다. */
 class DiscordWebhookSenderTest {
@@ -56,7 +56,7 @@ class DiscordWebhookSenderTest {
         .satisfies(
             e -> {
               assertThat(e.getKey()).isEqualTo("content");
-              assertThat(e.getValue().asText()).isEqualTo("[결과 격리] 1200회 \"승인\" 필요");
+              assertThat(e.getValue().asString()).isEqualTo("[결과 격리] 1200회 \"승인\" 필요");
             });
   }
 

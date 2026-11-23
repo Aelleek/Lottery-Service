@@ -1,8 +1,5 @@
 package com.lottery.lottery_service.record;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
@@ -10,6 +7,9 @@ import com.lottery.lottery_service.common.job.JobStore;
 import java.time.Clock;
 import java.time.Instant;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 비회원 기록 가져오기 job(05 4절 4번). 사용자가 가져오기를 확인하면 {@link #start}로 등록하고, 묶음마다 마지막 원본 기록 ID를 진행 위치로 남긴다.
@@ -67,7 +67,7 @@ public class HistoryImportJobHandler implements JobHandler {
         return new JobStep.Done();
       }
       return new JobStep.Continue("{\"lastSourceId\":" + batch.lastSourceId() + "}");
-    } catch (JsonProcessingException e) {
+    } catch (JacksonException e) {
       throw new IllegalStateException("invalid job json", e);
     }
   }

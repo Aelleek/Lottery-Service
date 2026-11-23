@@ -1,7 +1,5 @@
 package com.lottery.lottery_service.result.source;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
@@ -12,6 +10,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 결과 수집 job(07 1절). 한 번 수집하고, 아직 게시되지 않았거나 직접 등록한 게시본을 결과 API가 아직 확인(같으면 확인 표시, 다르면 격리)하지 않았으면
@@ -71,7 +71,7 @@ public class ResultCollectJobHandler implements JobHandler {
   public JobStep step(JobLease lease, String cursorJson) {
     JsonNode payload = read(lease.payload());
     int roundNo = payload.path("roundNo").asInt();
-    Instant drawAt = Instant.parse(payload.path("drawAt").asText());
+    Instant drawAt = Instant.parse(payload.path("drawAt").asString());
     ParsedDraw parsed = null;
     if (needsCollection(roundNo)) {
       parsed = collector.collect(roundNo).parsed();

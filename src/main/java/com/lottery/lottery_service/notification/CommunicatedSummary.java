@@ -1,13 +1,13 @@
 package com.lottery.lottery_service.notification;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.jdbc.core.JdbcTemplate;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 결과 알림 한 건이 회원에게 알린 내용의 요약({@code delivery_message.communicated_summary}, 04 7절). 번호와 전화번호는 담지 않고,

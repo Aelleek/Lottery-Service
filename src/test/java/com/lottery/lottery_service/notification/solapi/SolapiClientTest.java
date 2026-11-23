@@ -3,8 +3,6 @@ package com.lottery.lottery_service.notification.solapi;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.notification.MessageLookup;
 import com.lottery.lottery_service.notification.ProviderStatus;
 import com.lottery.lottery_service.notification.SendOutcome;
@@ -28,6 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 가짜 SOLAPI 서버로 요청 형식과 응답 해석을 확인한다. 실제 발송 왕복은 출시 조건으로 따로 확인한다(08 3절). */
 @ExtendWith(OutputCaptureExtension.class)
@@ -97,14 +97,14 @@ class SolapiClientTest {
     assertThat(paths).containsExactly("/messages/v4/send-many/fast");
     assertThat(auth.get(0)).startsWith("HMAC-SHA256 apiKey=KEY, date=2026-11-08T15:30:00Z, salt=");
     JsonNode message = new ObjectMapper().readTree(requests.get(0)).path("messages").path(0);
-    assertThat(message.path("type").asText()).isEqualTo("ATA");
-    assertThat(message.path("from").asText()).isEqualTo("01000000000");
-    assertThat(message.path("kakaoOptions").path("pfId").asText()).isEqualTo("KA01PF000");
-    assertThat(message.path("kakaoOptions").path("templateId").asText()).isEqualTo("KA01TP1");
+    assertThat(message.path("type").asString()).isEqualTo("ATA");
+    assertThat(message.path("from").asString()).isEqualTo("01000000000");
+    assertThat(message.path("kakaoOptions").path("pfId").asString()).isEqualTo("KA01PF000");
+    assertThat(message.path("kakaoOptions").path("templateId").asString()).isEqualTo("KA01TP1");
     assertThat(message.path("kakaoOptions").path("disableSms").asBoolean()).isTrue();
-    assertThat(message.path("kakaoOptions").path("variables").path("#{round}").asText())
+    assertThat(message.path("kakaoOptions").path("variables").path("#{round}").asString())
         .isEqualTo("1200");
-    assertThat(message.path("customFields").path("requestKey").asText()).isEqualTo("ab12");
+    assertThat(message.path("customFields").path("requestKey").asString()).isEqualTo("ab12");
     assertThat(requests.get(0)).doesNotContain("SECRET");
   }
 

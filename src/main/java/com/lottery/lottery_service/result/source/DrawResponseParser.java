@@ -1,14 +1,15 @@
 package com.lottery.lottery_service.result.source;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.number.LottoNumber;
 import com.lottery.lottery_service.common.number.LottoNumbers;
 import com.lottery.lottery_service.result.domain.WinningNumbers;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * 동행복권 결과 응답({@code lt645/selectPstLt645InfoNew.do})을 검증해 읽는다(03 3절, 05 6절 2번). 응답의 {@code
@@ -21,7 +22,7 @@ public final class DrawResponseParser {
   public static final int MAX_BYTES = 32 * 1024;
 
   private static final ObjectMapper MAPPER =
-      new ObjectMapper().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+      JsonMapper.builder().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
 
   private DrawResponseParser() {}
 

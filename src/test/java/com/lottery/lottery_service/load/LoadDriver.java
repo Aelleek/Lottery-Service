@@ -1,7 +1,5 @@
 package com.lottery.lottery_service.load;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -18,6 +16,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 07 3절의 부하 시험을 돌리는 도구. 비회원 사용자 여럿이 정해진 초당 요청 수로 조회(현재 회차, 회차 결과, 내 기록)와 기본 추천 저장을 섞어 보내고, 종류별 p95와
@@ -183,7 +184,7 @@ public final class LoadDriver {
   public Report run() throws IOException, InterruptedException {
     JsonNode context = getJson(settings.baseUrl() + "/api/v1/lotto/context", null, null);
     int round = context.path("currentRound").asInt();
-    String scheduleVersion = context.path("scheduleVersion").asText();
+    String scheduleVersion = context.path("scheduleVersion").asString();
     if (!context.path("recommendationOpen").asBoolean()) {
       throw new IllegalStateException("recommendation is not open for round " + round);
     }
@@ -257,8 +258,8 @@ public final class LoadDriver {
     }
     String commandToken;
     try {
-      commandToken = JSON.readTree(token.body()).path("token").asText();
-    } catch (IOException e) {
+      commandToken = JSON.readTree(token.body()).path("token").asString();
+    } catch (JacksonException e) {
       return;
     }
     timed(
@@ -294,7 +295,7 @@ public final class LoadDriver {
             .map(c -> c.substring(0, c.indexOf(';') < 0 ? c.length() : c.indexOf(';')))
             .findFirst()
             .orElseThrow(() -> new IllegalStateException("no guest cookie"));
-    return new User(index, ip, cookie, JSON.readTree(response.body()).path("csrfToken").asText());
+    return new User(index, ip, cookie, JSON.readTree(response.body()).path("csrfToken").asString());
   }
 
   private String ipOf(int index) {

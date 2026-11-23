@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.admin.mfa.AdminMfaStore;
 import com.lottery.lottery_service.admin.mfa.Totp;
@@ -30,8 +29,8 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.session.Session;
@@ -41,6 +40,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import tools.jackson.databind.ObjectMapper;
 
 /** 회원 세션 안의 관리자 세션 시작, 관리자 API 앞 확인, 관리자 조회 API를 실제 보안 필터와 MySQL로 확인한다(2026-11-09 Q2). */
 @SpringBootTest
@@ -156,7 +156,7 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
     assertThat(renewed.getValue()).isNotEqualTo(login.session().getValue());
 
     String newCsrf =
-        json.readTree(started.getResponse().getContentAsString()).get("csrfToken").asText();
+        json.readTree(started.getResponse().getContentAsString()).get("csrfToken").asString();
     Login admitted = new Login(admin, renewed, newCsrf);
     mvc.perform(admitted.apply(get(probe))).andExpect(status().isNotFound());
     mvc.perform(
@@ -235,7 +235,7 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
         new Login(
             admin,
             renewed,
-            json.readTree(started.getResponse().getContentAsString()).get("csrfToken").asText());
+            json.readTree(started.getResponse().getContentAsString()).get("csrfToken").asString());
     String probe = "/api/v1/admin/rounds/1200/no-such-admin-api";
     mvc.perform(admitted.apply(get(probe))).andExpect(status().isNotFound());
     assertThat(sessionValue(renewed, "authenticatedAt")).isNotNull();
@@ -345,7 +345,8 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
   private Login login(MemberPrincipal member) throws Exception {
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
-    String csrf = json.readTree(state.getResponse().getContentAsString()).get("csrfToken").asText();
+    String csrf =
+        json.readTree(state.getResponse().getContentAsString()).get("csrfToken").asString();
     return new Login(member, sessionCookie(state.getResponse().getHeader("Set-Cookie")), csrf);
   }
 

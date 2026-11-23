@@ -141,7 +141,7 @@ public class ApiExceptionHandler {
       InvalidLottoNumberException e, HttpServletRequest request) {
     return respond(
         ErrorCode.VALIDATION_FAILED,
-        HttpStatus.UNPROCESSABLE_ENTITY,
+        HttpStatus.UNPROCESSABLE_CONTENT,
         NUMBERS_MESSAGE,
         false,
         e.paths().isEmpty()

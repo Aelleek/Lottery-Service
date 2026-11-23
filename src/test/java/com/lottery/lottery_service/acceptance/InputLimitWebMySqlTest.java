@@ -6,10 +6,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.admin.mfa.AdminMfaStore;
 import com.lottery.lottery_service.admin.mfa.Totp;
@@ -40,10 +36,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -55,6 +51,10 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * openapi 요청 스키마의 상한·형식(JSON 타입, 개수, 범위, 길이, 패턴, 허용 값, 중복, 필수)을 하나씩 어긴 본문을 회원 operation에 보내 서버가
@@ -235,7 +235,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
     Session session =
         new Session(
             cookie(started.getResponse().getHeader("Set-Cookie")),
-            body(started).get("csrfToken").asText());
+            body(started).get("csrfToken").asString());
     reauthenticate(session.cookie());
     String round = Integer.toString(adminRound);
     List<Target> targets =
@@ -421,7 +421,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
       }
       MvcResult result = mvc.perform(r).andReturn();
       if (result.getResponse().getStatus() != 404
-          || !"NOT_FOUND".equals(body(result).path("code").asText())) {
+          || !"NOT_FOUND".equals(body(result).path("code").asString())) {
         failures.add(
             path[0]
                 + " "
@@ -429,7 +429,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
                 + " -> "
                 + result.getResponse().getStatus()
                 + " "
-                + body(result).path("code").asText());
+                + body(result).path("code").asString());
       }
     }
     assertThat(failures).isEmpty();
@@ -439,7 +439,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
   private void expectValidation(MvcResult result, String label, List<String> failures)
       throws Exception {
     int status = result.getResponse().getStatus();
-    String code = body(result).path("code").asText();
+    String code = body(result).path("code").asString();
     if (status != 400 || !"VALIDATION_FAILED".equals(code)) {
       failures.add(label + " -> " + status + " " + code);
     }
@@ -487,7 +487,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
         authenticate.apply(target, r);
         MvcResult result = mvc.perform(r).andReturn();
         int status = result.getResponse().getStatus();
-        String code = body(result).path("code").asText();
+        String code = body(result).path("code").asString();
         boolean rejected = (status == 400 || status == 422) && REJECTED.contains(code);
         boolean forbidden =
             status == 403
@@ -571,9 +571,9 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
     }
     if (!pointer.isEmpty() && schema.has("type")) {
       JsonNode wrong =
-          "string".equals(schema.path("type").asText())
+          "string".equals(schema.path("type").asString())
               ? json.createObjectNode().put("x", 1)
-              : json.getNodeFactory().textNode("x");
+              : json.getNodeFactory().stringNode("x");
       out.add(replace(root, pointer, wrong, "type"));
     }
     if (schema.has("maxLength")) {
@@ -581,27 +581,27 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
           replace(
               root,
               pointer,
-              json.getNodeFactory().textNode("a".repeat(schema.get("maxLength").asInt() + 1)),
+              json.getNodeFactory().stringNode("a".repeat(schema.get("maxLength").asInt() + 1)),
               "maxLength"));
     }
     if (schema.path("minLength").asInt() > 0) {
-      out.add(replace(root, pointer, json.getNodeFactory().textNode(""), "minLength"));
+      out.add(replace(root, pointer, json.getNodeFactory().stringNode(""), "minLength"));
     }
     if (schema.has("pattern")) {
-      out.add(replace(root, pointer, json.getNodeFactory().textNode("x-1"), "pattern"));
+      out.add(replace(root, pointer, json.getNodeFactory().stringNode("x-1"), "pattern"));
       List<String> near =
-          switch (schema.get("pattern").asText()) {
+          switch (schema.get("pattern").asString()) {
             case "^[0-9]+$" -> NEAR_DIGITS;
             case "^[0-9]{6}$" -> NEAR_SIX_DIGITS;
             default -> List.of();
           };
       for (String digits : near) {
         out.add(
-            replace(root, pointer, json.getNodeFactory().textNode(digits), "pattern " + digits));
+            replace(root, pointer, json.getNodeFactory().stringNode(digits), "pattern " + digits));
       }
     }
-    if (schema.has("enum") && value.isTextual()) {
-      out.add(replace(root, pointer, json.getNodeFactory().textNode("NOT_IN_ENUM"), "enum"));
+    if (schema.has("enum") && value.isString()) {
+      out.add(replace(root, pointer, json.getNodeFactory().stringNode("NOT_IN_ENUM"), "enum"));
     }
     if (schema.has("minimum")) {
       out.add(
@@ -644,10 +644,10 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
     }
     if (value.isObject()) {
       for (JsonNode required : schema.path("required")) {
-        ObjectNode copy = root.deepCopy();
+        ObjectNode copy = (ObjectNode) root.deepCopy();
         JsonNode parent = pointer.isEmpty() ? copy : copy.at(pointer);
-        ((ObjectNode) parent).remove(required.asText());
-        out.add(new Mutation("required", pointer + "/" + required.asText(), copy));
+        ((ObjectNode) parent).remove(required.asString());
+        out.add(new Mutation("required", pointer + "/" + required.asString(), copy));
       }
       for (Map.Entry<String, JsonNode> property : schema.path("properties").properties()) {
         mutate(spec, property.getValue(), root, pointer + "/" + property.getKey(), out);
@@ -661,7 +661,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
       if (baseline.isEmpty() || baseline.get(0).isNumber()) {
         filled.add(i + 1);
       } else if (baseline.get(0).isObject()) {
-        ObjectNode item = baseline.get(0).deepCopy();
+        ObjectNode item = (ObjectNode) baseline.get(0).deepCopy();
         if (item.has("clientItemId")) {
           item.put("clientItemId", "item-" + i);
         }
@@ -709,7 +709,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
   private static JsonNode resolve(JsonNode spec, JsonNode schema) {
     JsonNode current = schema;
     while (current.has("$ref")) {
-      current = spec.at(current.get("$ref").asText().substring(1));
+      current = spec.at(current.get("$ref").asString().substring(1));
     }
     return current;
   }
@@ -736,7 +736,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
         new Cookie(
             "__Host-lottery_session",
             setCookie.substring(setCookie.indexOf('=') + 1, setCookie.indexOf(';'))),
-        body(state).get("csrfToken").asText());
+        body(state).get("csrfToken").asString());
   }
 
   private String commandToken(Session session, MemberPrincipal member, String operation)
@@ -755,7 +755,7 @@ class InputLimitWebMySqlTest extends MySqlContainerSupport {
                     .content(request))
             .andReturn();
     assertThat(issued.getResponse().getStatus()).as(operation).isEqualTo(200);
-    return body(issued).get("token").asText();
+    return body(issued).get("token").asString();
   }
 
   private JsonNode body(MvcResult result) throws Exception {

@@ -25,6 +25,7 @@ class ProductionConfigTest {
     assertThat(main.getProperty("server.servlet.session.cookie.http-only")).isEqualTo(true);
     assertThat(main.getProperty("server.servlet.session.cookie.same-site")).isEqualTo("Lax");
     assertThat(main.getProperty("server.servlet.session.timeout")).isEqualTo("14d");
+    assertThat(main.getProperty("spring.session.timeout")).isEqualTo("14d");
     assertThat(main.getProperty("spring.h2.console.enabled")).isNull();
     for (String provider : List.of("google", "kakao", "naver")) {
       assertThat(

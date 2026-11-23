@@ -1,7 +1,5 @@
 package com.lottery.lottery_service.common.alert;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
@@ -13,6 +11,8 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 운영자 알림 job을 보낸다(07 2절). 내용에는 회차, 건수, 원인 코드, 작업 종류만 넣고 전화번호, 번호 조합, 회원 ID, 토큰은 넣지 않는다. 같은 사건은 job
@@ -51,7 +51,7 @@ public class OperatorAlertJobHandler implements JobHandler {
   }
 
   String format(JsonNode payload) {
-    String kind = payload.path("kind").asText("UNKNOWN");
+    String kind = payload.path("kind").asString("UNKNOWN");
     return switch (kind) {
       case "JOB_DEAD" -> {
         List<Map<String, Object>> rows =
@@ -89,14 +89,14 @@ public class OperatorAlertJobHandler implements JobHandler {
       case "SLOT_FAILED" -> "[결과 알림 슬롯 실패] "
           + payload.path("roundNo").asInt()
           + "회"
-          + (payload.path("slotAt").isTextual()
+          + (payload.path("slotAt").isString()
               ? " "
                   + SLOT_TIME.format(
-                      SeoulTime.atSeoul(Instant.parse(payload.path("slotAt").asText())))
+                      SeoulTime.atSeoul(Instant.parse(payload.path("slotAt").asString())))
                   + " 슬롯"
               : "")
           + ", 원인 "
-          + payload.path("cause").asText()
+          + payload.path("cause").asString()
           + (payload.path("targets").isNumber()
               ? ", 대상 " + payload.path("targets").asLong() + "명"
               : payload.has("targets") ? ", 대상 수는 판정 뒤 정해짐" : "")
@@ -115,7 +115,7 @@ public class OperatorAlertJobHandler implements JobHandler {
           + "건."
           + (payload.path("last").asBoolean() ? " 자동 발송을 끝냈습니다. 관리자 화면의 다시 보내기로 보낼 수 있습니다." : "");
       case "BUDGET_MISMATCH" -> "[예산 카운터 불일치] "
-          + payload.path("month").asText()
+          + payload.path("month").asString()
           + ", 카운터 예약 "
           + won(payload.path("counterReserved").asLong())
           + "·사용 "
@@ -126,7 +126,7 @@ public class OperatorAlertJobHandler implements JobHandler {
           + won(payload.path("messageSpent").asLong())
           + ".";
       case "BUDGET_THRESHOLD" -> "[메시지 예산] "
-          + payload.path("month").asText()
+          + payload.path("month").asString()
           + " 사용 "
           + won(payload.path("used").asLong())
           + ", 남은 "
@@ -138,12 +138,12 @@ public class OperatorAlertJobHandler implements JobHandler {
       case "MESSAGE_UNKNOWN_LONG" -> "[접수 확인 장기화] 접수 여부를 모르는 메시지 "
           + payload.path("count").asLong()
           + "건이 24시간 넘게 풀리지 않았습니다. 가장 오래된 발송 시도 "
-          + payload.path("oldest").asText()
+          + payload.path("oldest").asString()
           + ".";
       case "MANUAL_RESEND" -> "[수동 다시 보내기] "
           + payload.path("roundNo").asInt()
           + "회, 실행 "
-          + payload.path("actor").asText()
+          + payload.path("actor").asString()
           + ", 접수 "
           + payload.path("sent").asLong()
           + "건, 실패 "
@@ -152,12 +152,12 @@ public class OperatorAlertJobHandler implements JobHandler {
           + payload.path("unknown").asLong()
           + "건.";
       case "DELETION_JOURNAL_FAILED" -> "[삭제 기록 저장 실패] 삭제 요청 "
-          + payload.path("requestId").asText()
+          + payload.path("requestId").asString()
           + ". 탈퇴 회원의 접근은 막혀 있고 개인 자료 삭제는 삭제 기록을 남길 때까지 멈춰 있습니다.";
       case "EXPIRY" -> "[인증서·연동 만료] "
-          + payload.path("name").asText()
+          + payload.path("name").asString()
           + " 만료일 "
-          + payload.path("expiresOn").asText()
+          + payload.path("expiresOn").asString()
           + (payload.path("daysLeft").asLong() < 0
               ? "(이미 만료됨)."
               : "(남은 " + payload.path("daysLeft").asLong() + "일).");
@@ -166,25 +166,25 @@ public class OperatorAlertJobHandler implements JobHandler {
           + "회 기록 "
           + payload.path("count").asLong()
           + "건을 보관 기간이 지나고 7일 넘게 지우지 못했습니다. 이유 "
-          + payload.path("reason").asText()
+          + payload.path("reason").asString()
           + ".";
       case "ADMIN_MFA_LOCKED" -> "[관리자 인증 잠금] "
-          + (payload.path("role").isTextual()
-              ? "역할 " + payload.path("role").asText() + " 관리자가 "
+          + (payload.path("role").isString()
+              ? "역할 " + payload.path("role").asString() + " 관리자가 "
               : "")
           + "인증 앱 코드를 5번 틀려 "
           + payload.path("lockMinutes").asLong()
           + "분 잠갔습니다. 본인이 아니면 그 관리자 권한을 회수하고 감사 기록을 확인하세요.";
       case "ADMIN_CHANGE" -> "[관리자 권한 변경] "
-          + adminAction(payload.path("action").asText())
-          + (payload.path("role").isTextual() ? "(역할 " + payload.path("role").asText() + ")" : "")
+          + adminAction(payload.path("action").asString())
+          + (payload.path("role").isString() ? "(역할 " + payload.path("role").asString() + ")" : "")
           + ". 본인이 한 변경이 아니면 감사 기록을 확인하세요.";
       case "SECURITY_SIGNAL" -> "[보안 신호] 10분 동안 "
-          + signalName(payload.path("signal").asText())
+          + signalName(payload.path("signal").asString())
           + " "
           + payload.path("count").asLong()
           + "건. 많이 걸린 경로 `"
-          + payload.path("topPath").asText()
+          + payload.path("topPath").asString()
           + "`.";
       default -> "[운영자 알림] " + kind;
     };
@@ -194,7 +194,7 @@ public class OperatorAlertJobHandler implements JobHandler {
     List<String> names = new java.util.ArrayList<>();
     changed.forEach(
         field -> {
-          switch (field.asText()) {
+          switch (field.asString()) {
             case "NUMBERS" -> names.add("당첨 번호");
             case "BONUS" -> names.add("보너스 번호");
             default -> names.add("기타");

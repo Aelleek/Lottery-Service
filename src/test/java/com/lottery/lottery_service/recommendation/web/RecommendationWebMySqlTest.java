@@ -8,8 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.GuestIssueRateLimiter;
 import com.lottery.lottery_service.auth.MemberPrincipal;
@@ -29,8 +27,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -38,6 +36,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 비회원이 자격·토큰을 받아 추천을 받고, 같은 요청을 다시 보내면 같은 결과를 받는지 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
@@ -80,7 +80,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
             ROUND, now.minus(Duration.ofDays(1)), now.plusSeconds(3600), now.plusSeconds(7200), 1));
     MvcResult issued = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
     Cookie guest = issued.getResponse().getCookie("__Host-lottery_guest");
-    String csrf = body(issued).get("csrfToken").asText();
+    String csrf = body(issued).get("csrfToken").asString();
     String command =
         body(mvc.perform(
                     post("/api/v1/command-tokens")
@@ -94,7 +94,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
                 .andExpect(status().isOk())
                 .andReturn())
             .get("token")
-            .asText();
+            .asString();
     String key = UUID.randomUUID().toString();
     String input =
         "{\"round\":" + ROUND + ",\"scheduleVersion\":\"1\",\"include\":[],\"exclude\":[]}";
@@ -128,7 +128,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
     assertThat(body(again).get("data")).isEqualTo(body(first).get("data"));
     assertThat(body(again).get("operationId")).isEqualTo(body(first).get("operationId"));
 
-    String operationId = body(first).get("operationId").asText();
+    String operationId = body(first).get("operationId").asString();
     MvcResult found =
         mvc.perform(get("/api/v1/operations/" + operationId).cookie(guest))
             .andExpect(status().isOk())
@@ -159,7 +159,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
         jdbc.queryForObject(
             "SELECT owner_subject_id FROM lotto_record WHERE public_id = UUID_TO_BIN(?)",
             Long.class,
-            body(first).get("data").get("sets").get(0).get("recordId").asText());
+            body(first).get("data").get("sets").get(0).get("recordId").asString());
     UUID guestPublicId =
         jdbc.queryForObject(
             "SELECT BIN_TO_UUID(public_id) FROM actor_subject WHERE id = ?",
@@ -226,7 +226,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
             accounts.login(OAuthProvider.GOOGLE, "rec-member"), OAuthProvider.GOOGLE);
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
-    String csrf = body(state).get("csrfToken").asText();
+    String csrf = body(state).get("csrfToken").asString();
     String setCookie = state.getResponse().getHeader("Set-Cookie");
     Cookie session =
         new Cookie(
@@ -245,7 +245,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
                                 + ",\"scheduleVersion\":\"1\"}"))
                 .andReturn())
             .get("token")
-            .asText();
+            .asString();
 
     mvc.perform(
             recommendation(session, member, csrf, command)
@@ -269,7 +269,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
                     "{\"round\":"
                         + round
                         + ",\"scheduleVersion\":\"1\",\"include\":[3],\"exclude\":[3]}"))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.code").value("CONDITION_INVALID"));
   }
 
@@ -287,7 +287,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
             .andExpect(status().isCreated())
             .andReturn();
     Cookie guest = issued.getResponse().getCookie("__Host-lottery_guest");
-    String csrf = body(issued).get("csrfToken").asText();
+    String csrf = body(issued).get("csrfToken").asString();
     for (int i = 1; i < GuestIssueRateLimiter.LIMIT; i++) {
       assertThat(guestLimiter.tryAcquire(ip)).isEmpty();
     }
@@ -310,7 +310,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
                 .andExpect(status().isOk())
                 .andReturn())
             .get("token")
-            .asText();
+            .asString();
     mvc.perform(
             post("/api/v1/lotto/recommendations")
                 .with(remote(ip))
@@ -341,7 +341,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
             accounts.login(OAuthProvider.GOOGLE, "rec-member-conflict"), OAuthProvider.GOOGLE);
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
-    String csrf = body(state).get("csrfToken").asText();
+    String csrf = body(state).get("csrfToken").asString();
     String setCookie = state.getResponse().getHeader("Set-Cookie");
     Cookie session =
         new Cookie(
@@ -378,7 +378,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
             accounts.login(OAuthProvider.GOOGLE, "rec-member-schedule"), OAuthProvider.GOOGLE);
     MvcResult otherState =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(other))).andReturn();
-    String otherCsrf = body(otherState).get("csrfToken").asText();
+    String otherCsrf = body(otherState).get("csrfToken").asString();
     String otherCookie = otherState.getResponse().getHeader("Set-Cookie");
     Cookie otherSession =
         new Cookie(
@@ -415,7 +415,7 @@ class RecommendationWebMySqlTest extends MySqlContainerSupport {
             .andExpect(status().isOk())
             .andReturn())
         .get("token")
-        .asText();
+        .asString();
   }
 
   private static org.springframework.test.web.servlet.request.RequestPostProcessor remote(

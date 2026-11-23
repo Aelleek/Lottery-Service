@@ -1,10 +1,5 @@
 package com.lottery.lottery_service.notification.solapi;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.lottery.lottery_service.common.http.BoundedHttp;
 import com.lottery.lottery_service.notification.ProviderStatus;
 import com.lottery.lottery_service.notification.SendOutcome;
@@ -23,6 +18,12 @@ import java.util.Iterator;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * SOLAPI 메시지 API 호출. DB 트랜잭션 밖에서 부른다. 연결·응답 시간 제한은 5초, 응답 본문은 256KB까지만 읽고, 주소 이동은 따르지 않는다(03 6.4).
@@ -47,7 +48,7 @@ public class SolapiClient {
   private final Clock clock;
   private final HttpClient http;
   private final ObjectMapper json =
-      new ObjectMapper().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+      JsonMapper.builder().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
 
   /** 설정과 시계로 만든다. */
   public SolapiClient(SolapiProperties properties, Clock clock) {
@@ -106,12 +107,12 @@ public class SolapiClient {
       return new SendOutcome.NotAccepted("HTTP_" + response.status());
     }
     JsonNode accepted = response.body().path("messageList").path(0);
-    if ("2000".equals(accepted.path("statusCode").asText())
-        && !accepted.path("messageId").asText().isEmpty()) {
-      return new SendOutcome.Accepted(accepted.path("messageId").asText());
+    if ("2000".equals(accepted.path("statusCode").asString())
+        && !accepted.path("messageId").asString().isEmpty()) {
+      return new SendOutcome.Accepted(accepted.path("messageId").asString());
     }
     JsonNode failed = response.body().path("failedMessageList").path(0);
-    String code = failed.path("statusCode").asText("");
+    String code = failed.path("statusCode").asString("");
     if (code.matches("1\\d{3}")) {
       return new SendOutcome.Rejected("SOLAPI_" + code);
     }
@@ -147,7 +148,7 @@ public class SolapiClient {
         return found;
       }
       JsonNode nextKey = body.path("nextKey");
-      String next = nextKey.isTextual() ? nextKey.asText() : "";
+      String next = nextKey.isString() ? nextKey.asString() : "";
       if (next.isEmpty() || next.equals(startKey)) {
         return found;
       }
@@ -165,18 +166,18 @@ public class SolapiClient {
   }
 
   private static ProviderStatus firstMatch(JsonNode list, String requestKey, String messageId) {
-    Iterator<JsonNode> messages = list.elements();
+    Iterator<JsonNode> messages = list.values().iterator();
     while (messages.hasNext()) {
       JsonNode message = messages.next();
       if (requestKey != null
-          && !requestKey.equals(message.path("customFields").path(REQUEST_KEY_FIELD).asText())) {
+          && !requestKey.equals(message.path("customFields").path(REQUEST_KEY_FIELD).asString())) {
         continue;
       }
-      if (messageId != null && !messageId.equals(message.path("messageId").asText())) {
+      if (messageId != null && !messageId.equals(message.path("messageId").asString())) {
         continue;
       }
-      String id = message.path("messageId").asText();
-      String code = message.path("statusCode").asText("");
+      String id = message.path("messageId").asString();
+      String code = message.path("statusCode").asString("");
       return switch (code) {
         case "4000" -> new ProviderStatus.Delivered(id);
         case "2000", "3000" -> new ProviderStatus.Accepted(id);
@@ -210,7 +211,7 @@ public class SolapiClient {
   private JsonNode parse(byte[] bytes) throws IOException {
     try {
       return json.readTree(bytes);
-    } catch (JsonProcessingException e) {
+    } catch (JacksonException e) {
       throw new IOException("solapi response is not json");
     }
   }

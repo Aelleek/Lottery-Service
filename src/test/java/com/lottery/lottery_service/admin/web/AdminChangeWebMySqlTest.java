@@ -8,8 +8,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.admin.mfa.AdminMfaStore;
 import com.lottery.lottery_service.admin.mfa.Totp;
@@ -34,8 +32,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.session.Session;
@@ -45,6 +43,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 관리자 변경 API(다시 보내기, 승인, 직접 등록)의 요청 키 재전송·재인증·감사를 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
@@ -102,7 +102,7 @@ class AdminChangeWebMySqlTest extends MySqlContainerSupport {
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(admin))).andReturn();
     session = cookie(state.getResponse().getHeader("Set-Cookie"));
-    csrf = body(state).get("csrfToken").asText();
+    csrf = body(state).get("csrfToken").asString();
     MvcResult started =
         mvc.perform(
                 as(post("/api/v1/admin/session"))
@@ -111,7 +111,7 @@ class AdminChangeWebMySqlTest extends MySqlContainerSupport {
             .andExpect(status().isOk())
             .andReturn();
     session = cookie(started.getResponse().getHeader("Set-Cookie"));
-    csrf = body(started).get("csrfToken").asText();
+    csrf = body(started).get("csrfToken").asString();
   }
 
   @Test
@@ -142,7 +142,7 @@ class AdminChangeWebMySqlTest extends MySqlContainerSupport {
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("RESULT_ALREADY_PUBLISHED"));
     mvc.perform(register(UUID.randomUUID().toString(), body.replace("\"bonus\":8", "\"bonus\":44")))
-        .andExpect(status().isUnprocessableEntity());
+        .andExpect(status().isUnprocessableContent());
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM admin_audit_event WHERE action = 'RESULT_MANUAL_REGISTER'"
@@ -210,8 +210,8 @@ class AdminChangeWebMySqlTest extends MySqlContainerSupport {
                 .andExpect(status().isAccepted())
                 .andReturn());
 
-    assertThat(again.get("dispatchId").asText()).isEqualTo(first.get("dispatchId").asText());
-    assertThat(again.get("acceptedAt").asText()).isEqualTo(first.get("acceptedAt").asText());
+    assertThat(again.get("dispatchId").asString()).isEqualTo(first.get("dispatchId").asString());
+    assertThat(again.get("acceptedAt").asString()).isEqualTo(first.get("acceptedAt").asString());
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM admin_audit_event WHERE action = 'NOTIFICATION_RESEND'",

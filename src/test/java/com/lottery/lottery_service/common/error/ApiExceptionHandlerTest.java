@@ -243,7 +243,7 @@ class ApiExceptionHandlerTest {
     MvcResult result =
         mockMvc
             .perform(get("/probe/numbers").param("values", "1,2,3,4,5,46"))
-            .andExpect(status().isUnprocessableEntity())
+            .andExpect(status().isUnprocessableContent())
             .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
             .andExpect(jsonPath("$.message").value(ApiExceptionHandler.NUMBERS_MESSAGE))
             .andReturn();

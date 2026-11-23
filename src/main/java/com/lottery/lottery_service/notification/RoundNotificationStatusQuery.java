@@ -2,8 +2,6 @@ package com.lottery.lottery_service.notification;
 
 import static com.lottery.lottery_service.common.db.DbValues.instant;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.error.BusinessException;
 import com.lottery.lottery_service.common.error.ErrorCode;
 import java.time.Clock;
@@ -16,6 +14,8 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 관리자 회차 알림 현황({@code GET /admin/rounds/{round}/notification-status})의 서버 부분(D-056). 슬롯별 결과는 발송 슬롯
@@ -115,7 +115,7 @@ public class RoundNotificationStatusQuery {
                   : "FAILED");
       slots.add(
           new Slot(
-              Instant.parse(payload.path("at").asText()),
+              Instant.parse(payload.path("at").asString()),
               "AUTO",
               outcome,
               finished && cause != null && CAUSE_CODES.contains(cause) ? cause : null,

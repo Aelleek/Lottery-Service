@@ -1,7 +1,5 @@
 package com.lottery.lottery_service.result.evaluate;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
@@ -9,6 +7,8 @@ import com.lottery.lottery_service.result.publish.ResultPublisher;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 게시본 판정 job. 기록을 묶음 단위로 판정하고 마지막 기록 ID를 진행 위치로 남긴다(05 7절 1번). */
 @Component

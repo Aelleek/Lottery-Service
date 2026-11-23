@@ -7,8 +7,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.ClaimResult;
 import com.lottery.lottery_service.account.GuestCredentialStore;
@@ -28,8 +26,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -37,6 +35,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 비회원 기록 가져오기 API의 오류 경로를 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
@@ -113,11 +113,11 @@ class GuestImportWebMySqlTest extends MySqlContainerSupport {
     String first =
         body(mine.start(claimId, key, token).andExpect(status().isAccepted()).andReturn())
             .path("operationId")
-            .asText();
+            .asString();
     String again =
         body(mine.start(claimId, key, token).andExpect(status().isAccepted()).andReturn())
             .path("operationId")
-            .asText();
+            .asString();
     assertThat(again).isEqualTo(first);
     mine.start(UUID.randomUUID().toString(), key, token)
         .andExpect(status().isConflict())
@@ -138,7 +138,7 @@ class GuestImportWebMySqlTest extends MySqlContainerSupport {
   private Client client(MemberPrincipal member) throws Exception {
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
-    String csrf = body(state).get("csrfToken").asText();
+    String csrf = body(state).get("csrfToken").asString();
     String setCookie = state.getResponse().getHeader("Set-Cookie");
     Cookie session =
         new Cookie(
@@ -173,7 +173,7 @@ class GuestImportWebMySqlTest extends MySqlContainerSupport {
               .andExpect(status().isOk())
               .andReturn())
           .get("token")
-          .asText();
+          .asString();
     }
 
     ResultActions start(String claimId, UUID key, String token) throws Exception {

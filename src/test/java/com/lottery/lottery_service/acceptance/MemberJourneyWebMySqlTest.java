@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.acceptance;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oauth2Login;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -8,8 +9,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.ClaimResult;
 import com.lottery.lottery_service.account.SubjectClaimStore;
@@ -35,8 +34,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -44,6 +43,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 회원 한 명의 회차 흐름을 웹 API로 끝까지 확인한다(08 2절 단계 10). 추천 → 구매 등록 → 마감 → 결과 게시 → 판정 → 결과·내역·즉시 확인. 결과 원천은
@@ -95,7 +96,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
         MemberPrincipal.of(accounts.login(OAuthProvider.KAKAO, "journey"), OAuthProvider.KAKAO);
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
-    csrf = body(state).get("csrfToken").asText();
+    csrf = body(state).get("csrfToken").asString();
     String setCookie = state.getResponse().getHeader("Set-Cookie");
     session =
         new Cookie(
@@ -164,14 +165,14 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
             .get("items");
     assertThat(items).hasSize(6);
     for (JsonNode item : items) {
-      assertThat(item.get("evaluation").get("state").asText()).isEqualTo("EVALUATED");
+      assertThat(item.get("evaluation").get("state").asString()).isEqualTo("EVALUATED");
       List<Integer> numbers = new ArrayList<>();
       item.get("numbers").forEach(n -> numbers.add(n.asInt()));
       if (numbers.equals(FOURTH)) {
         assertThat(item.get("purchased").asBoolean()).isTrue();
         assertThat(item.get("recommended").asBoolean()).isFalse();
         assertThat(item.get("evaluation").get("rank").asInt()).isEqualTo(4);
-        assertThat(item.get("evaluation").get("prizePerGame").asText()).isEqualTo("50000");
+        assertThat(item.get("evaluation").get("prizePerGame").asString()).isEqualTo("50000");
       } else if (numbers.equals(chosen)) {
         assertThat(item.get("purchased").asBoolean()).isTrue();
         assertThat(item.get("recommended").asBoolean()).isTrue();
@@ -192,6 +193,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
                 .contentType("application/json")
                 .content("{\"round\":" + ROUND + ",\"sets\":[" + FOURTH + "]}"))
         .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", containsString("no-store")))
         .andExpect(jsonPath("$.items[0].evaluation.rank").value(4))
         .andExpect(jsonPath("$.items[0].evaluation.prizePerGame").value("50000"));
   }
@@ -207,7 +209,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
             round, now.minus(Duration.ofDays(1)), now.plusSeconds(3600), now.plusSeconds(7200), 1));
     MvcResult issued = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
     Cookie guest = issued.getResponse().getCookie("__Host-lottery_guest");
-    String guestCsrf = body(issued).get("csrfToken").asText();
+    String guestCsrf = body(issued).get("csrfToken").asString();
     String guestToken =
         body(mvc.perform(
                     post("/api/v1/command-tokens")
@@ -221,7 +223,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
                 .andExpect(status().isOk())
                 .andReturn())
             .get("token")
-            .asText();
+            .asString();
     JsonNode sets =
         body(mvc.perform(
                     post("/api/v1/lotto/recommendations")
@@ -239,7 +241,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
             .get("data")
             .get("sets");
     List<String> guestRecords = new ArrayList<>();
-    sets.forEach(set -> guestRecords.add(set.get("recordId").asText()));
+    sets.forEach(set -> guestRecords.add(set.get("recordId").asString()));
     mvc.perform(
             get("/api/v1/guest/lotto/records")
                 .param("round", Integer.toString(round))
@@ -277,8 +279,8 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
             .get("items");
     assertThat(pending).hasSize(1);
     assertThat(pending.get(0).get("recordCount").asLong()).isEqualTo(5);
-    assertThat(pending.get(0).get("expiresAt").isTextual()).isTrue();
-    String claimId = pending.get(0).get("claimId").asText();
+    assertThat(pending.get(0).get("expiresAt").isString()).isTrue();
+    String claimId = pending.get(0).get("claimId").asString();
     assertThat(claimId)
         .isEqualTo(
             jdbc.queryForObject(
@@ -287,7 +289,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
                 guestSubject));
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
-    csrf = body(state).get("csrfToken").asText();
+    csrf = body(state).get("csrfToken").asString();
     String setCookie = state.getResponse().getHeader("Set-Cookie");
     session =
         new Cookie(
@@ -303,7 +305,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
                 .andExpect(status().isAccepted())
                 .andReturn())
             .get("operationId")
-            .asText();
+            .asString();
     mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(member)))
         .andExpect(status().isOk())
         .andExpect(header().string("Cache-Control", "no-store"))
@@ -341,7 +343,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
     for (JsonNode item : items) {
       assertThat(item.get("recommended").asBoolean()).isTrue();
       assertThat(item.get("purchased").asBoolean()).isFalse();
-      assertThat(item.get("evaluation").get("state").asText()).isEqualTo("EVALUATED");
+      assertThat(item.get("evaluation").get("state").asString()).isEqualTo("EVALUATED");
     }
   }
 
@@ -358,7 +360,7 @@ class MemberJourneyWebMySqlTest extends MySqlContainerSupport {
                 .andExpect(status().isOk())
                 .andReturn())
             .get("token")
-            .asText();
+            .asString();
     return request
         .cookie(session)
         .with(oauth2Login().oauth2User(member))

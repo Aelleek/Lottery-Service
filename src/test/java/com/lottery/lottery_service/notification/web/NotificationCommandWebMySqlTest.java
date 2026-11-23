@@ -8,8 +8,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
@@ -23,8 +21,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -33,6 +31,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 인증 코드 확인과 알림 수신 동의·철회 API를 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
@@ -86,21 +86,23 @@ class NotificationCommandWebMySqlTest extends MySqlContainerSupport {
             mine.verify(challenge.publicId(), challenge.code(), UUID.randomUUID())
                 .andExpect(status().isOk())
                 .andReturn());
-    String version = verified.path("data").path("verifiedContactVersion").asText();
-    assertThat(verified.path("status").asText()).isEqualTo("SUCCEEDED");
+    String version = verified.path("data").path("verifiedContactVersion").asString();
+    assertThat(verified.path("status").asString()).isEqualTo("SUCCEEDED");
 
     UUID key = UUID.randomUUID();
     String token = mine.token("CHANGE_PREFERENCE");
     JsonNode granted =
         body(mine.change(true, version, key, token).andExpect(status().isOk()).andReturn());
     assertThat(granted.path("data").path("enabled").asBoolean()).isTrue();
-    assertThat(granted.path("data").path("maskedPhoneNumber").asText()).isEqualTo("010-****-5678");
-    assertThat(granted.path("data").path("policyVersion").asText()).isEqualTo("2026-11");
+    assertThat(granted.path("data").path("maskedPhoneNumber").asString())
+        .isEqualTo("010-****-5678");
+    assertThat(granted.path("data").path("policyVersion").asString()).isEqualTo("2026-11");
     JsonNode replay =
         body(mine.change(true, version, key, token).andExpect(status().isOk()).andReturn());
-    assertThat(replay.path("operationId").asText()).isEqualTo(granted.path("operationId").asText());
+    assertThat(replay.path("operationId").asString())
+        .isEqualTo(granted.path("operationId").asString());
     mvc.perform(
-            get("/api/v1/operations/" + granted.path("operationId").asText())
+            get("/api/v1/operations/" + granted.path("operationId").asString())
                 .with(oauth2Login().oauth2User(member)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("SUCCEEDED"))
@@ -127,7 +129,7 @@ class NotificationCommandWebMySqlTest extends MySqlContainerSupport {
                 String.class,
                 staleKey.toString()))
         .isEqualTo("FAILED:CONTACT_CHANGED");
-    String current = granted.path("data").path("version").asText();
+    String current = granted.path("data").path("version").asString();
     JsonNode withdrawn =
         body(mine.change(false, current, UUID.randomUUID()).andExpect(status().isOk()).andReturn());
     assertThat(withdrawn.path("data").path("enabled").asBoolean()).isFalse();
@@ -229,7 +231,7 @@ class NotificationCommandWebMySqlTest extends MySqlContainerSupport {
                 .andReturn())
             .path("data")
             .path("verifiedContactVersion")
-            .asText();
+            .asString();
 
     UUID key = UUID.randomUUID();
     String token = mine.token("CHANGE_PREFERENCE");
@@ -262,7 +264,7 @@ class NotificationCommandWebMySqlTest extends MySqlContainerSupport {
   private Client client(MemberPrincipal member) throws Exception {
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
-    String csrf = body(state).get("csrfToken").asText();
+    String csrf = body(state).get("csrfToken").asString();
     String setCookie = state.getResponse().getHeader("Set-Cookie");
     Cookie session =
         new Cookie(
@@ -297,7 +299,7 @@ class NotificationCommandWebMySqlTest extends MySqlContainerSupport {
               .andExpect(status().isOk())
               .andReturn())
           .get("token")
-          .asText();
+          .asString();
     }
 
     org.springframework.test.web.servlet.ResultActions verify(UUID challenge, String code, UUID key)

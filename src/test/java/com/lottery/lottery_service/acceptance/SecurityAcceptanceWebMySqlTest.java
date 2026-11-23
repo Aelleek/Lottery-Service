@@ -8,8 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
@@ -29,16 +27,18 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 보안 수용 시나리오(08 5절 T58~T61)를 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
@@ -142,7 +142,7 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
     MvcResult g1 = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
     MvcResult g2 = mvc.perform(post("/api/v1/guest-credentials")).andReturn();
     Cookie guest1 = g1.getResponse().getCookie("__Host-lottery_guest");
-    String tokenOfGuest2 = body(g2).get("csrfToken").asText();
+    String tokenOfGuest2 = body(g2).get("csrfToken").asString();
     MemberPrincipal a = member("t59-a");
     MemberPrincipal b = member("t59-b");
     Session sessionA = session(a);
@@ -361,7 +361,7 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
         new Cookie(
             "__Host-lottery_session",
             setCookie.substring(setCookie.indexOf('=') + 1, setCookie.indexOf(';'))),
-        body(state).get("csrfToken").asText());
+        body(state).get("csrfToken").asString());
   }
 
   private String commandToken(Session session, MemberPrincipal member, String operation)
@@ -376,7 +376,7 @@ class SecurityAcceptanceWebMySqlTest extends MySqlContainerSupport {
             .andExpect(status().isOk())
             .andReturn())
         .get("token")
-        .asText();
+        .asString();
   }
 
   private JsonNode body(MvcResult result) throws Exception {

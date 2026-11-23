@@ -9,7 +9,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
@@ -24,8 +23,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.session.Session;
@@ -34,6 +33,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import tools.jackson.databind.ObjectMapper;
 
 /** 탈퇴 API가 최근 재인증 없이는 받지 않는지 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
@@ -72,7 +72,8 @@ class AccountWebMySqlTest extends MySqlContainerSupport {
         MemberPrincipal.of(accounts.login(OAuthProvider.NAVER, "leaver"), OAuthProvider.NAVER);
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
-    String csrf = json.readTree(state.getResponse().getContentAsString()).get("csrfToken").asText();
+    String csrf =
+        json.readTree(state.getResponse().getContentAsString()).get("csrfToken").asString();
     String setCookie = state.getResponse().getHeader("Set-Cookie");
     Cookie session =
         new Cookie(
@@ -91,7 +92,7 @@ class AccountWebMySqlTest extends MySqlContainerSupport {
                     .getResponse()
                     .getContentAsString())
             .get("token")
-            .asText();
+            .asString();
 
     mvc.perform(
             delete("/api/v1/me/account")
@@ -115,7 +116,8 @@ class AccountWebMySqlTest extends MySqlContainerSupport {
         MemberPrincipal.of(accounts.login(OAuthProvider.NAVER, "leaver-ok"), OAuthProvider.NAVER);
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
-    String csrf = json.readTree(state.getResponse().getContentAsString()).get("csrfToken").asText();
+    String csrf =
+        json.readTree(state.getResponse().getContentAsString()).get("csrfToken").asString();
     String setCookie = state.getResponse().getHeader("Set-Cookie");
     String cookieValue = setCookie.substring(setCookie.indexOf('=') + 1, setCookie.indexOf(';'));
     Cookie session = new Cookie("__Host-lottery_session", cookieValue);
@@ -138,7 +140,7 @@ class AccountWebMySqlTest extends MySqlContainerSupport {
                     .getResponse()
                     .getContentAsString())
             .get("token")
-            .asText();
+            .asString();
 
     mvc.perform(
             delete("/api/v1/me/account")
@@ -173,7 +175,8 @@ class AccountWebMySqlTest extends MySqlContainerSupport {
             accounts.login(OAuthProvider.KAKAO, providerUserId), OAuthProvider.KAKAO);
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
-    String csrf = json.readTree(state.getResponse().getContentAsString()).get("csrfToken").asText();
+    String csrf =
+        json.readTree(state.getResponse().getContentAsString()).get("csrfToken").asString();
     String setCookie = state.getResponse().getHeader("Set-Cookie");
     String cookieValue = setCookie.substring(setCookie.indexOf('=') + 1, setCookie.indexOf(';'));
     Cookie session = new Cookie("__Host-lottery_session", cookieValue);
@@ -202,7 +205,7 @@ class AccountWebMySqlTest extends MySqlContainerSupport {
                     .getResponse()
                     .getContentAsString())
             .get("token")
-            .asText();
+            .asString();
 
     mvc.perform(
             delete("/api/v1/me/account")

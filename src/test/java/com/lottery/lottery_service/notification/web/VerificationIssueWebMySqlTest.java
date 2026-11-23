@@ -8,8 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
@@ -34,11 +32,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
@@ -50,6 +48,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 인증 코드 발급 API를 실제 보안 필터, MySQL, 가짜 발송기로 확인한다(06 1절, 02 6.4·6.5절, 05 8.8절). */
 @SpringBootTest
@@ -159,10 +159,10 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andReturn());
-    assertThat(issued.path("status").asText()).isEqualTo("SUCCEEDED");
-    UUID challenge = UUID.fromString(issued.path("data").path("challengeId").asText());
-    Instant expiresAt = Instant.parse(issued.path("data").path("expiresAt").asText());
-    Instant resendAt = Instant.parse(issued.path("data").path("resendAt").asText());
+    assertThat(issued.path("status").asString()).isEqualTo("SUCCEEDED");
+    UUID challenge = UUID.fromString(issued.path("data").path("challengeId").asString());
+    Instant expiresAt = Instant.parse(issued.path("data").path("expiresAt").asString());
+    Instant resendAt = Instant.parse(issued.path("data").path("resendAt").asString());
     assertThat(Duration.between(resendAt, expiresAt)).isEqualTo(Duration.ofMinutes(4));
     assertThat(sender.codes).hasSize(1);
     assertThat(sender.codes.get(0)).matches("[0-9]{6}");
@@ -185,8 +185,9 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
 
     JsonNode replay =
         body(mine.request("+821011112222", "0", key, token).andExpect(status().isOk()).andReturn());
-    assertThat(replay.path("operationId").asText()).isEqualTo(issued.path("operationId").asText());
-    assertThat(replay.path("data").path("challengeId").asText()).isEqualTo(challenge.toString());
+    assertThat(replay.path("operationId").asString())
+        .isEqualTo(issued.path("operationId").asString());
+    assertThat(replay.path("data").path("challengeId").asString()).isEqualTo(challenge.toString());
     assertThat(sender.codes).hasSize(1);
     setReauthenticatedAt(mine, Instant.now().minus(Duration.ofMinutes(6)));
     mine.request("+821011112222", "0", key, token)
@@ -202,14 +203,14 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
 
     JsonNode polled =
         body(
-            mine.poll(issued.path("operationId").asText())
+            mine.poll(issued.path("operationId").asString())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.data.challengeId").value(challenge.toString()))
                 .andReturn());
-    Instant polledExpires = Instant.parse(polled.path("data").path("expiresAt").asText());
+    Instant polledExpires = Instant.parse(polled.path("data").path("expiresAt").asString());
     assertThat(Duration.between(expiresAt, polledExpires).abs()).isLessThan(Duration.ofMillis(1));
-    assertThat(Instant.parse(polled.path("data").path("resendAt").asText()))
+    assertThat(Instant.parse(polled.path("data").path("resendAt").asString()))
         .isEqualTo(polledExpires.minus(Duration.ofMinutes(4)));
 
     JsonNode verified =
@@ -218,11 +219,11 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.verifiedContactVersion").value("0"))
                 .andReturn());
-    mine.poll(verified.path("operationId").asText())
+    mine.poll(verified.path("operationId").asString())
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.verifiedContactVersion").value("0"));
     client("someone-else")
-        .poll(verified.path("operationId").asText())
+        .poll(verified.path("operationId").asString())
         .andExpect(status().isNotFound());
   }
 
@@ -396,7 +397,7 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
             accounts.login(OAuthProvider.KAKAO, providerUserId), OAuthProvider.KAKAO);
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
-    String csrf = body(state).get("csrfToken").asText();
+    String csrf = body(state).get("csrfToken").asString();
     String setCookie = state.getResponse().getHeader("Set-Cookie");
     Cookie session =
         new Cookie(
@@ -457,7 +458,7 @@ class VerificationIssueWebMySqlTest extends MySqlContainerSupport {
               .andExpect(status().isOk())
               .andReturn())
           .get("token")
-          .asText();
+          .asString();
     }
 
     ResultActions request(String phone, String version, UUID key) throws Exception {

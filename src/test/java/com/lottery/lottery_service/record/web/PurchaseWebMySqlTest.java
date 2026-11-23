@@ -7,8 +7,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
@@ -24,13 +22,15 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 회원 구매 등록 API와 명령 조회를 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
@@ -76,7 +76,7 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
 
     MvcResult state =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(member))).andReturn();
-    String csrf = body(state).get("csrfToken").asText();
+    String csrf = body(state).get("csrfToken").asString();
     String setCookie = state.getResponse().getHeader("Set-Cookie");
     Cookie session =
         new Cookie(
@@ -93,7 +93,7 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
                 .andExpect(status().isOk())
                 .andReturn())
             .get("token")
-            .asText();
+            .asString();
 
     MvcResult registered =
         mvc.perform(
@@ -114,7 +114,7 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
             .andExpect(jsonPath("$.data.items[0].outcome").value("CREATED"))
             .andExpect(jsonPath("$.data.lateRegistration").value(false))
             .andReturn();
-    String operationId = body(registered).get("operationId").asText();
+    String operationId = body(registered).get("operationId").asString();
 
     mvc.perform(
             post("/api/v1/me/lotto/purchases")
@@ -130,7 +130,7 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
                         + ",\"entries\":[{\"clientItemId\":\"a\",\"numbers\":[1,2,3,4,5,6]},"
                         + "{\"clientItemId\":\"b\",\"numbers\":[1,2,3,4,5,46]},"
                         + "{\"clientItemId\":\"c\",\"numbers\":[1,1,2,3,4,5]}]}"))
-        .andExpect(status().isUnprocessableEntity())
+        .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
         .andExpect(jsonPath("$.details.fieldErrors.length()").value(2))
         .andExpect(jsonPath("$.details.fieldErrors[0].path").value("entries[1].numbers"))
@@ -223,7 +223,7 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
     mvc.perform(get("/api/v1/operations/" + operationId).with(oauth2Login().oauth2User(other)))
         .andExpect(status().isNotFound());
 
-    String recordId = body(registered).get("data").get("items").get(0).get("recordId").asText();
+    String recordId = body(registered).get("data").get("items").get(0).get("recordId").asString();
     String cancelToken =
         body(mvc.perform(
                     post("/api/v1/command-tokens")
@@ -234,7 +234,7 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
                         .content("{\"operation\":\"CANCEL_PURCHASE\"}"))
                 .andReturn())
             .get("token")
-            .asText();
+            .asString();
     mvc.perform(
             post("/api/v1/me/lotto/records/" + recordId + "/cancel-purchase")
                 .cookie(session)
@@ -271,7 +271,7 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
 
     MvcResult otherState =
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(other))).andReturn();
-    String otherCsrf = body(otherState).get("csrfToken").asText();
+    String otherCsrf = body(otherState).get("csrfToken").asString();
     String otherCookie = otherState.getResponse().getHeader("Set-Cookie");
     Cookie otherSession =
         new Cookie(
@@ -287,8 +287,9 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
                         .content("{\"operation\":\"CANCEL_PURCHASE\"}"))
                 .andReturn())
             .get("token")
-            .asText();
-    String secondRecord = body(registered).get("data").get("items").get(1).get("recordId").asText();
+            .asString();
+    String secondRecord =
+        body(registered).get("data").get("items").get(1).get("recordId").asString();
     mvc.perform(
             post("/api/v1/me/lotto/records/" + secondRecord + "/cancel-purchase")
                 .cookie(otherSession)
@@ -320,7 +321,7 @@ class PurchaseWebMySqlTest extends MySqlContainerSupport {
     mvc.perform(
             post("/api/v1/me/lotto/purchases")
                 .cookie(guest.getResponse().getCookie("__Host-lottery_guest"))
-                .header("X-CSRF-TOKEN", body(guest).get("csrfToken").asText())
+                .header("X-CSRF-TOKEN", body(guest).get("csrfToken").asString())
                 .header("X-Command-Token", command)
                 .header("Idempotency-Key", UUID.randomUUID().toString())
                 .contentType("application/json")

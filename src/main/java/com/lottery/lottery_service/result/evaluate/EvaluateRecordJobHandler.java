@@ -1,11 +1,11 @@
 package com.lottery.lottery_service.result.evaluate;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
 import com.lottery.lottery_service.record.PurchaseStore;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /** 기록 하나의 판정 job. 늦은 등록, 가져오기, 기록 변경 뒤에 현재 게시본으로 판정한다(05 7절 4번). */
 @Component

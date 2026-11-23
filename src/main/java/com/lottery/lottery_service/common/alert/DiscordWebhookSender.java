@@ -1,6 +1,5 @@
 package com.lottery.lottery_service.common.alert;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.http.BoundedHttp;
 import java.io.IOException;
 import java.net.URI;
@@ -10,6 +9,7 @@ import java.time.Duration;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Discord 웹훅으로 운영자 알림을 보낸다. 주소는 {@code config/integrations.yml}의 {@code

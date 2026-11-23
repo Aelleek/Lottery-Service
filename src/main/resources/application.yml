@@ -66,6 +66,8 @@ spring:
 
   # 회원 세션은 DB(SPRING_SESSION)에 둔다(C-10). 테이블은 Flyway V1이 만든다.
   session:
+    # 내장 서버가 없는 실행에서도 같은 만료가 되게 server.servlet.session.timeout과 같은 값을 둔다(Boot 4).
+    timeout: 14d
     jdbc:
       initialize-schema: never
 

@@ -9,8 +9,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.account.AccountStore;
 import com.lottery.lottery_service.account.MemberLogin;
 import com.lottery.lottery_service.account.withdrawal.RestoreReplay;
@@ -26,8 +24,8 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -35,6 +33,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 비회원 자격·세션 조회·CSRF·로그아웃을 실제 보안 필터와 MySQL로 확인한다. */
 @SpringBootTest
@@ -68,6 +68,7 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
     registry.add("server.servlet.session.cookie.http-only", () -> "true");
     registry.add("server.servlet.session.cookie.same-site", () -> "Lax");
     registry.add("server.servlet.session.timeout", () -> "14d");
+    registry.add("spring.session.timeout", () -> "14d");
   }
 
   @Test
@@ -83,7 +84,7 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
         .startsWith(GUEST_COOKIE + "=")
         .contains("Path=/", "Secure", "HttpOnly", "SameSite=Lax");
     Cookie guest = issued.getResponse().getCookie(GUEST_COOKIE);
-    String token = body(issued).get("csrfToken").asText();
+    String token = body(issued).get("csrfToken").asString();
 
     mvc.perform(get("/api/v1/session").cookie(guest))
         .andExpect(status().isOk())
@@ -169,7 +170,7 @@ class AuthWebMySqlTest extends MySqlContainerSupport {
         mvc.perform(get("/api/v1/session").with(oauth2Login().oauth2User(principal)))
             .andExpect(jsonPath("$.kind").value("MEMBER"))
             .andReturn();
-    String token = body(state).get("csrfToken").asText();
+    String token = body(state).get("csrfToken").asString();
     String setCookie = state.getResponse().getHeader("Set-Cookie");
     assertThat(setCookie)
         .startsWith("__Host-lottery_session=")

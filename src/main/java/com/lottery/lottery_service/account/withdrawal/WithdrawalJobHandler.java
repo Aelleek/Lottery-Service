@@ -2,7 +2,6 @@ package com.lottery.lottery_service.account.withdrawal;
 
 import static com.lottery.lottery_service.common.db.DbValues.uuid;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lottery.lottery_service.common.job.JobHandler;
 import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
@@ -17,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 탈퇴 삭제 job(04 6.2절 2~10번). 단계를 차례로 하나씩 처리하고 진행 위치({@code phase})와 귀속 비회원 주체 목록을 job에 남긴다(귀속 행은 중간
