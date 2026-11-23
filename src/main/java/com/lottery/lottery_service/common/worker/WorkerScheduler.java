@@ -230,8 +230,8 @@ public class WorkerScheduler {
   }
 
   /**
-   * 10분 동안 센 보안 신호(429, CSRF 거절, 출처 검사 거절) 가운데 기준을 넘은 종류를 운영자에게 알린다(07 2.1절). 내용은 종류, 건수, 많이 걸린
-   * 경로뿐이고 IP는 넣지 않는다.
+   * 10분 동안 센 보안 신호(429, CSRF 거절, 출처 검사 거절, 관리자 API 거부) 가운데 기준을 넘은 종류를 운영자에게 알린다(07 2.1절). 내용은 종류,
+   * 건수, 많이 걸린 경로뿐이고 IP는 넣지 않는다.
    */
   @Scheduled(fixedRate = 600_000, initialDelay = 600_000)
   public void alertSecuritySignals() {

@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.admin.web;
 
 import com.lottery.lottery_service.admin.AdminAccess;
+import com.lottery.lottery_service.admin.AdminAccessDenials;
 import com.lottery.lottery_service.admin.AdminRole;
 import com.lottery.lottery_service.admin.AdminSession;
 import com.lottery.lottery_service.admin.mfa.AdminMfaStore;
@@ -34,14 +35,20 @@ public class AdminSessionController {
   private static final int MAX_CODE_LENGTH = 64;
 
   private final AdminAccess access;
+  private final AdminAccessDenials denials;
   private final AdminMfaStore mfa;
   private final CsrfTokens csrf;
   private final Clock clock;
 
   /** 컨트롤러를 만든다. */
   public AdminSessionController(
-      AdminAccess access, AdminMfaStore mfa, CsrfTokens csrf, Clock clock) {
+      AdminAccess access,
+      AdminAccessDenials denials,
+      AdminMfaStore mfa,
+      CsrfTokens csrf,
+      Clock clock) {
     this.access = access;
+    this.denials = denials;
     this.mfa = mfa;
     this.csrf = csrf;
     this.clock = clock;
@@ -53,6 +60,9 @@ public class AdminSessionController {
       Authentication auth, HttpServletRequest request, @RequestBody Input input) {
     if (auth == null || !(auth.getPrincipal() instanceof MemberPrincipal member)) {
       throw new BusinessException(ErrorCode.UNAUTHENTICATED, "로그인이 필요합니다.");
+    }
+    if (access.roleOf(member.memberId()).isEmpty()) {
+      denials.deny(member.memberId(), request.getRequestURI());
     }
     access.require(member.memberId(), AdminRole.OPERATOR);
     boolean totp = input != null && input.code() != null;

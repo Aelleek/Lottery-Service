@@ -470,13 +470,14 @@ CREATE TABLE admin_grant (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 관리자 변경 감사. 1년 보관. 비밀값과 개인정보 원문은 넣지 않는다.
+-- 관리자 역할이 없는 회원의 관리자 API 거부(ADMIN_ACCESS_DENIED)만 사유 없이 남고, 회원마다 서울 날짜로 하루 1건이다(D-062).
 CREATE TABLE admin_audit_event (
   id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   actor_member_id BIGINT NOT NULL,
   action VARCHAR(64) NOT NULL,
   target_type VARCHAR(32) NOT NULL,
   target_key VARCHAR(80) NOT NULL,
-  reason VARCHAR(500) NOT NULL,
+  reason VARCHAR(500) NULL,
   before_json JSON NULL,
   after_json JSON NULL,
   outcome VARCHAR(16) NOT NULL,
@@ -485,7 +486,8 @@ CREATE TABLE admin_audit_event (
   KEY ix_audit_target (target_type, target_key, occurred_at),
   KEY ix_audit_expiry (expires_at),
   CONSTRAINT fk_admin_audit_event_0 FOREIGN KEY (actor_member_id) REFERENCES member (id),
-  CONSTRAINT ck_admin_audit_event_0 CHECK (outcome IN ('SUCCEEDED','REJECTED','FAILED'))
+  CONSTRAINT ck_admin_audit_event_0 CHECK (outcome IN ('SUCCEEDED','REJECTED','FAILED')),
+  CONSTRAINT ck_admin_audit_event_1 CHECK (reason IS NOT NULL OR action = 'ADMIN_ACCESS_DENIED')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;
 
 -- 회원 세션 저장소. Spring Session JDBC 표준 테이블 2개다(C-10). 표준 이름 그대로 대문자다. 이 두 개는 설계 테이블 26개에 세지 않는다.

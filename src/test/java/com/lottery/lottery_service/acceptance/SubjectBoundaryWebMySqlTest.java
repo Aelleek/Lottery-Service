@@ -142,7 +142,8 @@ class SubjectBoundaryWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("관리자 operation은 관리자 역할이 없는 회원이 부르면 403 FORBIDDEN이고 아무것도 바뀌지 않는다")
+  @DisplayName(
+      "관리자 operation은 관리자 역할이 없는 회원이 부르면 403 FORBIDDEN이고, 그날 첫 거부의 감사 행 1건 말고는 아무것도 바뀌지 않는다(D-062)")
   void memberWithoutRoleRejectedFromAdminOperations(CapturedOutput output) throws Exception {
     MemberPrincipal member = member("boundary-no-role");
     Session session = session(member);
@@ -159,7 +160,15 @@ class SubjectBoundaryWebMySqlTest extends MySqlContainerSupport {
               session.csrf());
       expect(mvc.perform(r).andReturn(), op, 403);
     }
+    before.merge("admin_audit_event", 1L, Long::sum);
     assertThat(stateCounts()).isEqualTo(before);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM admin_audit_event WHERE actor_member_id = ?"
+                    + " AND action = 'ADMIN_ACCESS_DENIED' AND reason IS NULL",
+                Long.class,
+                member.memberId()))
+        .isEqualTo(1L);
     assertThat(output.getAll()).as("거절은 error 로그를 남기지 않는다").doesNotContain(" ERROR ");
   }
 

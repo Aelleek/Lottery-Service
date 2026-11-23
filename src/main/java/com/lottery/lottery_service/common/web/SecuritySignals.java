@@ -10,8 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 /**
- * 보안 신호(07 2.1절)를 센다. 429, CSRF 거절, 출처 검사 거절을 종류별로 세고, 많이 걸린 경로를 함께 기억한다. IP는 받지 않는다. 인스턴스 1개 운영을
- * 가정해 메모리에 둔다(03 6.5). 주기 작업이 {@link #drain}으로 꺼내 기준을 넘으면 운영자에게 알린다.
+ * 보안 신호(07 2.1절)를 센다. 429, CSRF 거절, 출처 검사 거절, 관리자 API 거부를 종류별로 세고, 많이 걸린 경로를 함께 기억한다. IP는 받지 않는다.
+ * 인스턴스 1개 운영을 가정해 메모리에 둔다(03 6.5). 주기 작업이 {@link #drain}으로 꺼내 기준을 넘으면 운영자에게 알린다.
  */
 @Component
 public class SecuritySignals {
@@ -23,7 +23,9 @@ public class SecuritySignals {
     /** CSRF 토큰 거절. */
     CSRF_REJECTED,
     /** 출처 검사 거절. */
-    ORIGIN_REJECTED
+    ORIGIN_REJECTED,
+    /** 관리자 역할이 없는 회원의 관리자 API 요청(2026-11-23 Q1). */
+    ADMIN_API_DENIED
   }
 
   /** 종류마다 기억하는 경로 수 상한. 넘는 경로는 {@link #OTHER_PATH}로 센다. */
@@ -92,7 +94,8 @@ public class SecuritySignals {
     return Optional.empty();
   }
 
-  static String route(String path) {
+  /** 경로의 숫자·UUID 칸을 {@code {id}}로 바꾼 경로 묶음. 형식이 맞지 않으면 기타. */
+  public static String route(String path) {
     if (path == null) {
       return OTHER_PATH;
     }

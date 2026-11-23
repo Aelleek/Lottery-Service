@@ -14,6 +14,7 @@ import com.lottery.lottery_service.admin.mfa.AdminMfaStore;
 import com.lottery.lottery_service.admin.mfa.Totp;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.auth.OAuthProvider;
+import com.lottery.lottery_service.common.web.SecuritySignals;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import com.lottery.lottery_service.support.OpenApiContract;
 import jakarta.servlet.http.Cookie;
@@ -23,7 +24,9 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +56,7 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
   @Autowired private JdbcTemplate jdbc;
   @Autowired private ObjectMapper json;
   @Autowired private SessionRepository<? extends Session> sessions;
+  @Autowired private SecuritySignals signals;
 
   @DynamicPropertySource
   static void database(DynamicPropertyRegistry registry) throws SQLException {
@@ -68,11 +72,13 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
-  @DisplayName("관리자 권한이 없으면 관리자 인증과 관리자 API 모두 403 FORBIDDEN이다")
+  @DisplayName(
+      "관리자 권한이 없으면 관리자 인증과 관리자 API 모두 403 FORBIDDEN이고, 거부는 신호로 매번 세고 감사에는 하루 1건 남는다(D-062)")
   void memberWithoutGrant() throws Exception {
     MemberPrincipal member =
         MemberPrincipal.of(accounts.login(OAuthProvider.KAKAO, "plain"), OAuthProvider.KAKAO);
     Login login = login(member);
+    signals.drain();
 
     mvc.perform(
             login
@@ -84,6 +90,23 @@ class AdminSessionWebMySqlTest extends MySqlContainerSupport {
     mvc.perform(login.apply(get("/api/v1/admin/rounds/1200/notification-status")))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+
+    List<Map<String, Object>> rows =
+        jdbc.queryForList(
+            "SELECT action, target_type, target_key, reason, outcome FROM admin_audit_event"
+                + " WHERE actor_member_id = ?",
+            member.memberId());
+    assertThat(rows).hasSize(1);
+    assertThat(rows.get(0))
+        .containsEntry("action", "ADMIN_ACCESS_DENIED")
+        .containsEntry("target_type", "ADMIN_API")
+        .containsEntry("target_key", "/api/v1/admin/session")
+        .containsEntry("reason", null)
+        .containsEntry("outcome", "REJECTED");
+    assertThat(signals.drain())
+        .containsEntry(
+            SecuritySignals.Kind.ADMIN_API_DENIED,
+            new SecuritySignals.Summary(2, "/api/v1/admin/session"));
   }
 
   @Test

@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.admin.web;
 
 import com.lottery.lottery_service.admin.AdminAccess;
+import com.lottery.lottery_service.admin.AdminAccessDenials;
 import com.lottery.lottery_service.admin.AdminSession;
 import com.lottery.lottery_service.auth.MemberPrincipal;
 import com.lottery.lottery_service.common.error.BusinessException;
@@ -16,16 +17,18 @@ import org.springframework.web.servlet.HandlerInterceptor;
 /**
  * 관리자 API({@code /api/v1/admin/**}, 관리자 인증 시작 제외) 앞에서 회원 세션, 현재 관리자 권한, 관리자 세션({@link
  * AdminSession})을 확인한다. 권한이 없으면 403 {@code FORBIDDEN}, 관리자 인증 전이거나 끝났으면 403 {@code
- * ADMIN_AUTH_REQUIRED}다. 역할별 검사는 각 API가 한다.
+ * ADMIN_AUTH_REQUIRED}다. 역할이 하나도 없는 거부는 {@link AdminAccessDenials}로 남긴다(D-062). 역할별 검사는 각 API가 한다.
  */
 public class AdminSessionInterceptor implements HandlerInterceptor {
 
   private final AdminAccess access;
+  private final AdminAccessDenials denials;
   private final Clock clock;
 
   /** 확인기를 만든다. */
-  public AdminSessionInterceptor(AdminAccess access, Clock clock) {
+  public AdminSessionInterceptor(AdminAccess access, AdminAccessDenials denials, Clock clock) {
     this.access = access;
+    this.denials = denials;
     this.clock = clock;
   }
 
@@ -41,6 +44,7 @@ public class AdminSessionInterceptor implements HandlerInterceptor {
       if (session != null) {
         AdminSession.end(session);
       }
+      denials.deny(member.memberId(), request.getRequestURI());
       throw new BusinessException(ErrorCode.FORBIDDEN, "허용되지 않은 요청입니다.");
     }
     if (!AdminSession.touch(request.getSession(false), clock.instant())) {

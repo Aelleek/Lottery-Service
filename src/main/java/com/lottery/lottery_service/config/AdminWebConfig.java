@@ -1,6 +1,7 @@
 package com.lottery.lottery_service.config;
 
 import com.lottery.lottery_service.admin.AdminAccess;
+import com.lottery.lottery_service.admin.AdminAccessDenials;
 import com.lottery.lottery_service.admin.web.AdminSessionInterceptor;
 import java.time.Clock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -14,18 +15,20 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class AdminWebConfig implements WebMvcConfigurer {
 
   private final AdminAccess access;
+  private final AdminAccessDenials denials;
   private final Clock clock;
 
   /** 설정을 만든다. */
-  public AdminWebConfig(AdminAccess access, Clock clock) {
+  public AdminWebConfig(AdminAccess access, AdminAccessDenials denials, Clock clock) {
     this.access = access;
+    this.denials = denials;
     this.clock = clock;
   }
 
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
     registry
-        .addInterceptor(new AdminSessionInterceptor(access, clock))
+        .addInterceptor(new AdminSessionInterceptor(access, denials, clock))
         .addPathPatterns("/api/v1/admin/**")
         .excludePathPatterns("/api/v1/admin/session");
   }
