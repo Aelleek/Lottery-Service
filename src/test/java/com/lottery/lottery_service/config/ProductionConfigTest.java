@@ -40,7 +40,8 @@ class ProductionConfigTest {
   void forwardedHeadersTrustOnlyConfiguredProxies() throws IOException {
     PropertySource<?> main = load("src/main/resources/application.yml");
 
-    assertThat(main.getProperty("server.request.header.forwarded.strategy")).isEqualTo("web-server");
+    assertThat(main.getProperty("server.request.header.forwarded.strategy"))
+        .isEqualTo("web-server");
     assertThat(main.getProperty("server.tomcat.remoteip.internal-proxies"))
         .isEqualTo("${LOTTERY_TRUSTED_PROXIES:}");
   }
