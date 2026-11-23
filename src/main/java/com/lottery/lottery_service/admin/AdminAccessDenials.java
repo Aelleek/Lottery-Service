@@ -22,7 +22,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class AdminAccessDenials {
 
-  /** 하루 안에 이미 남긴 회원을 기억하는 수 상한. 넘으면 DB 확인만으로 거른다. */
+  /** 하루 안에 이미 남긴 회원을 기억하는 수 상한. 넘으면 DB 확인만으로 거른다. DB 확인과 쓰기는 회원별 잠금 안에서 한다. */
   static final int MAX_REMEMBERED = 100_000;
 
   private final SecuritySignals signals;
@@ -31,6 +31,7 @@ public class AdminAccessDenials {
   private final Clock clock;
   private final int maxRemembered;
   private final Map<Long, LocalDate> recorded = new ConcurrentHashMap<>();
+  private final Object[] locks = new Object[64];
 
   /** 기록기를 만든다. */
   @Autowired
@@ -50,6 +51,9 @@ public class AdminAccessDenials {
     this.jdbc = jdbc;
     this.clock = clock;
     this.maxRemembered = maxRemembered;
+    for (int i = 0; i < locks.length; i++) {
+      locks[i] = new Object();
+    }
   }
 
   /** 거부 한 건을 센다. 그 회원의 오늘 첫 거부면 감사에도 남긴다. */
@@ -68,7 +72,9 @@ public class AdminAccessDenials {
       return;
     }
     try {
-      writeOncePerDay(memberId, path, today);
+      synchronized (locks[Math.floorMod(Long.hashCode(memberId), locks.length)]) {
+        writeOncePerDay(memberId, path, today);
+      }
     } catch (RuntimeException e) {
       if (remember) {
         recorded.remove(memberId, today);

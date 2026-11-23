@@ -183,6 +183,32 @@ class AdminAccessDenialsMySqlTest extends MySqlContainerSupport {
   }
 
   @Test
+  @DisplayName("기억 상한이 차 DB 확인만 쓰는 회원도 동시에 몰린 거부가 감사 행 1건이다")
+  void concurrentDenialsAtMemoryCapWriteOneRow() throws Exception {
+    long a = member();
+    long c = member();
+    Clock clock = Clock.fixed(LATE, ZoneOffset.UTC);
+    AdminAccessDenials denials =
+        new AdminAccessDenials(
+            new SecuritySignals(), new AdminAuditLog(jdbc, tm, clock), jdbc, clock, 1);
+    denials.deny(a, "/api/v1/admin/stats");
+    ExecutorService pool = Executors.newFixedThreadPool(16);
+    try {
+      Callable<Void> call =
+          () -> {
+            denials.deny(c, "/api/v1/admin/stats");
+            return null;
+          };
+      for (Future<Void> f : pool.invokeAll(Collections.nCopies(64, call))) {
+        f.get();
+      }
+    } finally {
+      pool.shutdownNow();
+    }
+    assertThat(rows(c)).hasSize(1);
+  }
+
+  @Test
   @DisplayName("긴 경로는 대상 키 길이를 넘지 않게 기타로 남긴다")
   void longRouteFallsBackToOther() {
     long member = member();
