@@ -32,7 +32,7 @@ class ForwardedHeadersTest {
   @SpringBootTest(
       webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
       properties = {
-        "server.forward-headers-strategy=native",
+        "server.request.header.forwarded.strategy=web-server",
         "server.tomcat.remoteip.internal-proxies=127\\\\.0\\\\.0\\\\.1"
       })
   class TrustedProxy {
@@ -61,7 +61,7 @@ class ForwardedHeadersTest {
   @SpringBootTest(
       webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
       properties = {
-        "server.forward-headers-strategy=native",
+        "server.request.header.forwarded.strategy=web-server",
         "server.tomcat.remoteip.internal-proxies="
       })
   class NoTrustedProxy {
