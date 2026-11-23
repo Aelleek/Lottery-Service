@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -28,15 +29,27 @@ public class AdminAccessDenials {
   private final AdminAuditLog audit;
   private final JdbcTemplate jdbc;
   private final Clock clock;
+  private final int maxRemembered;
   private final Map<Long, LocalDate> recorded = new ConcurrentHashMap<>();
 
   /** 기록기를 만든다. */
+  @Autowired
   public AdminAccessDenials(
       SecuritySignals signals, AdminAuditLog audit, JdbcTemplate jdbc, Clock clock) {
+    this(signals, audit, jdbc, clock, MAX_REMEMBERED);
+  }
+
+  AdminAccessDenials(
+      SecuritySignals signals,
+      AdminAuditLog audit,
+      JdbcTemplate jdbc,
+      Clock clock,
+      int maxRemembered) {
     this.signals = signals;
     this.audit = audit;
     this.jdbc = jdbc;
     this.clock = clock;
+    this.maxRemembered = maxRemembered;
   }
 
   /** 거부 한 건을 센다. 그 회원의 오늘 첫 거부면 감사에도 남긴다. */
@@ -44,20 +57,15 @@ public class AdminAccessDenials {
     signals.record(SecuritySignals.Kind.ADMIN_API_DENIED, path);
     Instant now = clock.instant();
     LocalDate today = SeoulTime.dateOf(now);
-    LocalDate previous = recorded.get(memberId);
-    if (today.equals(previous)) {
+    if (today.equals(recorded.get(memberId))) {
       return;
     }
-    if (recorded.size() >= MAX_REMEMBERED) {
+    if (recorded.size() >= maxRemembered) {
       recorded.values().removeIf(day -> !today.equals(day));
     }
-    boolean remember = recorded.size() < MAX_REMEMBERED;
-    if (remember) {
-      if (previous == null
-          ? recorded.putIfAbsent(memberId, today) != null
-          : !recorded.replace(memberId, previous, today)) {
-        return;
-      }
+    boolean remember = recorded.containsKey(memberId) || recorded.size() < maxRemembered;
+    if (remember && today.equals(recorded.put(memberId, today))) {
+      return;
     }
     try {
       writeOncePerDay(memberId, path, today);

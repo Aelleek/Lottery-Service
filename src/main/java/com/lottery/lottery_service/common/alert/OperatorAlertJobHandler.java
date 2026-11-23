@@ -5,6 +5,7 @@ import com.lottery.lottery_service.common.job.JobLease;
 import com.lottery.lottery_service.common.job.JobStep;
 import com.lottery.lottery_service.common.job.JobStore;
 import com.lottery.lottery_service.common.time.SeoulTime;
+import com.lottery.lottery_service.common.web.SecuritySignals;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -204,11 +205,17 @@ public class OperatorAlertJobHandler implements JobHandler {
   }
 
   private static String signalName(String signal) {
-    return switch (signal) {
-      case "TOO_MANY_REQUESTS" -> "요청 제한(429)";
-      case "CSRF_REJECTED" -> "CSRF 거절";
-      case "ORIGIN_REJECTED" -> "출처 검사 거절";
-      default -> "알 수 없는 신호";
+    SecuritySignals.Kind kind;
+    try {
+      kind = SecuritySignals.Kind.valueOf(signal);
+    } catch (IllegalArgumentException | NullPointerException e) {
+      return "알 수 없는 신호";
+    }
+    return switch (kind) {
+      case TOO_MANY_REQUESTS -> "요청 제한(429)";
+      case CSRF_REJECTED -> "CSRF 거절";
+      case ORIGIN_REJECTED -> "출처 검사 거절";
+      case ADMIN_API_DENIED -> "관리자 API 거부";
     };
   }
 

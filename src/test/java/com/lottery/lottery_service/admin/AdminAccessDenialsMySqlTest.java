@@ -7,6 +7,7 @@ import com.lottery.lottery_service.common.web.SecuritySignals;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.List;
@@ -17,6 +18,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -137,6 +139,47 @@ class AdminAccessDenialsMySqlTest extends MySqlContainerSupport {
     denials.deny(member, "/api/v1/admin/stats");
     assertThat(rows(member)).hasSize(1);
     assertThat(signals.drain().get(SecuritySignals.Kind.ADMIN_API_DENIED).count()).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("기억하는 회원 수가 상한에 차면 지난 날짜를 비우고, 그래도 차 있으면 DB 확인만으로 하루 1건을 지킨다")
+  void memoryCapKeepsOncePerDay() {
+    long a = member();
+    long b = member();
+    long c = member();
+    AtomicReference<Instant> now = new AtomicReference<>(LATE);
+    Clock clock =
+        new Clock() {
+          @Override
+          public ZoneId getZone() {
+            return ZoneOffset.UTC;
+          }
+
+          @Override
+          public Clock withZone(ZoneId zone) {
+            return this;
+          }
+
+          @Override
+          public Instant instant() {
+            return now.get();
+          }
+        };
+    AdminAccessDenials denials =
+        new AdminAccessDenials(
+            new SecuritySignals(), new AdminAuditLog(jdbc, tm, clock), jdbc, clock, 2);
+    denials.deny(a, "/api/v1/admin/stats");
+    denials.deny(b, "/api/v1/admin/stats");
+
+    now.set(NEXT_DAY);
+    denials.deny(a, "/api/v1/admin/stats");
+    denials.deny(b, "/api/v1/admin/stats");
+    denials.deny(c, "/api/v1/admin/stats");
+    denials.deny(c, "/api/v1/admin/stats");
+
+    assertThat(rows(a)).hasSize(2);
+    assertThat(rows(b)).hasSize(2);
+    assertThat(rows(c)).hasSize(1);
   }
 
   @Test
