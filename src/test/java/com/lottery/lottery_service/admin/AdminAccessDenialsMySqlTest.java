@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.lottery.lottery_service.common.web.SecuritySignals;
+import com.lottery.lottery_service.support.MutableClock;
 import com.lottery.lottery_service.support.MySqlContainerSupport;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.List;
@@ -18,7 +18,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -147,31 +146,14 @@ class AdminAccessDenialsMySqlTest extends MySqlContainerSupport {
     long a = member();
     long b = member();
     long c = member();
-    AtomicReference<Instant> now = new AtomicReference<>(LATE);
-    Clock clock =
-        new Clock() {
-          @Override
-          public ZoneId getZone() {
-            return ZoneOffset.UTC;
-          }
-
-          @Override
-          public Clock withZone(ZoneId zone) {
-            return this;
-          }
-
-          @Override
-          public Instant instant() {
-            return now.get();
-          }
-        };
+    MutableClock clock = new MutableClock(LATE);
     AdminAccessDenials denials =
         new AdminAccessDenials(
             new SecuritySignals(), new AdminAuditLog(jdbc, tm, clock), jdbc, clock, 2);
     denials.deny(a, "/api/v1/admin/stats");
     denials.deny(b, "/api/v1/admin/stats");
 
-    now.set(NEXT_DAY);
+    clock.set(NEXT_DAY);
     denials.deny(a, "/api/v1/admin/stats");
     denials.deny(b, "/api/v1/admin/stats");
     denials.deny(c, "/api/v1/admin/stats");

@@ -1,11 +1,11 @@
 package com.lottery.lottery_service.support;
 
+import com.networknt.schema.Error;
 import com.networknt.schema.InputFormat;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
+import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaLocation;
-import com.networknt.schema.SpecVersion;
-import com.networknt.schema.ValidationMessage;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SpecificationVersion;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -49,10 +49,10 @@ public final class OpenApiContract implements ResultHandler {
   private static final Set<String> TOKEN_ROUTES = Set.of("/session", "/guest-credentials");
 
   private final JsonNode spec;
-  private final JsonSchemaFactory factory;
+  private final SchemaRegistry factory;
   private final boolean securityHeaders;
   private final List<Route> routes = new ArrayList<>();
-  private final Map<String, JsonSchema> schemas = new ConcurrentHashMap<>();
+  private final Map<String, Schema> schemas = new ConcurrentHashMap<>();
   private final ObjectMapper json = new ObjectMapper();
   private final Map<String, Set<Integer>> codeStatuses = new ConcurrentHashMap<>();
 
@@ -76,9 +76,8 @@ public final class OpenApiContract implements ResultHandler {
       spec = json.valueToTree(loaded);
       String document = json.writeValueAsString(spec);
       factory =
-          JsonSchemaFactory.getInstance(
-              SpecVersion.VersionFlag.V202012,
-              b -> b.schemaLoaders(l -> l.schemas(Map.of(BASE, document))));
+          SchemaRegistry.withDefaultDialect(
+              SpecificationVersion.DRAFT_2020_12, b -> b.schemas(Map.of(BASE, document)));
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
@@ -184,17 +183,15 @@ public final class OpenApiContract implements ResultHandler {
 
   private void validate(String pointer, String body, String label) throws IOException {
     String schemaPointer = pointer + "/content/" + escape("application/json") + "/schema";
-    JsonSchema schema =
+    Schema schema =
         schemas.computeIfAbsent(
             schemaPointer, p -> factory.getSchema(SchemaLocation.of(BASE + "#" + p)));
-    Set<ValidationMessage> errors = schema.validate(body, InputFormat.JSON);
+    List<Error> errors = schema.validate(body, InputFormat.JSON);
     if (!errors.isEmpty()) {
       throw new AssertionError(
           label
               + "이(가) openapi 스키마와 다르다: "
-              + errors.stream()
-                  .map(ValidationMessage::getMessage)
-                  .collect(Collectors.joining("; ")));
+              + errors.stream().map(Error::getMessage).collect(Collectors.joining("; ")));
     }
   }
 
