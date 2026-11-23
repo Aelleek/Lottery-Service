@@ -80,4 +80,24 @@ class SessionCookieServerMySqlTest extends MySqlContainerSupport {
                 id))
         .isEqualTo(14 * 24 * 60 * 60);
   }
+
+  @Test
+  @DisplayName("등록되지 않은 제공자의 로그인 시작은 500이 아니고 서버 세션도 만들지 않는다")
+  void unknownProviderIsNotServerError() throws Exception {
+    long before = jdbc.queryForObject("SELECT COUNT(*) FROM SPRING_SESSION", Long.class);
+
+    HttpResponse<String> response =
+        HttpClient.newHttpClient()
+            .send(
+                HttpRequest.newBuilder(
+                        URI.create("http://localhost:" + port + "/oauth2/authorization/no-such"))
+                    .GET()
+                    .build(),
+                HttpResponse.BodyHandlers.ofString());
+
+    assertThat(response.statusCode()).isLessThan(500);
+    assertThat(response.headers().firstValue("Location").orElse("")).doesNotContain("example.com");
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM SPRING_SESSION", Long.class))
+        .isEqualTo(before);
+  }
 }

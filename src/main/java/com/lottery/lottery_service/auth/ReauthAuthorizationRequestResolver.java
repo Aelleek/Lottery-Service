@@ -26,14 +26,28 @@ public class ReauthAuthorizationRequestResolver implements OAuth2AuthorizationRe
     this.delegate = new DefaultOAuth2AuthorizationRequestResolver(registrations, BASE_URI);
   }
 
+  /** 등록되지 않은 제공자면 로그인 시작으로 보지 않고 다음 필터로 넘긴다(Spring Security 기본은 500). */
   @Override
   public OAuth2AuthorizationRequest resolve(HttpServletRequest request) {
-    return customize(request, delegate.resolve(request));
+    OAuth2AuthorizationRequest original;
+    try {
+      original = delegate.resolve(request);
+    } catch (IllegalArgumentException unknownRegistration) {
+      return null;
+    }
+    return customize(request, original);
   }
 
+  /** 등록되지 않은 제공자면 로그인 시작으로 보지 않는다. */
   @Override
   public OAuth2AuthorizationRequest resolve(HttpServletRequest request, String registrationId) {
-    return customize(request, delegate.resolve(request, registrationId));
+    OAuth2AuthorizationRequest original;
+    try {
+      original = delegate.resolve(request, registrationId);
+    } catch (IllegalArgumentException unknownRegistration) {
+      return null;
+    }
+    return customize(request, original);
   }
 
   private OAuth2AuthorizationRequest customize(
